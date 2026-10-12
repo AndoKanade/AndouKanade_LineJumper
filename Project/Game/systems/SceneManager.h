@@ -71,7 +71,8 @@ public:
 	/// 画面を覆い終わった瞬間に onCovered が1回だけ呼ばれます。暗転中なら何もせず false を返します。
 	/// </summary>
 	/// <param name="onCovered">画面を覆い終わったときに呼ぶ処理</param>
-	bool StartTransition(std::function<void()> onCovered);
+	/// <param name="style">画面を覆う演出の種類</param>
+	bool StartTransition(std::function<void()> onCovered,SceneTransition::Style style = SceneTransition::Style::Fade);
 
 	/// <summary>
 	/// 暗転中かどうか

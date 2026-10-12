@@ -110,6 +110,6 @@ void SceneManager::ChangeScene(const std::string& sceneName){
 	});
 }
 
-bool SceneManager::StartTransition(std::function<void()> onCovered){
-	return transition_.Start(std::move(onCovered));
+bool SceneManager::StartTransition(std::function<void()> onCovered,SceneTransition::Style style){
+	return transition_.Start(std::move(onCovered),style);
 }

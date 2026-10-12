@@ -58,6 +58,11 @@ namespace{
 	// 弾が画面中央のレティクルへ向かって飛ぶよう、カメラの前方のこの距離の点を狙って撃ち出す
 	// (カメラはプレイヤーの後ろ上にあるため、カメラと同じ向きで平行に撃つとレティクルより下にずれる)
 	constexpr float kAimConvergeDistance = 30.0f;
+
+#ifdef USE_IMGUI
+	// 落下リスタートの演出の名前(ImGui の切り替えに表示する。SceneTransition::Style と同じ順番にする)
+	const char* kFallTransitionNames[] = {"Fade", "RailStripes", "FallAndLift", "RetryCutIn"};
+#endif
 }
 
 GameScene::GameScene() = default;
@@ -391,7 +396,7 @@ void GameScene::UpdateGameplay(){
 		if(needsRestart){
 			sceneManager_->StartTransition([this](){
 				ResetPlayState();
-			});
+			},fallTransitionStyle_);
 		}
 	}
 
@@ -482,6 +487,15 @@ void GameScene::ShowEditorPanels(){
 
 	// ONにすると、Playを押したときにタイトル演出を飛ばしてすぐプレイを始める(デバッグ用)
 	ImGui::Checkbox("Skip Title",&skipTitle_);
+
+	// 落下リスタートの演出を切り替える。Preview を押すと落ちなくてもその場で演出だけを確認できる
+	int fallStyleIndex = static_cast<int>(fallTransitionStyle_);
+	if(ImGui::Combo("Fall Transition",&fallStyleIndex,kFallTransitionNames,IM_ARRAYSIZE(kFallTransitionNames))){
+		fallTransitionStyle_ = static_cast<SceneTransition::Style>(fallStyleIndex);
+	}
+	if(ImGui::Button("Preview Fall Transition")){
+		sceneManager_->StartTransition(nullptr,fallTransitionStyle_);
+	}
 
 	// カメラ設定のUI
 	if(ImGui::CollapsingHeader("Camera Settings")){
