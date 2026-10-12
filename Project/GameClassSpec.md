@@ -97,12 +97,30 @@ Game/
 | `GetInstance()` | インスタンスの取得 |
 | `SetFactory(AbstractSceneFactory*)` | シーン生成に使う工場を登録する |
 | `SetCommonPtr(Obj3dCommon*, Input*, SpriteCommon*)` | 各シーンに渡す共通リソースを登録する |
-| `ChangeScene(const std::string&)` | 次のシーンを予約する。実際の切り替えは次の `Update()` の冒頭 |
+| `ChangeScene(const std::string&)` | 暗転を始め、画面を覆い終わったら次のシーンを予約する。実際の切り替えはその直後の `Update()` の冒頭。最初のシーンだけは暗転せずに切り替える。暗転中に呼ばれたら無視する |
+| `StartTransition(std::function<void()>)` | シーンを切り替えずに暗転だけを行い、画面を覆い終わった瞬間に渡された処理を1回呼ぶ（落下リスタート用） |
+| `IsTransitioning()` | 暗転中なら true。GameScene はこれを見て入力・ゲームの進行を止める |
 | `Update()` | 予約があれば「旧シーンの Finalize → 新シーンの生成 → SetSceneManager → Initialize」を行ってから、現在のシーンを更新する |
 | `Draw()` | 現在のシーンを描画する |
 | `Finalize()` | 現在のシーンを終了・解放する |
 
 - 切り替えのたびにシーンは破棄・再生成されるため、シーンをまたいで状態は残らない。
+- `Update()` では暗転を進めてから、シーンの切り替え予約の処理とシーンの更新を行う。`Draw()` ではシーンの描画の後に暗転を重ねる。
+
+### SceneTransition（`systems/SceneTransition.h/.cpp`）
+
+画面のつながりが切れる瞬間（シーンの切り替え・落下リスタート）を隠す暗転。シーンを切り替えても途中で消えないよう SceneManager が持つ。
+タイトル → プレイはカメラワークでつながっているため使わない。
+
+| 段階 | 内容 |
+| --- | --- |
+| `None` | 何もしていない |
+| `Covering` | 0.4 秒かけて画面を黒で覆う |
+| `Covered` | 真っ暗な画面を1フレーム描画した後、`Start()` で渡された処理を1回呼ぶ |
+| `Revealing` | 0.4 秒かけて黒を薄くして画面を戻す |
+
+- 黒の濃さは `Easing::EaseInOutCubic` で変える。
+- 進め方（`Update()`）と見た目（`Draw()`）を分けているため、後から見た目だけを別の演出に差し替えられる。
 
 ---
 
@@ -166,7 +184,7 @@ Game/
 | 項目 | 内容 |
 | --- | --- |
 | 射撃 | 左クリックで、プレイヤーの手元（`Player::GetMuzzlePosition()`）から、カメラの前方 30.0 の点（レティクルの先）へ向けて弾を発射する |
-| 落下リスタート | どのレールにも乗れずに地面の高さまで落ちたら `ResetPlayState()` を呼ぶ。開始演出は挟まない |
+| 落下リスタート | どのレールにも乗れずに地面の高さまで落ちたら暗転（`SceneManager::StartTransition()`）を始め、画面を覆っている間に `ResetPlayState()` を呼ぶ。開始演出は挟まない |
 | クリア | オンレール中にレールの終端に着いたら CLEAR へ移る。移る前に壊した的の数・総数・最大連鎖数を StageResult に書き込む（的を全部壊すことはクリアの条件にしない） |
 | ゲームオーバー | プレイヤーの体力が 0 になったら GAMEOVER へ移る |
 | 当たり判定 | すべてモデルの頂点から求めた境界球（`Model::BoundingSphere`）同士の重なりで判定する。プレイヤー・敵本体はワールド行列で変換した球（`Obj3D::GetWorldBoundingSphere()`）、弾・的は現在座標と表示スケールから求めた球を使う |

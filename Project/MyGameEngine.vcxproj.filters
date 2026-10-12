@@ -225,6 +225,9 @@
     <ClCompile Include="Game\systems\SceneManager.cpp">
       <Filter>ソース ファイル\Game\System</Filter>
     </ClCompile>
+    <ClCompile Include="Game\systems\SceneTransition.cpp">
+      <Filter>ソース ファイル\Game\System</Filter>
+    </ClCompile>
     <ClCompile Include="Game\scenes\GameScene.cpp">
       <Filter>ソース ファイル\Game\Scenes</Filter>
     </ClCompile>
@@ -426,6 +429,9 @@
       <Filter>ヘッダー ファイル\Game\System</Filter>
     </ClInclude>
     <ClInclude Include="Game\systems\SceneManager.h">
+      <Filter>ヘッダー ファイル\Game\System</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\systems\SceneTransition.h">
       <Filter>ヘッダー ファイル\Game\System</Filter>
     </ClInclude>
     <ClInclude Include="Game\scenes\GameScene.h">

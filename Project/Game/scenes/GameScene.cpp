@@ -289,7 +289,8 @@ void GameScene::UpdateGameplay(){
 	}
 
 	// レール進行・操作・射撃・勝敗判定は、開始演出が終わってプレイ可能になってから動かす
-	const bool isGameplayActive = isPlayMode && startSequence_->IsPlayable();
+	// 暗転中(クリア・ゲームオーバーへの切り替え中、落下リスタート中)も、入力や判定が二重に起きないよう止めておく
+	const bool isGameplayActive = isPlayMode && startSequence_->IsPlayable() && !sceneManager_->IsTransitioning();
 
 	// マウスカーソルの表示/非表示切り替え
 	UpdateCursorVisibility(isPlayMode);
@@ -384,10 +385,13 @@ void GameScene::UpdateGameplay(){
 
 	// プレイヤーの自立(ジャンプ+WASD移動)
 	// どのレールにも乗れないまま地面の高さまで落ちたら、レール先頭からやり直す
+	// 一瞬で始点へ戻ると何が起きたか分かりにくいため、暗転で画面を覆っている間に始点へ戻す
 	if(isGameplayActive){
 		bool needsRestart = player_->UpdateMovement(input_,railEditor_.get(),cameraForward,railCamera_->GetRight(),ground_->GetHeight(),kDeltaTime);
 		if(needsRestart){
-			ResetPlayState();
+			sceneManager_->StartTransition([this](){
+				ResetPlayState();
+			});
 		}
 	}
 
