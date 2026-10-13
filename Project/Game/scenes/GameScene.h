@@ -134,12 +134,6 @@ private:
 	// Playに入ったときにタイトル演出を飛ばしてすぐプレイを始めるか(デバッグ用。ImGuiのチェックボックスで切り替える)
 	bool skipTitle_ = false;
 
-	// レールから落ちてリスタートするときの画面を覆う演出(見比べるため ImGui で切り替える)
-	SceneTransition::Style fallTransitionStyle_ = SceneTransition::Style::RailStripes;
-
-	// クリア画面へ切り替えるときの画面を覆う演出(見比べるため ImGui で切り替える)
-	SceneTransition::Style clearTransitionStyle_ = SceneTransition::Style::InkBurst;
-
 	// 1フレームの経過時間(エンジンが固定60fps前提(TimeManagerで60fps固定)なので、そのまま合わせる)
 	static constexpr float kDeltaTime = 1.0f / 60.0f;
 	// 射撃に使うマウスボタン(左ボタン)

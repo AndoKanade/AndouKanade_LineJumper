@@ -64,6 +64,19 @@ namespace{
 	// レールに乗り込んで出発した瞬間のインクのしぶきを飛ばす向き(真上)
 	constexpr Vector3 kWorldUp = {0.0f, 1.0f, 0.0f};
 
+	// 落下リスタート・クリア画面への切り替えの演出を保存する調整項目名(SceneTransition::Style の番号で保存する)
+	// GameScene はシーンが切り替わるたびに作り直されるため、ImGui で選んだ演出を調整項目に持たせて保存・保持する
+	const char* kFallTransitionKey = "fallTransitionStyle";
+	const char* kClearTransitionKey = "clearTransitionStyle";
+	// 演出の初期値(保存済みJSONがあればそちらが優先される)
+	constexpr SceneTransition::Style kDefaultFallTransitionStyle = SceneTransition::Style::RailStripes;
+	constexpr SceneTransition::Style kDefaultClearTransitionStyle = SceneTransition::Style::InkBurst;
+
+	// 調整項目に保存した番号から演出の種類を取得する
+	SceneTransition::Style GetTransitionStyle(const char* key){
+		return static_cast<SceneTransition::Style>(GlobalVariables::GetInstance()->GetIntValue(kGameSceneGroup,key));
+	}
+
 #ifdef USE_IMGUI
 	// 落下リスタートの演出の名前(ImGui の切り替えに表示する。SceneTransition::Style と同じ順番にする)
 	const char* kFallTransitionNames[] = {"Fade", "RailStripes", "FallAndLift", "RetryCutIn"};
@@ -126,6 +139,10 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// ImGuiの "Global Variables" ウィンドウから実行中に編集・保存でき、
 	// resource/GlobalVariables/GameScene.json を外部で書き換えると自動反映される(ホットリロード)
 	GlobalVariables::GetInstance()->CreateGroup(kGameSceneGroup);
+
+	// 落下リスタート・クリア画面への切り替えの演出(ImGui で選んだものを "Global Variables" の Save で保存できる)
+	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kFallTransitionKey,static_cast<int32_t>(kDefaultFallTransitionStyle));
+	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kClearTransitionKey,static_cast<int32_t>(kDefaultClearTransitionStyle));
 
 	// 太陽の生成(方角はレール開始地点の進行方向を基準にする)
 	sun_ = std::make_unique<Sun>();
@@ -393,7 +410,7 @@ void GameScene::UpdateGameplay(){
 		StageResult::totalTargetCount = targetManager_->GetTotalCount();
 		StageResult::maxCombo = comboCounter_->GetMaxCombo();
 		// クリアは ImGui で選んだ演出(初期値は黄色いインクが弾けて画面を塗りつぶす InkBurst)で切り替える
-		sceneManager_->ChangeScene("CLEAR",clearTransitionStyle_);
+		sceneManager_->ChangeScene("CLEAR",GetTransitionStyle(kClearTransitionKey));
 		return;
 	}
 
@@ -465,7 +482,7 @@ void GameScene::UpdateGameplay(){
 		if(needsRestart){
 			sceneManager_->StartTransition([this](){
 				ResetPlayState();
-			},fallTransitionStyle_);
+			},GetTransitionStyle(kFallTransitionKey));
 		}
 
 		// 出発ゲートをくぐってレールに乗り込んだ瞬間に、足元から輪とインクのしぶきを広げて「GO!」でプレイを始める
@@ -566,26 +583,30 @@ void GameScene::ShowEditorPanels(){
 	ImGui::Checkbox("Skip Title",&skipTitle_);
 
 	// 落下リスタートの演出を切り替える。Preview を押すと落ちなくてもその場で演出だけを確認できる
-	int fallStyleIndex = static_cast<int>(fallTransitionStyle_);
+	// 選んだ演出は調整項目に書き込み、"Global Variables" ウィンドウの Save で JSON に保存する
+	GlobalVariables* gv = GlobalVariables::GetInstance();
+	const SceneTransition::Style fallTransitionStyle = GetTransitionStyle(kFallTransitionKey);
+	int fallStyleIndex = static_cast<int>(fallTransitionStyle);
 	if(ImGui::Combo("Fall Transition",&fallStyleIndex,kFallTransitionNames,IM_ARRAYSIZE(kFallTransitionNames))){
-		fallTransitionStyle_ = static_cast<SceneTransition::Style>(fallStyleIndex);
+		gv->SetValue(kGameSceneGroup,kFallTransitionKey,static_cast<int32_t>(fallStyleIndex));
 	}
 	if(ImGui::Button("Preview Fall Transition")){
-		sceneManager_->StartTransition(nullptr,fallTransitionStyle_);
+		sceneManager_->StartTransition(nullptr,fallTransitionStyle);
 	}
 
 	// クリア画面へ切り替えるときの演出を切り替える。Preview を押すとクリアしなくてもその場で演出だけを確認できる
+	const SceneTransition::Style clearTransitionStyle = GetTransitionStyle(kClearTransitionKey);
 	int clearStyleIndex = 0;
 	for(int i = 0; i < static_cast<int>(std::size(kClearTransitionStyles)); ++i){
-		if(kClearTransitionStyles[i] == clearTransitionStyle_){
+		if(kClearTransitionStyles[i] == clearTransitionStyle){
 			clearStyleIndex = i;
 		}
 	}
 	if(ImGui::Combo("Clear Transition",&clearStyleIndex,kClearTransitionNames,IM_ARRAYSIZE(kClearTransitionNames))){
-		clearTransitionStyle_ = kClearTransitionStyles[clearStyleIndex];
+		gv->SetValue(kGameSceneGroup,kClearTransitionKey,static_cast<int32_t>(kClearTransitionStyles[clearStyleIndex]));
 	}
 	if(ImGui::Button("Preview Clear Transition")){
-		sceneManager_->StartTransition(nullptr,clearTransitionStyle_);
+		sceneManager_->StartTransition(nullptr,clearTransitionStyle);
 	}
 
 	// カメラ設定のUI
