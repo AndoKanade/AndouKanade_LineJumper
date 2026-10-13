@@ -2,7 +2,6 @@
 
 #include "MyMath.h"
 #include "Title/TitleCameraDirector.h"
-#include "Title/StartCountdown.h"
 #include <memory>
 
 // 前方宣言
@@ -11,10 +10,14 @@ class Obj3dCommon;
 class SpriteCommon;
 class TitleLogo;
 class TitleUI;
+class StageIntroUI;
+class StartPlatform;
 
 /// <summary>
-/// ステージ開始までの流れ(タイトル → カメラの回り込み → カウントダウン → プレイ)を管理する
-/// GameScene からは Update() を呼び、IsPlayable() でプレイ可能かを受け取るだけにする。
+/// ステージ開始までの流れ(タイトル → カメラの回り込み → スタート台で準備 → 出発ゲートを開ける → レールへ乗り込む → プレイ)を管理する
+/// GameScene からは Update() を呼び、IsPlayable() でプレイ可能か、IsPlayerMovable() で台の上を動けるかを受け取る。
+/// 準備中はスタート台の上を自由に動け、ゲートの前の目印で SPACE を押すとゲートが開く。
+/// 開いたゲートをくぐってレールに乗ると、GameScene から NotifyBoarded() で知らされ、「GO!」でプレイが始まる。
 /// </summary>
 class StartSequence{
 public:
@@ -23,27 +26,42 @@ public:
 		None,       // 演出を行っていない(Editモード中)
 		Title,      // タイトル表示中(スタート入力待ち)
 		CameraTurn, // カメラがプレイヤーの背後へ回り込み中
-		Countdown,  // 3, 2, 1 のカウントダウン中
+		Standby,    // スタート台の上を自由に動ける(出発ゲートは閉じている。ゲートの前で SPACE を押すと開く)
+		GateOpen,   // 出発ゲートを開けている最中(ステージ情報を表示する。プレイヤーは動けない)
+		Boarding,   // 出発ゲートが開き、自分で歩いてレールへ乗り込むのを待っている
 		Playing,    // プレイ中
 	};
 
 	StartSequence();
 	~StartSequence();
 
-	// 初期化(タイトルロゴのモデルとタイトル表示用のスプライト生成)
-	void Initialize(Obj3dCommon* object3dCommon,SpriteCommon* spriteCommon,Input* input);
+	/// <summary>
+	/// 初期化(タイトルロゴのモデルとタイトル表示・出発までの表示用のスプライト生成)
+	/// </summary>
+	/// <param name="object3dCommon">3Dオブジェクト共通設定</param>
+	/// <param name="spriteCommon">スプライト共通設定</param>
+	/// <param name="input">入力</param>
+	/// <param name="startPlatform">出発ゲートを開け閉めするスタート台(GameScene が持つ)</param>
+	void Initialize(Obj3dCommon* object3dCommon,SpriteCommon* spriteCommon,Input* input,StartPlatform* startPlatform);
 
 	/// <summary>
 	/// タイトルから始める(Playに入った瞬間に呼ぶ)
 	/// </summary>
-	/// <param name="skipTitle">trueならタイトル・カメラの回り込み・カウントダウンを飛ばして、すぐプレイ可能にする(デバッグ用)</param>
+	/// <param name="skipTitle">trueならタイトル・カメラの回り込み・出発ゲートを飛ばして、すぐプレイ可能にする(デバッグ用。ゲートは開いた状態になる)</param>
 	void Start(bool skipTitle = false);
 
 	// 演出を止めて何も行わない状態に戻す(Editモードに戻ったときに呼ぶ)
 	void Stop();
 
-	// 更新処理(入力の受付・段階の切り替え・表示の更新)
-	void Update(float deltaTime);
+	/// <summary>
+	/// 更新処理(入力の受付・段階の切り替え・表示の更新)
+	/// </summary>
+	/// <param name="deltaTime">経過時間(秒)</param>
+	/// <param name="playerPosition">プレイヤーの座標(出発ゲートの前にいるかの判定に使う)</param>
+	void Update(float deltaTime,const Vector3& playerPosition);
+
+	// プレイヤーがレールに乗り込んだことを伝える(Boarding 中なら「GO!」を出してプレイを始める)
+	void NotifyBoarded();
 
 	/// <summary>
 	/// タイトルロゴをプレイヤーの位置・向きに合わせて配置する(IsControllingCamera() が true の間に使う)
@@ -55,7 +73,7 @@ public:
 	// 3D描画処理(タイトルロゴのモデル)
 	void Draw3D();
 
-	// 2D描画処理(PRESS SPACE のスプライト)
+	// 2D描画処理(PRESS SPACE・操作案内・ステージ情報・GO! のスプライト)
 	void Draw2D();
 
 	// レール進行・操作・射撃などのゲーム処理を動かしてよいか
@@ -63,6 +81,15 @@ public:
 
 	// カメラを演出側で動かしている最中か
 	bool IsControllingCamera() const{ return phase_ == Phase::Title || phase_ == Phase::CameraTurn; }
+
+	// スタート台の上を自由に動ける段階か(出発ゲートを開けている間は動けない)
+	bool IsPlayerMovable() const{ return phase_ == Phase::Standby || phase_ == Phase::Boarding; }
+
+	// 出発ゲートが開き、レールへ乗り込むのを待っている段階か
+	bool IsBoarding() const{ return phase_ == Phase::Boarding; }
+
+	// プレイが始まる前の演出中か(タイトルからレールに乗り込むまで。照準を出さないのに使う)
+	bool IsIntroRunning() const{ return phase_ != Phase::None && phase_ != Phase::Playing; }
 
 	// タイトル中にプレイヤーをその場で跳ねさせる高さ(描画位置にだけ足す。跳ねていないときは0)
 	float GetPlayerHopHeight() const;
@@ -89,8 +116,10 @@ private:
 	std::unique_ptr<TitleLogo> titleLogo_;
 	// タイトル表示(PRESS SPACE)
 	std::unique_ptr<TitleUI> titleUI_;
-	// プレイ開始前のカウントダウン
-	StartCountdown countdown_;
+	// 出発までの表示(操作案内・ステージ情報・GO!・目標)
+	std::unique_ptr<StageIntroUI> introUI_;
+	// 出発ゲートを開け閉めするスタート台(GameScene が持つ)
+	StartPlatform* startPlatform_ = nullptr;
 
 	// プレイヤーが跳ねる周期を数えるための経過時間(秒)
 	float playerHopTimer_ = 0.0f;

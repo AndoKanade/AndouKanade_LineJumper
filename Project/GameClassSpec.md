@@ -1,6 +1,6 @@
 # Game フォルダ クラス仕様書
 
-最終更新: 2026-10-07
+最終更新: 2026-10-13
 
 `Game/` 以下の各クラスについて、「何ができるか」「外から何を呼べるか」「中でどう動いているか」をまとめる。
 エンジン側（`Engine/`）のクラスは対象外。
@@ -28,8 +28,8 @@
 Game/
 ├── systems/   シーンの生成・切り替えの仕組み
 ├── scenes/    GameScene（本編）、ClearScene、GameOverScene
-├── Title/     GameScene 内で動くステージ開始演出（タイトル → 回り込み → カウントダウン）
-├── objects/   Player / PlayerBulletManager / TargetManager / Enemy / EnemyManager / Ground / InkEffectManager / ComboCounter / StageResult
+├── Title/     GameScene 内で動くステージ開始演出（タイトル → 回り込み → スタート台で準備 → 出発ゲート → レールへ乗り込む）
+├── objects/   Player / PlayerBulletManager / TargetManager / Enemy / EnemyManager / Ground / StartPlatform / InkEffectManager / ComboCounter / StageResult
 ├── Camera/    RailCamera（プレイ用カメラ）/ DebugTopCamera（俯瞰デバッグカメラ）
 ├── UI/        Reticle（画面中央のレティクル）/ StageHUD（体力・的の数・連鎖数）/ SpeedLines（スピード線）
 └── Editor/    RailEditor / TargetEditor / EnemyEditor（Editモード中の配置ツール）
@@ -53,7 +53,7 @@ Game/
 | モード | GameScene の動き |
 | --- | --- |
 | Edit | ゲームは静止する。各エディターのパネルが表示され、レール・的・敵を配置できる |
-| Play | 入った瞬間に `ResetPlayState()` で初期化し、開始演出をタイトルから始める。編集パネルは隠れる |
+| Play | 入った瞬間に `ResetPlayState()` で初期化し（プレイヤーはスタート台の上に立つ）、開始演出をタイトルから始める。編集パネルは隠れる |
 
 ---
 
@@ -138,6 +138,7 @@ Game/
 | `skybox_` | 背景のスカイボックス |
 | `railEditor_` | レールのデータと編集ツール（RailEditor） |
 | `ground_` | 簡易的な地面（Ground） |
+| `startPlatform_` | 最初のレールの手前に置くスタート台と出発ゲート（StartPlatform） |
 | `player_` | プレイヤー（Player） |
 | `railCamera_` | レール追従カメラ（RailCamera） |
 | `debugTopCamera_` | 俯瞰デバッグカメラ（DebugTopCamera） |
@@ -158,21 +159,21 @@ Game/
 3. GlobalVariables にグループ `GameScene` を作る。調整項目は各クラスが自分の Initialize で登録する。
 4. Player、RailCamera、DebugTopCamera（カメラ `"debug_top"` を作る）、PlayerBulletManager を生成する。
 5. TargetManager / EnemyManager を生成する。保存データが無い初回起動時だけ自動配置する。
-6. Reticle、撃破演出用パーティクルのグループ、StartSequence を生成する。
+6. Reticle、撃破演出用パーティクルのグループ、StartSequence を生成する。StartSequence には出発ゲートを開け閉めするためにスタート台を渡す。
 
 #### 毎フレームの更新（Update）の流れ
 
-1. スカイボックス・パーティクル・地面・レティクル・各エディターを更新する。的・敵のエディターの編集結果は、TargetManager / EnemyManager の `UpdateEditor()` で的・敵のリストに反映する。
+1. スカイボックス・パーティクル・地面・スタート台の出発ゲート・レティクル・各エディターを更新する。的・敵のエディターの編集結果は、TargetManager / EnemyManager の `UpdateEditor()` で的・敵のリストに反映する。
 2. `UpdateGameplay()` で次の処理を順番に行う。
    1. Play に入った瞬間は `ResetPlayState()` と `startSequence_->Start()` を呼ぶ。Edit に戻った瞬間は `startSequence_->Stop()` を呼ぶ。
-   2. Play 中は `startSequence_->Update()` を呼び、`isGameplayActive`（Play 中かつ開始演出が終わってプレイ可能）を求める。
+   2. Play 中は `startSequence_->Update()` にプレイヤーの座標を渡して呼び、`isGameplayActive`（Play 中かつ開始演出が終わってプレイ可能）と `isPlayerMovable`（開始演出のうちスタート台の上を動ける段階）を求める。
    3. マウスカーソルの表示を切り替える（`UpdateCursorVisibility()`）。
    4. `Player::UpdateRailProgress()` でレールを進め、`Player::UpdateBasePose()` で基準位置・基準向きを求める。
-   5. `RailCamera::Update()` でカメラをプレイヤーの後ろ上に置き、照準の入力を反映する。
+   5. `RailCamera::Update()` でカメラをプレイヤーの後ろ上に置き、照準の入力を反映する（スタート台の上を動ける間も照準を動かせる）。
    6. クリア判定と、状態確認用のデバッグウィンドウ（`ShowStatusWindow()`）。
    7. `Player::UpdateTransform()` でプレイヤーをレールの上に立たせ、照準の方向へ向ける。開始演出中は、StartSequence が計算した位置・向きでカメラを上書きする。
    8. 敵の更新、敵弾とプレイヤーの当たり判定、ゲームオーバー判定。
-   9. `Player::UpdateMovement()` でジャンプ・WASD 移動・着地判定を行う。地面まで落ちたら `ResetPlayState()` を呼ぶ。
+   9. `Player::UpdateMovement()` でジャンプ・WASD 移動・着地判定を行う。地面まで落ちたら `ResetPlayState()` を呼ぶ。`isPlayerMovable` の間も同じく動かし、出発ゲートが開いた後にレールへ乗ったら `StartSequence::NotifyBoarded()` を呼んで、足元から輪（`StartPlatform::EmitLaunchRing()`）とインクのしぶきを出す。
    10. 射撃（手元からインクのしぶきも出す）、弾の移動、的・敵と弾の当たり判定、壊れた的ごとの演出と連鎖数の加算、弾の削除と行列の更新、レティクルの色の更新。
    11. 演出・スピード線・HUD の更新。レールを進んでいる間は、通った区間を塗り、足元から後ろへしぶきを飛ばし、スピード線を出す。
 3. デバッグ用のキー操作（F1 / F4 / F5）と、Edit モード中の ImGui パネル（`ShowEditorPanels()`）を処理する。
@@ -246,8 +247,10 @@ Game/
 
 ## 4. Title（ステージ開始演出）
 
-GameScene の中で「タイトル → カメラの回り込み → カウントダウン → プレイ」を進めるクラス群。
-GameScene が直接触るのは StartSequence だけで、残りのクラスは StartSequence の内部で使う。
+GameScene の中で「タイトル → カメラの回り込み → スタート台で準備 → 出発ゲートを開ける → レールへ乗り込む → プレイ」を進めるクラス群。
+GameScene が直接触るのは StartSequence だけで、残りのクラスは StartSequence の内部で使う（スタート台 StartPlatform は GameScene が持ち、StartSequence にポインタを渡す）。
+
+出発までの流れは、スプラトゥーン2 オクト・エキスパンションの「駅のホームを歩いて改札を通ると、ステージで GO! が出る」雰囲気を参考にした。改札・駅・ポイントの支払いなどの要素はそのまま使わず、「台の上を歩ける → 目印の上で出発の操作 → ランプが点いてゲートが開く → 自分の足で乗り込む → GO! と目標の表示」という流れだけを取り入れた。
 
 > 2026-09-30 実装。ビルドは確認済みで、実際の画面での見た目はまだ確認していない。
 
@@ -262,25 +265,32 @@ GameScene が直接触るのは StartSequence だけで、残りのクラスは 
 | `None` | 何もしない（Edit モード中） | `Start()` が呼ばれる |
 | `Title` | プレイヤーを正面から映し、カメラを左右にゆっくり揺らす。タイトルロゴ（3D モデル）と PRESS SPACE を表示する | SPACE を押す |
 | `CameraTurn` | カメラがプレイヤーの背後へ回り込む。タイトル表示は回り込みの進行に合わせて薄くなる | 回り込みが終わる |
-| `Countdown` | 3, 2, 1 を表示する | GO になる |
-| `Playing` | プレイ中。GO の表示が消えるまでカウントダウンの更新を続ける | なし |
+| `Standby` | スタート台の上を動ける（出発ゲートは閉じている）。ゲートの前の目印に立つと「SPACE 出発する」を表示する | 目印の上で SPACE を押す |
+| `GateOpen` | ゲートのランプを下から順に点け、遮断棒を上げる。その間ステージ情報（番号・ステージ名・目標）を画面上から下ろして見せる。プレイヤーは動けない | ゲートが開ききる |
+| `Boarding` | ステージ情報を引っ込め、また動けるようにする。開いたゲートをくぐってレールの始点へ歩くと乗る | `NotifyBoarded()` が呼ばれる |
+| `Playing` | プレイ中。「GO!」を出し、続けて目標の文言を表示する | なし |
 
 #### 関数
 
 | 関数 | 内容 |
 | --- | --- |
-| `Initialize(Obj3dCommon*, SpriteCommon*, Input*)` | TitleLogo と TitleUI を生成する |
-| `Start()` | `Title` から始める。カメラワーク・カウントダウン・タイトル表示も初期状態に戻す |
+| `Initialize(Obj3dCommon*, SpriteCommon*, Input*, StartPlatform*)` | TitleLogo・TitleUI・StageIntroUI を生成し、出発ゲートを開け閉めするスタート台を受け取る |
+| `Start(skipTitle)` | `Title` から始める。カメラワーク・タイトル表示・出発までの表示・出発ゲートも初期状態に戻す。`skipTitle` が true ならゲートを開けてすぐ `Playing` にする |
 | `Stop()` | `None` に戻す |
-| `Update(float deltaTime)` | 段階ごとの処理と、次の段階への切り替えを行う |
+| `Update(float deltaTime, playerPosition)` | 段階ごとの処理と、次の段階への切り替えを行う。プレイヤーの座標はゲートの前にいるかの判定に使う |
+| `NotifyBoarded()` | `Boarding` 中にプレイヤーがレールに乗ったら呼ぶ。「GO!」を出して `Playing` にする |
 | `UpdateLogo(pivot, gameplayRot)` | タイトルロゴをプレイヤーの位置・向きに合わせて配置する |
 | `Draw3D()` | `Title` と `CameraTurn` の間だけタイトルロゴを描画する |
-| `Draw2D()` | `Title` と `CameraTurn` の間だけ PRESS SPACE を描画する |
+| `Draw2D()` | `Title` と `CameraTurn` の間だけ PRESS SPACE を描画する。Edit 中以外は出発までの表示（StageIntroUI）も描画する |
 | `IsPlayable()` | `Playing` なら true。GameScene はこれを見てゲーム処理を動かす |
-| `IsControllingCamera()` | `Title` か `CameraTurn` なら true。GameScene はこれを見てカメラを上書きし、レティクルを隠す |
+| `IsControllingCamera()` | `Title` か `CameraTurn` なら true。GameScene はこれを見てカメラを上書きし、HUD を隠す |
+| `IsPlayerMovable()` | `Standby` か `Boarding` なら true。GameScene はこれを見てスタート台の上でプレイヤーを動かす |
+| `IsBoarding()` | `Boarding` なら true。GameScene はこれを見て、レールに乗った瞬間に `NotifyBoarded()` を呼ぶ |
+| `IsIntroRunning()` | `Title` 〜 `Boarding` なら true。GameScene はこれを見てレティクルを隠す |
 | `CalculateCamera(pivot, gameplayPos, gameplayRot, outPos, outRot)` | 演出中のカメラ座標・向きを求める（TitleCameraDirector に任せる） |
 
-- スタートとジャンプはどちらも SPACE だが、押した瞬間はまだ `Playing` ではないためジャンプしない。
+- スタート・出発とジャンプはどちらも SPACE だが、押した瞬間に次の段階へ移ってプレイヤーを動かさないため、ジャンプしない。
+- タイトルからレールに乗り込むまでは、敵・射撃・勝敗判定は動かない。落下リスタートでは開始演出を挟まず、ゲートが開いたままの台の上から再開する。
 
 ### TitleCameraDirector（`Title/TitleCameraDirector.h/.cpp`）
 
@@ -373,19 +383,26 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Update(float deltaTime, float visibility)` | 点滅を進め、`visibility`（0〜1）を全体の濃さとして掛ける |
 | `Draw()` | 描画。濃さが 0 以下なら何もしない |
 
-### StartCountdown（`Title/StartCountdown.h/.cpp`）
+### StageIntroUI（`Title/StageIntroUI.h/.cpp`）
 
-プレイ開始前のカウントダウン。専用の素材が無いため、今は ImGui で画面中央に大きく表示する。
+出発までの 2D 表示。スプライトで描くため、Release 構成でも表示される。
+画像は `tools/generate_start_stage_assets.py` で生成する（文言・色はスクリプト先頭の定数で変えられる）。
 
-- 1 秒ごとに 3 → 2 → 1 と表示し、3 秒経つと「GO!」になる。
-- GO は 0.8 秒表示してから消える。
+| 表示 | テクスチャ | 位置・大きさ | 動き |
+| --- | --- | --- | --- |
+| 操作案内（SPACE 出発する） | `resource/UI/startPrompt.png` | 画面上から 78% の高さ、384 × 96 | ゲートの前に立つとふわっと出て、小さく上下に揺れる |
+| ステージ情報（番号・ステージ名・目標） | `resource/UI/stageCard.png` | 画面上から 17% の高さ、768 × 192 | 画面の上から 0.35 秒で下りてきて少し行き過ぎてから止まる。引っ込めるときは逆にたどる |
+| GO! | `resource/UI/go.png` | 画面上から 42% の高さ、480 × 240 | 1.8 倍から 0.25 秒で飛び出すように収まり、0.65 秒表示した後、広がりながら 0.3 秒で消える |
+| 目標の文言 | `resource/UI/missionText.png` | 画面上から 15% の高さ、768 × 96 | GO! が消え始めると同時に少し上から下りてきて、2.5 秒表示してから 0.4 秒で消える |
 
 | 関数 | 内容 |
 | --- | --- |
-| `Start()` | 3 から始める |
-| `Stop()` | 非表示に戻す |
-| `Update(float)` | 時間を進めて表示する（GO が消えるまで呼び続ける） |
-| `IsCountFinished()` | GO になったら true |
+| `Initialize(SpriteCommon*)` | テクスチャの読み込みとスプライトの生成 |
+| `Reset()` | 何も表示していない状態に戻す |
+| `SetPromptVisible(bool)` | 操作案内を出すかどうか |
+| `ShowStageCard()` / `HideStageCard()` | ステージ情報を出す / 引っ込める |
+| `BeginGo()` | GO! を出し、続けて目標の文言を出す |
+| `Update(float)` / `Draw()` | 表示の動きを進める / 描画（見えていないものは描かない） |
 
 ### Easing（`Engine/Base/Easing.h`）
 
@@ -397,6 +414,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Easing::EaseInCubic(float t)` | ゆっくり動き出して、だんだん加速する |
 | `Easing::EaseOutCubic(float t)` | 勢いよく動き出して、だんだん減速して止まる |
 | `Easing::EaseInBack(float t)` | 一度逆方向へ少し戻ってから、加速して進む |
+| `Easing::EaseOutBack(float t)` | 勢いよく進んで目標を少し行き過ぎてから、戻って止まる |
 
 ---
 
@@ -472,7 +490,8 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `UpdateTransform(cameraRotation, hopHeight)` | 表示位置と体の向きを求め、モデルの行列を更新する。タイトル中の跳ね（`hopHeight`）は見た目だけに反映する |
 | `UpdateInvincible(deltaTime)` | 無敵時間を進める |
 | `TakeDamage()` | 無敵中でなければ体力を 1 減らし、無敵時間を始める |
-| `UpdateMovement(input, railEditor, cameraForward, cameraRight, groundHeight, deltaTime)` | ジャンプ・WASD 移動・着地判定。地面まで落ちてリスタートが必要になったら true を返す |
+| `StartOnPlatform(startPosition, startRotation)` | スタート台の上にオフレールの状態で立たせる（`Reset()` の後に呼ぶ） |
+| `UpdateMovement(input, railEditor, startPlatform, cameraForward, cameraRight, groundHeight, deltaTime)` | ジャンプ・WASD 移動・着地判定。スタート台の上に立たせ続け、出発ゲートが閉じている間はゲートより先へ進めない。地面まで落ちてリスタートが必要になったら true を返す |
 | `GetHitSphere()` | モデルから求めたワールド座標系の境界球を取得する（当たり判定用） |
 | `GetPosition` / `GetBasePosition` / `GetBaseRotation` | 表示位置・基準位置・基準向きの取得 |
 | `GetMuzzlePosition()` | 弾を撃ち出す位置の取得 |
@@ -545,6 +564,37 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Initialize(Obj3dCommon*, startPosition, forward)` | 地面タイルを生成する |
 | `Update()` / `Draw()` | 行列の更新 / 描画 |
 | `GetHeight()` | 地面の高さを取得する（落下リスタートの判定に使う） |
+
+### StartPlatform（`objects/StartPlatform.h/.cpp`）
+
+最初のレールの始点の手前に置くスタート台と、台の上に立てる出発ゲート。プレイヤーは台の上から始まり、ゲートを開けてからレールへ歩いて乗る。
+
+| 部品 | モデル | 内容 |
+| --- | --- | --- |
+| 台 | `StartPlatform/startPlatform.obj`（-1〜1 の立方体） | 幅 4.0・長さ 8.0・厚み 1.0 の灰色の箱。上面がレールの始点の高さで、前の端がレールの始点より 1.5 先まで重なる |
+| ゲートの柱・梁 | 同上 | 上面の中央から 1.4 前に、台の左右の端に高さ 1.4 の柱を立て、上に梁を渡す（台の幅いっぱいをふさぐ） |
+| ランプ | 同上 | 左右の柱の手前側の面に 3 段ずつ。消えているときは暗い青、点くと明るい緑（光源の影響を受けない） |
+| 遮断棒 | 同上 | 柱の間をふさぐ黄色の棒。開くと高さ 0.45 から 1.25 まで上がる |
+| 足元の目印 | `StartPlatform/ring.obj`（輪の画像を貼った板） | ゲートの 0.9 手前に置く黄色の輪（半径 0.5）。点滅させ、ゲートを開け始めたら消す |
+| 出発の輪 | 同上 | レールに乗り込んだ瞬間に足元から広げる黄色の輪。0.6 秒で半径 0.3 から 2.4 まで広がりながら消える |
+
+- プレイヤーの開始位置は、上面の中央から 2.0 後ろ。
+- ゲートを開け始めると、ランプが 0.5 秒ごとに下の段から点き、点き終わったら遮断棒が 0.45 秒で上がる。
+- ゲートが閉じている間は、ゲートの 0.25 手前の線より先へ押し戻す（台の外やジャンプ中でも）。この線はレールに乗れる距離（`Player::kOnRailHorizontalThreshold`）に入らない位置にあり、`static_assert` で確かめている。
+- 台は Play に入るたび（`ResetPlayState()`）に置き直すため、Edit 中にレールを動かしても反映される。
+
+| 関数 | 内容 |
+| --- | --- |
+| `Initialize(Obj3dCommon*)` | 台・ゲート・目印・輪のモデルの生成 |
+| `Place(railStartPosition, railStartForward)` | レールの始点に合わせて台とゲートを置く |
+| `ResetGate()` / `BeginOpenGate()` / `IsGateOpened()` | ゲートを閉じる / 開け始める / 開ききったか |
+| `EmitLaunchRing(position)` | 足元から出発の輪を広げる |
+| `Update(float)` | ランプ・遮断棒・目印・輪の動きを進める |
+| `Draw()` / `DrawEffects()` | 台とゲートを描画 / 半透明の目印と輪を描画（3D オブジェクトの最後のほうで呼ぶ） |
+| `IsInsideTop(position)` / `GetTopHeight()` | 上面の範囲に入っているか / 上面の高さ（Player が台の上に立たせるのに使う） |
+| `IsInGateArea(position)` | ゲートが閉じていて、目印の上（中心から 0.6 以内、上面との高さの差 0.1 以内）に立っているか |
+| `ClampBehindClosedGate(position)` | ゲートが閉じている間は、ゲートより先へ進めないよう押し戻した座標を返す |
+| `GetSpawnPosition()` | プレイヤーの開始位置 |
 
 ### InkEffectManager（`objects/InkEffectManager.h/.cpp`）
 
@@ -770,6 +820,14 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | キー | 内容 |
 | --- | --- |
 | SPACE | スタート（カメラの回り込みを始める） |
+
+### スタート台の上（Play モード）
+
+| キー | 内容 |
+| --- | --- |
+| WASD | 台の上を動く |
+| マウス移動 | 周りを見回す |
+| SPACE | ジャンプ。出発ゲートの前の目印の上で押すと、ゲートが開く |
 
 ### プレイ中
 

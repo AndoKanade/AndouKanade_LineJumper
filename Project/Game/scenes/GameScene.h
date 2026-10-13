@@ -105,7 +105,7 @@ private:
 	// 雑魚敵
 	std::unique_ptr<EnemyManager> enemyManager_;
 
-	// ステージ開始演出(タイトル → カメラの回り込み → カウントダウン → プレイ)
+	// ステージ開始演出(タイトル → カメラの回り込み → スタート台で準備 → 出発ゲートを開ける → レールへ乗り込む → プレイ)
 	std::unique_ptr<StartSequence> startSequence_;
 
 	// 画面中央固定のレティクル(照準)
@@ -141,4 +141,6 @@ private:
 	static constexpr int kShootMouseButton = 0;
 	// 弾を撃ったときに手元から飛び散らせるインクのしぶきの数
 	static constexpr int kMuzzleSplashCount = 3;
+	// レールに乗り込んで出発した瞬間に、足元から飛び散らせるインクのしぶきの数
+	static constexpr int kLaunchSplashCount = 10;
 };

@@ -14,7 +14,7 @@ class StartPlatform;
 
 /// <summary>
 /// プレイヤー
-/// スタート台の上から始まり、台の上をWASDで自由に動いて、台と重なったレールの始点へ歩いて乗る。
+/// スタート台の上から始まり、台の上をWASDで自由に動いて、台と重なったレールの始点へ歩いて乗る(出発ゲートが閉じている間はゲートより先へ進めない)。
 /// レールに沿って自動で進み、ジャンプでレールを離れるとWASDで自由に動ける。
 /// 落下中にレールの真上でレールの高さを跨ぐと、そのレールに乗り移る。
 /// 体力を持ち、敵弾が当たると減る(被弾後は一定時間無敵)。
@@ -70,7 +70,7 @@ public:
 	/// </summary>
 	/// <param name="input">入力</param>
 	/// <param name="railEditor">着地先を探すレール</param>
-	/// <param name="startPlatform">上に立てるスタート台</param>
+	/// <param name="startPlatform">上に立てるスタート台(出発ゲートが閉じている間はゲートより先へ進めない)</param>
 	/// <param name="cameraForward">カメラの前方ベクトル(WASD移動の基準)</param>
 	/// <param name="cameraRight">カメラの右方向ベクトル(WASD移動の基準)</param>
 	/// <param name="groundHeight">地面の高さ(ここまで落ちたらリスタートが必要)</param>

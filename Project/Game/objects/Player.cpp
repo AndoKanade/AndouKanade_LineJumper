@@ -200,6 +200,11 @@ bool Player::UpdateMovement(Input* input,RailEditor* railEditor,const StartPlatf
 
 	freePosition_ += moveDir * kMoveSpeed * deltaTime;
 
+	// スタート台の出発ゲートが閉じている間は、ゲートより先へ進めない(ジャンプで飛び越えることもできない)
+	if(startPlatform){
+		freePosition_ = startPlatform->ClampBehindClosedGate(freePosition_);
+	}
+
 	// 重力を適用してY方向の速度を更新し、位置に反映する
 	freeVelocityY_ -= kGravity * deltaTime;
 	freePosition_.y += freeVelocityY_ * deltaTime;

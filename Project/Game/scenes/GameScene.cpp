@@ -18,7 +18,7 @@
 
 // レールエディター
 #include "Editor/RailEditor.h"
-// ステージ開始演出(タイトル → カメラの回り込み → カウントダウン)
+// ステージ開始演出(タイトル → カメラの回り込み → スタート台で準備 → レールへ乗り込む)
 #include "Title/StartSequence.h"
 // ゲームオブジェクト
 #include "objects/Ground.h"
@@ -59,6 +59,9 @@ namespace{
 	// 弾が画面中央のレティクルへ向かって飛ぶよう、カメラの前方のこの距離の点を狙って撃ち出す
 	// (カメラはプレイヤーの後ろ上にあるため、カメラと同じ向きで平行に撃つとレティクルより下にずれる)
 	constexpr float kAimConvergeDistance = 30.0f;
+
+	// レールに乗り込んで出発した瞬間のインクのしぶきを飛ばす向き(真上)
+	constexpr Vector3 kWorldUp = {0.0f, 1.0f, 0.0f};
 
 #ifdef USE_IMGUI
 	// 落下リスタートの演出の名前(ImGui の切り替えに表示する。SceneTransition::Style と同じ順番にする)
@@ -166,7 +169,8 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 
 	// ステージ開始演出の生成(Playに入った瞬間にタイトルから始める)
 	startSequence_ = std::make_unique<StartSequence>();
-	startSequence_->Initialize(object3dCommon_,spriteCommon_,input_);
+	// スタート台を渡し、出発ゲートの開け閉めを開始演出に任せる
+	startSequence_->Initialize(object3dCommon_,spriteCommon_,input_,startPlatform_.get());
 }
 
 // シーンの終了処理
@@ -217,6 +221,9 @@ void GameScene::Update(){
 
 	// 地面タイルの更新(霧のUVスクロールも行う)
 	ground_->Update(kDeltaTime);
+
+	// スタート台の出発ゲートの更新(ランプ・遮断棒・足元の目印・出発の輪の動き)
+	startPlatform_->Update(kDeltaTime);
 
 	// 太陽の光の向き・色・明るさを調整項目の最新値で更新する
 	sun_->Update();
@@ -284,7 +291,7 @@ void GameScene::UpdateGameplay(){
 	// Playに入った瞬間、ゲームを初期状態から開始する(UnityのPlayと同じく毎回リセットして始まる)。
 	// これでPlayを押すとレール先頭=編集で見えていた画から始まる。
 	// 開始演出もタイトルから始め、Editモードへ戻ったときは止める。
-	// 落下リスタートでは ResetPlayState() だけを呼ぶため、タイトルを挟まずにすぐ再開する
+	// 落下リスタートでは ResetPlayState() だけを呼ぶため、タイトルや出発ゲートを挟まずにスタート台の上からすぐ再開する
 	if(isPlayMode && !wasPlayMode_){
 		// 俯瞰デバッグカメラがONのままだとプレイ用の視点にならないため、Playに入ったら自動でOFFにする
 		debugTopCamera_->Disable();
@@ -299,14 +306,18 @@ void GameScene::UpdateGameplay(){
 	}
 	wasPlayMode_ = isPlayMode;
 
-	// 開始演出の更新(タイトル中のSPACE入力・カメラの回り込み・カウントダウン)
+	// 開始演出の更新(タイトル中のSPACE入力・カメラの回り込み・出発ゲートの前でのSPACE入力)
+	// ゲートの前にいるかは、前フレームで動かしたプレイヤーの座標で判定する
 	if(isPlayMode){
-		startSequence_->Update(kDeltaTime);
+		startSequence_->Update(kDeltaTime,player_->GetPosition());
 	}
 
 	// レール進行・操作・射撃・勝敗判定は、開始演出が終わってプレイ可能になってから動かす
 	// 暗転中(クリア・ゲームオーバーへの切り替え中、落下リスタート中)も、入力や判定が二重に起きないよう止めておく
 	const bool isGameplayActive = isPlayMode && startSequence_->IsPlayable() && !sceneManager_->IsTransitioning();
+	// 開始演出のうち、スタート台の上を自由に動ける段階か(出発ゲートの前で準備中と、ゲートが開いてレールへ乗り込むまで)
+	// 動き方(WASD・ジャンプ・台から落ちたときのリスタート)はプレイ中と同じで、敵・射撃・勝敗判定はまだ動かさない
+	const bool isPlayerMovable = isPlayMode && startSequence_->IsPlayerMovable() && !sceneManager_->IsTransitioning();
 
 	// マウスカーソルの表示/非表示切り替え
 	UpdateCursorVisibility(isPlayMode);
@@ -325,7 +336,8 @@ void GameScene::UpdateGameplay(){
 	}
 
 	// カメラを基準位置の後ろ上に置き、照準の入力を反映する
-	railCamera_->Update(player_->GetBasePosition(),player_->GetBaseRotation(),isGameplayActive,input_,kDeltaTime);
+	// スタート台の上を動ける間も照準(カメラの向き)を動かせるようにして、周りを見回せるようにする
+	railCamera_->Update(player_->GetBasePosition(),player_->GetBaseRotation(),isGameplayActive || isPlayerMovable,input_,kDeltaTime);
 	const Vector3& cameraPos = railCamera_->GetPosition();
 	const Vector3& cameraForward = railCamera_->GetForward();
 
@@ -402,12 +414,21 @@ void GameScene::UpdateGameplay(){
 	// プレイヤーの自立(ジャンプ+WASD移動)
 	// どのレールにも乗れないまま地面の高さまで落ちたら、レール先頭からやり直す
 	// 一瞬で始点へ戻ると何が起きたか分かりにくいため、暗転で画面を覆っている間に始点へ戻す
-	if(isGameplayActive){
+	// 開始演出でスタート台の上を動ける間も、同じ動き方で動かす
+	if(isGameplayActive || isPlayerMovable){
 		bool needsRestart = player_->UpdateMovement(input_,railEditor_.get(),startPlatform_.get(),cameraForward,railCamera_->GetRight(),ground_->GetHeight(),kDeltaTime);
 		if(needsRestart){
 			sceneManager_->StartTransition([this](){
 				ResetPlayState();
 			},fallTransitionStyle_);
+		}
+
+		// 出発ゲートをくぐってレールに乗り込んだ瞬間に、足元から輪とインクのしぶきを広げて「GO!」でプレイを始める
+		if(startSequence_->IsBoarding() && player_->IsOnRail()){
+			const Vector3 boardedPos = railEditor_->GetPositionOnRail(player_->GetRailT());
+			startSequence_->NotifyBoarded();
+			startPlatform_->EmitLaunchRing(boardedPos);
+			inkEffect_->EmitInkSplash(boardedPos,kWorldUp,kLaunchSplashCount);
 		}
 	}
 
@@ -598,6 +619,9 @@ void GameScene::Draw(){
 	// インクのしぶき・的の破片・閃光を描画
 	inkEffect_->Draw();
 
+	// スタート台の足元の目印と出発の輪を描画(半透明なので、不透明な3Dオブジェクトの後に描く)
+	startPlatform_->DrawEffects();
+
 	// 雲の上の霧を描画(半透明なので、奥にあるオブジェクトが透けて見えるよう3Dオブジェクトの最後に描く)
 	ground_->DrawFog();
 
@@ -607,13 +631,14 @@ void GameScene::Draw(){
 	}
 
 	// 画面中央固定のレティクルを描画
-	// タイトル中・カメラの回り込み中は照準を使わないため表示しない
+	// タイトルからレールに乗り込むまでは撃てないため表示しない
 	bool isTitleShowing = startSequence_ && startSequence_->IsControllingCamera();
+	bool isIntroRunning = startSequence_ && startSequence_->IsIntroRunning();
 
 	// スピード線はレティクル・画面表示より奥に見えるよう先に描く
 	speedLines_->Draw();
 
-	if(!isTitleShowing){
+	if(!isIntroRunning){
 		reticle_->Draw();
 	}
 
@@ -622,7 +647,7 @@ void GameScene::Draw(){
 		stageHUD_->Draw();
 	}
 
-	// 開始演出のタイトル表示(PRESS SPACE)を最前面に描画する
+	// 開始演出のタイトル表示(PRESS SPACE)と、出発までの表示(操作案内・ステージ情報・GO!)を最前面に描画する
 	if(startSequence_){
 		startSequence_->Draw2D();
 	}
