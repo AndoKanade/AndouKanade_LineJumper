@@ -15,6 +15,7 @@ class RailEditor;
 class StartSequence;
 class Ground;
 class Sun;
+class StartPlatform;
 class Player;
 class RailCamera;
 class DebugTopCamera;
@@ -79,6 +80,9 @@ private:
 
 	// 簡易的な地面
 	std::unique_ptr<Ground> ground_;
+
+	// 最初のレールの手前に置くスタート台
+	std::unique_ptr<StartPlatform> startPlatform_;
 
 	// 太陽(見た目は持たない光源)
 	std::unique_ptr<Sun> sun_;

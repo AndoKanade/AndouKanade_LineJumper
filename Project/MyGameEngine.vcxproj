@@ -402,6 +402,7 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClInclude Include="Game\objects\Ground.h" />
     <ClInclude Include="Game\objects\Player.h" />
     <ClInclude Include="Game\objects\PlayerBulletManager.h" />
+    <ClInclude Include="Game\objects\StartPlatform.h" />
     <ClInclude Include="Game\objects\TargetManager.h" />
     <ClInclude Include="Game\objects\EnemyManager.h" />
     <ClInclude Include="Game\Camera\RailCamera.h" />
@@ -472,6 +473,7 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClCompile Include="Game\objects\Ground.cpp" />
     <ClCompile Include="Game\objects\Player.cpp" />
     <ClCompile Include="Game\objects\PlayerBulletManager.cpp" />
+    <ClCompile Include="Game\objects\StartPlatform.cpp" />
     <ClCompile Include="Game\objects\TargetManager.cpp" />
     <ClCompile Include="Game\objects\EnemyManager.cpp" />
     <ClCompile Include="Game\Camera\RailCamera.cpp" />

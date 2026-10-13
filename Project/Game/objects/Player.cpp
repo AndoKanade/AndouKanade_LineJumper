@@ -8,6 +8,7 @@
 #include "GlobalVariables.h"
 #include "Input.h"
 #include "Editor/RailEditor.h"
+#include "objects/StartPlatform.h"
 
 namespace{
 	// プレイヤーの表示に使用するモデル(インクタンクを背負い、ブラスターを構えたキャラクター)
@@ -47,10 +48,22 @@ void Player::Reset(){
 	// オンレール/オフレールの状態もリセットし、必ずオンレールから開始する
 	isOnRail_ = true;
 	freeVelocityY_ = 0.0f;
+	isOnPlatform_ = false;
 
 	// 体力・無敵時間も初期状態に戻す
 	hp_ = kMaxHp;
 	invincibleTimer_ = 0.0f;
+}
+
+// スタート台の上に立たせ、オフレールの状態から始める
+// 台の上ではWASDで自由に動け、台と重なったレールの始点へ歩いて乗るとレールを進み始める
+void Player::StartOnPlatform(const Vector3& startPosition,const Vector3& startRotation){
+	isOnRail_ = false;
+	isOnPlatform_ = true;
+	freePosition_ = startPosition;
+	freeVelocityY_ = 0.0f;
+	// カメラはレールの始点の向きを正面にする
+	freeBaseRotation_ = startRotation;
 }
 
 // レールの進行
@@ -136,7 +149,7 @@ void Player::TakeDamage(){
 // オンレール中はジャンプ入力でレールを離れて自由移動状態に切り替え、
 // オフレール中はWASDでの水平移動と重力・ジャンプ初速による垂直移動を行い、
 // レール座標によるオンレール判定を使って着地先レールへ再度乗り移る
-bool Player::UpdateMovement(Input* input,RailEditor* railEditor,const Vector3& cameraForward,const Vector3& cameraRight,float groundHeight,float deltaTime){
+bool Player::UpdateMovement(Input* input,RailEditor* railEditor,const StartPlatform* startPlatform,const Vector3& cameraForward,const Vector3& cameraRight,float groundHeight,float deltaTime){
 	if(!input || !railEditor){
 		return false;
 	}
@@ -168,6 +181,12 @@ bool Player::UpdateMovement(Input* input,RailEditor* railEditor,const Vector3& c
 	// 移動前の高さを覚えておく(この後の着地判定でレールの高さを跨いだ瞬間を検出するのに使う)
 	const float previousPositionY = freePosition_.y;
 
+	// スタート台の上に立っている間は、レール上と同じくSPACEでジャンプする
+	if(isOnPlatform_ && input->TriggerKey(DIK_SPACE)){
+		isOnPlatform_ = false;
+		freeVelocityY_ = kJumpSpeed;
+	}
+
 	// オフレール中はカメラ向き基準(XZ平面)でWASD移動する
 	Vector3 forwardXZ = Normalize(Vector3{cameraForward.x, 0.0f, cameraForward.z});
 	Vector3 rightXZ = Normalize(Vector3{cameraRight.x, 0.0f, cameraRight.z});
@@ -190,6 +209,19 @@ bool Player::UpdateMovement(Input* input,RailEditor* railEditor,const Vector3& c
 		return false;
 	}
 
+	// スタート台の上面を落下で跨いだら、上面に立たせる
+	// 台の上を歩いている間も重力で少し沈むため、毎フレームここで上面に戻して立たせ続ける
+	// 台の端から外へ出たときは範囲外になり、そのまま落ちる
+	isOnPlatform_ = false;
+	if(startPlatform && startPlatform->IsInsideTop(freePosition_)){
+		const float topHeight = startPlatform->GetTopHeight();
+		if(previousPositionY >= topHeight && freePosition_.y <= topHeight){
+			freePosition_.y = topHeight;
+			freeVelocityY_ = 0.0f;
+			isOnPlatform_ = true;
+		}
+	}
+
 	RailEditor::NearestRailResult nearest = railEditor->FindNearestRail(freePosition_);
 	// 距離1つ(球状の判定)だとレールの横や上にいるだけで乗ってしまうため、
 	// 「水平方向でレールの真上にいる」ことと「落下でレールの高さを跨いだ」ことの両方を条件にする
@@ -201,11 +233,15 @@ bool Player::UpdateMovement(Input* input,RailEditor* railEditor,const Vector3& c
 		// 前フレームはレールより上にいて、今フレームでレールの高さ以下まで落ちた瞬間だけ着地とみなす
 		bool crossedRailHeight = (previousPositionY > nearest.position.y) && (freePosition_.y <= nearest.position.y);
 
-		if(isAboveRail && crossedRailHeight){
+		// スタート台の上ではレールと同じ高さを歩くため高さを跨がない。台と重なったレールの真上まで歩いたら乗せる
+		bool walkedOntoRail = isOnPlatform_ && std::abs(freePosition_.y - nearest.position.y) <= kPlatformBoardHeightRange;
+
+		if(isAboveRail && (crossedRailHeight || walkedOntoRail)){
 			railEditor->SwitchActiveRail(nearest.railIndex);
 			railT_ = nearest.t;
 			isRailFinished_ = false; // 着地先レールを最後まで進めるようにする
 			isOnRail_ = true;
+			isOnPlatform_ = false;
 			freeVelocityY_ = 0.0f;
 		}
 	}

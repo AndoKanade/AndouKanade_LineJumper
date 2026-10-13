@@ -34,6 +34,9 @@ namespace{
 	const std::string kTubeModelPath = "RailTube/railTube.obj";
 	// 管の1区間の中で、塗ったかどうかを判定する位置(区間の長さに対する割合。中央で判定する)
 	constexpr float kTubeSegmentMiddleRate = 0.5f;
+	// レールの始点になる制御点のインデックス(0番目は曲線の向きを決めるだけで、曲線は1番目から始まる)
+	// 終点も同じく、最後の制御点から同じ数だけ手前の点になる
+	constexpr size_t kRailStartPointIndex = 1;
 
 	// 着地できる範囲を示す点列の色(レール本体と区別できるよう緑にする)
 	constexpr Vector4 kLandingRangeColor = {0.2f, 1.0f, 0.4f, 1.0f};
@@ -395,6 +398,16 @@ void RailEditor::BuildTubes(){
 			continue;
 		}
 
+		// レールの始点と終点に制御点の目印を置く
+		// Catmull-Romの曲線は2番目の制御点から最後の1つ前の制御点までを通るため、その2点がレールの始点と終点になる
+		// Play中は形が変わらないため、目印の行列も管と同じくここで1回だけ求める
+		for(size_t pointIndex : {kRailStartPointIndex, rail.controlPoints.size() - 1 - kRailStartPointIndex}){
+			Obj3D* marker = rail.pointObjects[pointIndex].get();
+			marker->SetTranslate(rail.controlPoints[pointIndex].position);
+			marker->SetScale({kControlPointScale, kControlPointScale, kControlPointScale});
+			marker->Update();
+		}
+
 		// 区間の終点は次の区間の始点になるため、前の区間の終点を使い回して座標の計算を1回で済ませる
 		Vector3 start = ComputePositionOnRail(rail.controlPoints,0.0f);
 		for(int i = 0; i < kTubeSegmentCount; ++i){
@@ -433,7 +446,24 @@ void RailEditor::BuildTubes(){
 void RailEditor::DrawTubes(){
 	Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera();
 
-	for(Rail& rail : rails_){
+	for(size_t railIndex = 0; railIndex < rails_.size(); ++railIndex){
+		Rail& rail = rails_[railIndex];
+
+		// 管を作ったレールだけ、レールの始点と終点の制御点の目印を描画する(色はEdit中と同じく今乗っているレールかどうかで分ける)
+		if(rail.controlPoints.size() >= 4){
+			Vector4 markerColor = (static_cast<int>(railIndex) == activeRailIndex_)?kActiveRailColor:kInactiveRailColor;
+			for(size_t pointIndex : {kRailStartPointIndex, rail.controlPoints.size() - 1 - kRailStartPointIndex}){
+				Obj3D* marker = rail.pointObjects[pointIndex].get();
+				if(Model::Material* mat = marker->GetMaterial()){
+					mat->color = markerColor;
+				}
+				if(activeCamera){
+					marker->SetCamera(activeCamera);
+				}
+				marker->Draw();
+			}
+		}
+
 		for(int i = 0; i < kTubeSegmentCount; ++i){
 			if(!rail.tubeSegmentVisible[i]){
 				continue;

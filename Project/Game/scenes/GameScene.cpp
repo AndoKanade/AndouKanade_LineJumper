@@ -24,6 +24,7 @@
 #include "objects/Ground.h"
 #include "objects/Sun.h"
 #include "objects/Player.h"
+#include "objects/StartPlatform.h"
 #include "objects/PlayerBulletManager.h"
 #include "objects/TargetManager.h"
 #include "objects/EnemyManager.h"
@@ -100,6 +101,11 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// 簡易的な地面の生成(レール開始地点を基準に並べるため、レールエディターの初期化後に行う)
 	ground_ = std::make_unique<Ground>();
 	ground_->Initialize(object3dCommon_,railEditor_->GetPositionOnRail(0.0f),railEditor_->GetForwardOnRail(0.0f),kGameSceneGroup);
+
+	// 最初のレールの手前に置くスタート台の生成(Edit中にも見えるよう、ここで一度レールの始点に合わせて置いておく)
+	startPlatform_ = std::make_unique<StartPlatform>();
+	startPlatform_->Initialize(object3dCommon_);
+	startPlatform_->Place(railEditor_->GetPositionOnRail(0.0f),railEditor_->GetForwardOnRail(0.0f));
 
 	// 調整項目(GlobalVariables)のグループを作成する
 	// 各クラスがこのグループに自分の調整項目を登録する
@@ -188,6 +194,11 @@ void GameScene::ResetPlayState(){
 	if(railEditor_){
 		railEditor_->SwitchActiveRail(0);
 		railEditor_->ClearPaint();
+
+		// スタート台を最初のレールの手前に置き直し、プレイヤーを台の上から始めさせる
+		// Edit中にレールを動かしても反映されるよう、始め直すたびに置き直す
+		startPlatform_->Place(railEditor_->GetPositionOnRail(0.0f),railEditor_->GetForwardOnRail(0.0f));
+		player_->StartOnPlatform(startPlatform_->GetSpawnPosition(),railEditor_->GetRotationOnRail(0.0f));
 	}
 
 	// 出ている演出・連鎖数・スピード線も消す
@@ -392,7 +403,7 @@ void GameScene::UpdateGameplay(){
 	// どのレールにも乗れないまま地面の高さまで落ちたら、レール先頭からやり直す
 	// 一瞬で始点へ戻ると何が起きたか分かりにくいため、暗転で画面を覆っている間に始点へ戻す
 	if(isGameplayActive){
-		bool needsRestart = player_->UpdateMovement(input_,railEditor_.get(),cameraForward,railCamera_->GetRight(),ground_->GetHeight(),kDeltaTime);
+		bool needsRestart = player_->UpdateMovement(input_,railEditor_.get(),startPlatform_.get(),cameraForward,railCamera_->GetRight(),ground_->GetHeight(),kDeltaTime);
 		if(needsRestart){
 			sceneManager_->StartTransition([this](){
 				ResetPlayState();
@@ -558,6 +569,9 @@ void GameScene::Draw(){
 
 	// 雲海の雲の部分を描画(他のオブジェクトより先に描く)
 	ground_->Draw();
+
+	// スタート台を描画
+	startPlatform_->Draw();
 
 	// レールエディターの描画
 	if(railEditor_){

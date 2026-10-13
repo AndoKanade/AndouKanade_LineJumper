@@ -10,9 +10,11 @@ class Input;
 class Obj3D;
 class Obj3dCommon;
 class RailEditor;
+class StartPlatform;
 
 /// <summary>
 /// プレイヤー
+/// スタート台の上から始まり、台の上をWASDで自由に動いて、台と重なったレールの始点へ歩いて乗る。
 /// レールに沿って自動で進み、ジャンプでレールを離れるとWASDで自由に動ける。
 /// 落下中にレールの真上でレールの高さを跨ぐと、そのレールに乗り移る。
 /// 体力を持ち、敵弾が当たると減る(被弾後は一定時間無敵)。
@@ -31,6 +33,13 @@ public:
 
 	// レール先頭・オンレール・体力満タンの初期状態に戻す
 	void Reset();
+
+	/// <summary>
+	/// スタート台の上に立たせ、オフレールの状態から始める(Reset()の後に呼ぶ)
+	/// </summary>
+	/// <param name="startPosition">立たせる位置(台の上面)</param>
+	/// <param name="startRotation">カメラ・プレイヤーの基準向き(レールの始点の向きにそろえる)</param>
+	void StartOnPlatform(const Vector3& startPosition,const Vector3& startRotation);
 
 	/// <summary>
 	/// レールの進行(プレイ可能かつオンレール中、かつ終端未到達のときだけ進める)
@@ -61,12 +70,13 @@ public:
 	/// </summary>
 	/// <param name="input">入力</param>
 	/// <param name="railEditor">着地先を探すレール</param>
+	/// <param name="startPlatform">上に立てるスタート台</param>
 	/// <param name="cameraForward">カメラの前方ベクトル(WASD移動の基準)</param>
 	/// <param name="cameraRight">カメラの右方向ベクトル(WASD移動の基準)</param>
 	/// <param name="groundHeight">地面の高さ(ここまで落ちたらリスタートが必要)</param>
 	/// <param name="deltaTime">経過時間(秒)</param>
 	/// <returns>どのレールにも乗れずに地面まで落ち、リスタートが必要になったときtrue</returns>
-	bool UpdateMovement(Input* input,RailEditor* railEditor,const Vector3& cameraForward,const Vector3& cameraRight,float groundHeight,float deltaTime);
+	bool UpdateMovement(Input* input,RailEditor* railEditor,const StartPlatform* startPlatform,const Vector3& cameraForward,const Vector3& cameraRight,float groundHeight,float deltaTime);
 
 	// 描画処理
 	void Draw();
@@ -131,6 +141,8 @@ private:
 	float freeVelocityY_ = 0.0f;
 	// オフレール中の基準向き(レールを離れた瞬間の向きを固定して保持する)
 	Vector3 freeBaseRotation_ = {0.0f, 0.0f, 0.0f};
+	// スタート台の上に立っているか(立っている間はジャンプでき、重なったレールへ歩いて乗れる)
+	bool isOnPlatform_ = false;
 
 	// カメラ・プレイヤーの共通の基準位置と基準向き(UpdateBasePose()で求める)
 	Vector3 basePosition_ = {0.0f, 0.0f, 0.0f};
@@ -167,4 +179,6 @@ private:
 	static constexpr float kSideRailSwitchMaxHeightDiff = 3.0f;
 	// 並走レールが押した方向の真横にあるとみなす、方向ベクトルとの内積の下限(1に近いほど真横に限定される)
 	static constexpr float kSideRailDirectionThreshold = 0.7f;
+	// スタート台の上からレールへ歩いて乗れる、レールとの高さの差の最大値
+	static constexpr float kPlatformBoardHeightRange = 0.5f;
 };
