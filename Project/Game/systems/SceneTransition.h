@@ -24,6 +24,9 @@ public:
 		RetryCutIn,  // 画面を暗くして斜めの帯と「RETRY」の文字を差し込み、黒の帯を広げて覆う
 		InkBurst,    // 自分の黄色いインクが画面の中心から外へ次々に弾けて塗りつぶし、下へ垂れ落ちて抜けていく(クリア)
 		InkDrip,     // 暗いインクが画面の上から不揃いに垂れてきて覆い、そのまま下へ沈んで抜けていく(ゲームオーバー)
+		RailPaint,   // 斜めのレールの線が走り、そのあとを黄色いインクが塗り進んで覆い、塗った帯が右へ抜けていく(クリアの案)
+		GoalStamp,   // 「GOAL!」が上から押されて揺れ、しみが飛んだ後に中央から黄色いインクが広がって覆う(クリアの案)
+		CloudRise,   // 下から雲が湧き上がって画面を包み、左右に割れて抜けていく(クリアの案)
 	};
 
 	SceneTransition();
@@ -68,6 +71,9 @@ private:
 	void UpdateRetryCutIn();
 	void UpdateInkBurst();
 	void UpdateInkDrip();
+	void UpdateRailPaint();
+	void UpdateGoalStamp();
+	void UpdateCloudRise();
 
 	// 今の段階
 	Phase phase_ = Phase::None;
@@ -98,6 +104,21 @@ private:
 	std::vector<std::unique_ptr<Sprite>> dripRimTipSprites_;
 	std::vector<std::unique_ptr<Sprite>> dripSprites_;
 	std::vector<std::unique_ptr<Sprite>> dripTipSprites_;
+	// RailPaint の、レールの線・塗り進む帯の本体・帯の先(塗り進む側)と後ろ(抜けていく側)の丸み
+	std::vector<std::unique_ptr<Sprite>> railPaintLineSprites_;
+	std::vector<std::unique_ptr<Sprite>> railPaintBodySprites_;
+	std::vector<std::unique_ptr<Sprite>> railPaintHeadSprites_;
+	std::vector<std::unique_ptr<Sprite>> railPaintTailSprites_;
+	// GoalStamp の、画面を暗くする全面・押した衝撃で飛ぶしみ・中央から広がるしみ・「GOAL!」の文字
+	// (最後に全面を塗る色は fadeSprite_ に色を掛けて使う)
+	std::unique_ptr<Sprite> stampDimSprite_;
+	std::vector<std::unique_ptr<Sprite>> stampSplashSprites_;
+	std::unique_ptr<Sprite> stampSpreadSprite_;
+	std::unique_ptr<Sprite> stampTextSprite_;
+	// 「GOAL!」の文字の、押しきったときの大きさ(画像の大きさに kStampTextScale を掛けたもの)
+	Vector2 stampTextBaseSize_ = {0.0f, 0.0f};
+	// CloudRise の雲のかたまり(全面を塗る白は fadeSprite_ に色を掛けて使う)
+	std::vector<std::unique_ptr<Sprite>> cloudSprites_;
 
 	// 演出の色(色数を黒と差し色の2色に絞り、何が起きたかを一目で分かるようにする)
 	static constexpr Vector4 kBaseColor = {0.03f, 0.03f, 0.05f, 1.0f};
@@ -210,4 +231,78 @@ private:
 	static constexpr float kDripFillStart = 0.92f;
 	// 画面を戻すときに沈んでいく距離(画面の高さに対する倍率)
 	static constexpr float kDripSinkScale = 1.6f;
+
+	// RailPaint の調整項目
+	// 画面を覆いきる・戻しきるまでの時間(秒)
+	static constexpr float kRailPaintCoverDuration = 0.9f;
+	static constexpr float kRailPaintRevealDuration = 0.6f;
+	// 塗り進む帯の本数と傾き(ラジアン。マイナスで右上がり)
+	static constexpr int kRailPaintCount = 8;
+	static constexpr float kRailPaintAngle = -0.12f;
+	// 帯どうしが塗り始める・抜け始めるタイミングのずれ(覆い具合に対する割合)
+	static constexpr float kRailPaintCoverStagger = 0.06f;
+	static constexpr float kRailPaintRevealStagger = 0.03f;
+	// レールの線が端から端まで走りきる覆い具合
+	static constexpr float kRailPaintLineEnd = 0.35f;
+	// 帯を塗り進める長さ(帯の長さに対する倍率。先の丸みが画面の外へ出きるよう少し長くする)
+	static constexpr float kRailPaintTravelScale = 1.1f;
+	// 隣の帯と隙間ができないよう、帯を少し太くする倍率
+	static constexpr float kRailPaintOverlapScale = 1.08f;
+	// レールの線の太さ(ピクセル)
+	static constexpr float kRailPaintLineThickness = 6.0f;
+
+	// GoalStamp の調整項目(押した衝撃で飛ぶしみの位置・大きさは SceneTransition.cpp の kStampSplashLayouts)
+	// 画面を覆いきる・戻しきるまでの時間(秒。文字を読ませるため覆う側を長めにする)
+	static constexpr float kStampCoverDuration = 1.4f;
+	static constexpr float kStampRevealDuration = 0.6f;
+	// 画面を暗くする濃さと、暗くしきる覆い具合
+	static constexpr float kStampDimAlpha = 0.35f;
+	static constexpr float kStampDimEnd = 0.3f;
+	// 文字が押されきる(大きい状態から縮んで止まる)覆い具合と、押し始めの大きさの倍率
+	static constexpr float kStampSlamEnd = 0.3f;
+	static constexpr float kStampStartScale = 3.0f;
+	// 文字がはっきり見えるようになる覆い具合
+	static constexpr float kStampTextAppearEnd = 0.1f;
+	// 文字の画像を表示する大きさの倍率
+	static constexpr float kStampTextScale = 0.9f;
+	// 文字の中心の高さ(画面の高さに対する割合)
+	static constexpr float kStampHeightRate = 0.45f;
+	// 押した後に文字を左右に揺らす幅(ピクセル)・速さ(覆い具合1あたりの位相の進み、ラジアン)・揺れが収まる覆い具合
+	static constexpr float kStampShakeWidth = 12.0f;
+	static constexpr float kStampShakeSpeed = 120.0f;
+	static constexpr float kStampShakeEnd = 0.45f;
+	// 押した衝撃で飛ぶしみが広がりきる覆い具合
+	static constexpr float kStampSplashEnd = 0.5f;
+	// 中央からしみが広がり始める覆い具合と、広がりきったときの大きさ(画面の高さに対する倍率)と傾き
+	static constexpr float kStampSpreadStart = 0.55f;
+	static constexpr float kStampSpreadScale = 4.5f;
+	static constexpr float kStampSpreadAngle = 0.3f;
+	// 隙間を埋めるため、画面全体をインクの色で塗り始める覆い具合
+	static constexpr float kStampFillStart = 0.85f;
+	// 画面を戻すときに、全体の塗りが消えきる進み具合と、広がったしみが落ちていく距離(画面の高さに対する倍率)
+	static constexpr float kStampFillRevealEnd = 0.25f;
+	static constexpr float kStampSpreadFallScale = 1.5f;
+
+	// CloudRise の調整項目
+	// 画面を覆いきる・戻しきるまでの時間(秒)
+	static constexpr float kCloudCoverDuration = 1.0f;
+	static constexpr float kCloudRevealDuration = 0.7f;
+	// 雲を並べる段の数と、1段あたりの数
+	static constexpr int kCloudRowCount = 7;
+	static constexpr int kCloudColumnCount = 9;
+	// 一番下の段と一番上の段の中心の高さ(画面の高さに対する割合。画面の上下の外まで並べる)
+	static constexpr float kCloudBottomRowHeight = 1.15f;
+	static constexpr float kCloudTopRowHeight = -0.1f;
+	// 段どうしが湧き上がり始めるタイミングのずれ(覆い具合に対する割合)
+	static constexpr float kCloudStagger = 0.08f;
+	// 湧き上がり始めの大きさの割合(ここから元の大きさまでふくらむ)
+	static constexpr float kCloudStartSizeRate = 0.6f;
+	// 隙間を埋めるため、画面全体を白で塗り始める覆い具合
+	static constexpr float kCloudFillStart = 0.85f;
+	// 画面を戻すときに左右へ割れて動く距離(画面の幅に対する割合)
+	static constexpr float kCloudSplitDistance = 0.8f;
+	// 雲の色(白と、影になったところの薄い水色。数個に1つを影の色にする)
+	static constexpr Vector4 kCloudColor = {1.0f, 1.0f, 1.0f, 1.0f};
+	static constexpr Vector4 kCloudShadeColor = {0.82f, 0.9f, 0.95f, 1.0f};
+	static constexpr int kCloudShadeInterval = 3;
 };

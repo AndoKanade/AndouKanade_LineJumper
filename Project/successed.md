@@ -795,3 +795,26 @@ GameScene.cpp が約1000行あり、道中作りでさらに処理が増える�
 ### ビルド確認（6.・7.）
 
 この変更は Windows でのビルド・実機での確認をしていない。DirectX・Windows のヘッダーを仮のものに置き換えて clang で構文チェックだけ行い、Game フォルダの全ての .cpp にエラーが無いことを確認した。
+
+### 8. クリアへの切り替えの演出を ImGui で選べるようにした
+
+対象ファイル: `Game/systems/SceneTransition.h/.cpp`、`Game/scenes/GameScene.h/.cpp`、`tools/generate_transition_assets.py`、`resource/UI/transition/circle.png` / `goal.png`（新規）、`resource/UI/transition/dripTip.png`（`circle.png` に名前を変えた）
+
+落下リスタートの演出と同じく、クリアへ切り替えるときの演出を見比べて選べるようにした。7. の InkBurst に、新しく 3 つの案を足した。
+
+| 演出 | 内容 |
+| --- | --- |
+| `InkBurst`（初期値） | 7. のまま。黄色いインクのしみが中心から外へ弾けて塗りつぶし、下へ垂れ落ちて抜ける |
+| `RailPaint` | 斜めのピンクのレールの線が走り、そのあとを黄色いインクが筆の先のように塗り進んで覆う。プレイ中に通ったレールが黄色く塗られていく様子を画面全体で見せる。戻すときは塗った帯が右へ抜ける |
+| `GoalStamp` | 画面を少し暗くし、「GOAL!」を大きい状態から押しつけて揺らす。押した衝撃でしみが飛び、中央から黄色いインクが広がって覆う。戻すときはインクが縮みながら下へ落ちる |
+| `CloudRise` | 下の段から雲のかたまりが湧き上がって画面を包む。雲海の上を進むステージから雲を抜けて次の画面へ出るように見せる。戻すときは雲が左右に割れる |
+
+- Edit モードの「GameScene Debug」パネルに「Clear Transition」の切り替えと「Preview Clear Transition」ボタンを足した。選んだ演出は、実際にクリアしたときの切り替えにも使われる。
+- 選んだ演出は GameScene が持っているため、クリア画面からゲームへ戻ってシーンが作り直されると初期値（InkBurst）に戻る（Fall Transition と同じ）。
+- 7. で「Fall Transition」に足した InkBurst / InkDrip は、クリアの演出を別に選べるようになったため外し、落下リスタートの 4 つだけに戻した。
+- 垂れるインクの先に使っていた白い円の画像は、塗り進む帯の先や雲にも使うため `dripTip.png` から `circle.png` に名前を変えた。「GOAL!」の文字の画像（`goal.png`）は同じスクリプトで生成する。
+- 3 つの案は、組み込む前に同じ計算を Python で再現して動きを確認した。
+
+### ビルド確認（8.）
+
+この変更は Windows でのビルド・実機での確認をしていない。DirectX・Windows のヘッダーを仮のものに置き換えて clang で構文チェックだけ行い、Game フォルダの全ての .cpp に ImGui がある構成・無い構成どちらでもエラーが無いことを確認した。

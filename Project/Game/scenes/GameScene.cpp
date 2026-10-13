@@ -38,6 +38,7 @@
 #include "UI/Reticle.h"
 #include "UI/StageHUD.h"
 #include "UI/SpeedLines.h"
+#include <iterator>
 
 namespace{
 	// スカイボックスのテクスチャパス
@@ -65,7 +66,17 @@ namespace{
 
 #ifdef USE_IMGUI
 	// 落下リスタートの演出の名前(ImGui の切り替えに表示する。SceneTransition::Style と同じ順番にする)
-	const char* kFallTransitionNames[] = {"Fade", "RailStripes", "FallAndLift", "RetryCutIn", "InkBurst", "InkDrip"};
+	const char* kFallTransitionNames[] = {"Fade", "RailStripes", "FallAndLift", "RetryCutIn"};
+
+	// クリア画面へ切り替えるときの演出の候補と、ImGui の切り替えに表示する名前(同じ順番にする)
+	constexpr SceneTransition::Style kClearTransitionStyles[] = {
+		SceneTransition::Style::InkBurst,
+		SceneTransition::Style::RailPaint,
+		SceneTransition::Style::GoalStamp,
+		SceneTransition::Style::CloudRise,
+	};
+	const char* kClearTransitionNames[] = {"InkBurst", "RailPaint", "GoalStamp", "CloudRise"};
+	static_assert(std::size(kClearTransitionStyles) == std::size(kClearTransitionNames),"クリアの演出の候補と名前の数が合っていない");
 #endif
 }
 
@@ -381,8 +392,8 @@ void GameScene::UpdateGameplay(){
 		StageResult::destroyedTargetCount = targetManager_->GetDestroyedCount();
 		StageResult::totalTargetCount = targetManager_->GetTotalCount();
 		StageResult::maxCombo = comboCounter_->GetMaxCombo();
-		// クリアは自分の黄色いインクが弾けて画面を塗りつぶす演出で切り替える
-		sceneManager_->ChangeScene("CLEAR",SceneTransition::Style::InkBurst);
+		// クリアは ImGui で選んだ演出(初期値は黄色いインクが弾けて画面を塗りつぶす InkBurst)で切り替える
+		sceneManager_->ChangeScene("CLEAR",clearTransitionStyle_);
 		return;
 	}
 
@@ -561,6 +572,20 @@ void GameScene::ShowEditorPanels(){
 	}
 	if(ImGui::Button("Preview Fall Transition")){
 		sceneManager_->StartTransition(nullptr,fallTransitionStyle_);
+	}
+
+	// クリア画面へ切り替えるときの演出を切り替える。Preview を押すとクリアしなくてもその場で演出だけを確認できる
+	int clearStyleIndex = 0;
+	for(int i = 0; i < static_cast<int>(std::size(kClearTransitionStyles)); ++i){
+		if(kClearTransitionStyles[i] == clearTransitionStyle_){
+			clearStyleIndex = i;
+		}
+	}
+	if(ImGui::Combo("Clear Transition",&clearStyleIndex,kClearTransitionNames,IM_ARRAYSIZE(kClearTransitionNames))){
+		clearTransitionStyle_ = kClearTransitionStyles[clearStyleIndex];
+	}
+	if(ImGui::Button("Preview Clear Transition")){
+		sceneManager_->StartTransition(nullptr,clearTransitionStyle_);
 	}
 
 	// カメラ設定のUI

@@ -123,11 +123,15 @@ Game/
 | --- | --- | --- | --- |
 | `Fade` | 上記以外のシーンの切り替え | 0.4 / 0.4 秒 | 黒の濃さを `Easing::EaseInOutCubic` で変える |
 | `RailStripes` / `FallAndLift` / `RetryCutIn` | 落下リスタート（ImGui の「Fall Transition」で選ぶ） | — | 落下リスタート用の案 |
-| `InkBurst` | ゲーム → クリア | 0.9 / 0.7 秒 | 自分の黄色いインクのしみ 13 個が、画面の中心から外へ順に弾けて広がり（`EaseOutBack`）、最後に隙間を黄色で塗って覆う。戻すときは塗りを消し、しみが少し持ち上がってから下へ垂れ落ちる（`EaseInBack`） |
+| `InkBurst` | ゲーム → クリア（初期値） | 0.9 / 0.7 秒 | 自分の黄色いインクのしみ 13 個が、画面の中心から外へ順に弾けて広がり（`EaseOutBack`）、最後に隙間を黄色で塗って覆う。戻すときは塗りを消し、しみが少し持ち上がってから下へ垂れ落ちる（`EaseInBack`） |
 | `InkDrip` | ゲーム → ゲームオーバー | 1.1 / 0.7 秒 | 画面を少し暗くしながら、上の縁を暗いインクで埋め、太さの違う 16 本のインクが順番ばらばらに加速しながら垂れてきて覆う。垂れた先にはピンクの縁取りが見える。戻すときは、覆ったインクがひとかたまりのまま下へ沈んでいく |
 
-- `InkBurst` / `InkDrip` の画像は `tools/generate_transition_assets.py` で生成する（`resource/UI/transition/`）。しみの位置・大きさ・傾きは `SceneTransition.cpp` の `kInkSplatLayouts` で決めている。
-- ImGui の「Fall Transition」で `InkBurst` / `InkDrip` も選べるので、Preview でその場で見た目を確認できる。
+| `RailPaint` | ゲーム → クリア（案） | 0.9 / 0.6 秒 | 斜めのピンクのレールの線 8 本が左端から右端まで走り、そのあとを黄色いインクが両端の丸い帯になって塗り進んで覆う。戻すときは塗った帯が右へ抜けていく |
+| `GoalStamp` | ゲーム → クリア（案） | 1.4 / 0.6 秒 | 画面を少し暗くし、「GOAL!」の文字を 3 倍の大きさから押しつけて左右に揺らす。押した衝撃で周りにしみが 5 つ飛び、中央から黄色いインクが広がって覆う。戻すときは、広がったインクが縮みながら下へ落ちる |
+| `CloudRise` | ゲーム → クリア（案） | 1.0 / 0.7 秒 | 7 段 × 9 個の雲のかたまり（白と薄い水色の円）が、下の段から順にふくらみながら湧き上がって画面を包む。戻すときは画面の中央から左右に割れる |
+
+- 演出の画像（インクのしみ・白い円・「GOAL!」）は `tools/generate_transition_assets.py` で生成する（`resource/UI/transition/`）。しみの位置・大きさ・傾きは `SceneTransition.cpp` の `kInkSplatLayouts` / `kStampSplashLayouts` で決めている。
+- クリアへ切り替える演出は、Edit モードの「GameScene Debug」パネルの「Clear Transition」で選び、「Preview Clear Transition」でその場で見た目を確認できる（落下リスタートの「Fall Transition」と同じ使い方）。
 - 進め方（`Update()`）と見た目（`Draw()`）を分けているため、後から見た目だけを別の演出に差し替えられる。
 
 ---
@@ -231,7 +235,7 @@ Game/
 | ウィンドウ | 表示するモード | 内容 |
 | --- | --- | --- |
 | Rail Branch Debug | 常時 | レールの本数、アクティブレール、進行度、オンレール状態、敵の体力（EnemyManager が表示）、プレイヤーの体力など |
-| GameScene Debug | Edit のみ | カメラ座標・回転の編集、俯瞰カメラの切り替え（DebugTopCamera が表示）、ライティング |
+| GameScene Debug | Edit のみ | タイトルを飛ばす設定、落下リスタート・クリアへの切り替えの演出の選択と Preview、カメラ座標・回転の編集、俯瞰カメラの切り替え（DebugTopCamera が表示）、ライティング |
 | Hierarchy | Edit のみ | 的の一覧。クリックで選択できる（TargetManager が表示） |
 | Inspector | Edit のみ | 選択中の的の座標・生存フラグの編集（TargetManager が表示） |
 

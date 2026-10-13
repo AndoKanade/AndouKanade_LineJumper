@@ -1,13 +1,14 @@
 # シーンの切り替え(クリア・ゲームオーバー)の演出で使う画像を生成するスクリプト
 # 使い方: python tools/generate_transition_assets.py  (Projectフォルダで実行する。numpy と Pillow が必要)
 # 出力先: resource/UI/transition/
-#   inkSplat0〜2.png  クリアの演出で画面に弾けるインクのしみ(白で描き、ゲーム側で色を掛ける)
-#   dripTip.png       ゲームオーバーの演出で垂れるインクの先の丸み(白い円)
+#   inkSplat0〜2.png  画面に弾けるインクのしみ(白で描き、ゲーム側で色を掛ける)
+#   circle.png        垂れるインクの先・塗り進むインクの先・雲のかたまりに使う白い円
+#   goal.png          クリアの演出で押す「GOAL!」の文字
 
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 # 出力先のフォルダ(Projectフォルダからの相対パス)
 OUTPUT_DIR = Path("resource/UI/transition")
@@ -32,8 +33,21 @@ SPLAT_BLEND = 0.08
 # 縁をなめらかにするぼかしの幅(画像の半分の幅に対する割合)
 SPLAT_EDGE_SOFTNESS = 0.008
 
-# 垂れるインクの先の丸みの画像の大きさ(ピクセル)
-DRIP_TIP_SIZE = 128
+# 白い円の画像の大きさ(ピクセル)
+CIRCLE_SIZE = 128
+
+# 「GOAL!」の文字の画像
+GOAL_TEXT = "GOAL!"
+GOAL_IMAGE_SIZE = (900, 360)
+GOAL_FONT_SIZE = 250
+GOAL_OUTLINE_WIDTH = 16
+# 斜体のように右へ傾ける量
+GOAL_SHEAR = 0.18
+# 文字に使うフォント(リポジトリに入っている丸みのある日本語フォント)
+FONT_PATH = Path("resource/fonts/MochiyPopPOne-Regular.ttf")
+# 自分のインクの黄色と、縁取りの濃い紺色(0〜255)
+INK_YELLOW = (255, 217, 38, 255)
+DARK_NAVY = (20, 34, 48, 255)
 
 
 def normalized_grid(size):
@@ -83,19 +97,33 @@ def generate_splat(index):
     save_white_alpha(OUTPUT_DIR / f"inkSplat{index}.png", 0.5 - distance / SPLAT_EDGE_SOFTNESS)
 
 
-def generate_drip_tip():
-    """垂れるインクの先の丸み: 縁を少しぼかした白い円"""
-    x, y = normalized_grid(DRIP_TIP_SIZE)
+def generate_circle():
+    """縁を少しぼかした白い円"""
+    x, y = normalized_grid(CIRCLE_SIZE)
     radius = np.sqrt(x * x + y * y)
-    edge = 2.0 / DRIP_TIP_SIZE * 2.0
-    save_white_alpha(OUTPUT_DIR / "dripTip.png", (1.0 - radius) / edge)
+    edge = 2.0 / CIRCLE_SIZE * 2.0
+    save_white_alpha(OUTPUT_DIR / "circle.png", (1.0 - radius) / edge)
+
+
+def generate_goal():
+    """「GOAL!」: インクの黄色の太い文字に濃い縁取りを付け、斜体のように右へ傾ける(色はそのまま使う)"""
+    width, height = GOAL_IMAGE_SIZE
+    font = ImageFont.truetype(str(FONT_PATH), GOAL_FONT_SIZE)
+    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    box = draw.textbbox((0, 0), GOAL_TEXT, font=font, stroke_width=GOAL_OUTLINE_WIDTH)
+    origin = ((width - (box[2] - box[0])) / 2 - box[0], (height - (box[3] - box[1])) / 2 - box[1])
+    draw.text(origin, GOAL_TEXT, font=font, fill=INK_YELLOW, stroke_width=GOAL_OUTLINE_WIDTH, stroke_fill=DARK_NAVY)
+    image = image.transform((width, height), Image.AFFINE, (1, GOAL_SHEAR, -GOAL_SHEAR * height / 2, 0, 1, 0), resample=Image.BICUBIC)
+    image.save(OUTPUT_DIR / "goal.png")
 
 
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     for index in range(SPLAT_VARIANT_COUNT):
         generate_splat(index)
-    generate_drip_tip()
+    generate_circle()
+    generate_goal()
     print(f"生成しました: {OUTPUT_DIR}/")
 
 
