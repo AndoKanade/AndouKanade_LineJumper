@@ -109,7 +109,7 @@ private:
 	/// <returns>乗り換えられたときtrue</returns>
 	bool TrySwitchToSideRail(RailEditor* railEditor,const Vector3& sideDirXZ);
 
-	// 描画用の3Dオブジェクト(三人称視点用の人型モデル)
+	// 描画用の3Dオブジェクト(三人称視点用のプレイヤーのモデル)
 	std::unique_ptr<Obj3D> obj_;
 
 	// 調整項目を登録したGlobalVariablesのグループ名

@@ -8,8 +8,8 @@
 #include <string>
 
 namespace{
-	// 雑魚敵の表示に使用するモデル(プレイヤーと区別できるよう別のモーションのモデルを使う)
-	const std::string kEnemyModelPath = "human/sneakWalk.gltf";
+	// 雑魚敵の表示に使用するモデル(プレイヤーと区別できるよう、4本脚で一つ目のロボットにする)
+	const std::string kEnemyModelPath = "EnemyBot/enemyBot.obj";
 
 	// 敵弾の表示に使用するモデル
 	const std::string kEnemyBulletModelPath = "Sphere/sphere.obj";

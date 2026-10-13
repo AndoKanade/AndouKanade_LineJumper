@@ -119,8 +119,8 @@ private:
 		float paintEndT = 0.0f;
 	};
 
-	// 制御点描画用の3Dオブジェクト生成
-	std::unique_ptr<Obj3D> CreatePointObject();
+	// 制御点・曲線の点列・着地範囲の描画用の3Dオブジェクト生成(modelPathで使うモデルを指定する)
+	std::unique_ptr<Obj3D> CreatePointObject(const std::string& modelPath);
 	// Play中のレール本体の管の位置・向き・大きさを求めて行列を更新する
 	// Play中はレールの形が変わらないため、Playに入ってから最初の描画で1回だけ呼ぶ
 	void BuildTubes();

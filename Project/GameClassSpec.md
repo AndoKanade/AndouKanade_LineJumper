@@ -410,7 +410,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 
 | 項目 | 内容 |
 | --- | --- |
-| 見た目 | `human/sneakWalk.gltf`（赤色）、スケール 0.4 |
+| 見た目 | `EnemyBot/enemyBot.obj`（4本脚・一つ目・頭に砲台のロボット、赤色）、スケール 0.4 |
 | 往復移動 | 基準座標を中心に、往復方向へ片側 5.0 まで、速度 3.0 で往復する |
 | 検知 | プレイヤーとの距離が 25.0 以内なら検知中とし、プレイヤーの方を向く。検知していない間は進行方向を向く |
 | 攻撃 | 検知中だけ撃つ。1 回撃つごとに、単発 → 3 方向拡散 → 追尾弾 の順で切り替える |
@@ -451,7 +451,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 
 | 項目 | 内容 |
 | --- | --- |
-| 見た目 | `human/walk.gltf`（青色）、スケール 0.3 |
+| 見た目 | `Player/player.obj`（インクタンクを背負いブラスターを構えたキャラクター、黄色）、スケール 0.3 |
 | レール移動 | `railT_`（0〜1）を「制御点ごとの Speed × `railSpeed` × 経過時間」で進める。終端（1.0）で止まる |
 | 表示位置 | 基準位置（オンレール中はレール上の点、オフレール中は自由移動の座標）にそのまま立たせる |
 | 体の向き | カメラの左右の向き（照準の方向）。レールが傾いていても体は直立させる |
@@ -677,7 +677,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 - 位置は Catmull-Rom スプラインで補間する。
 - 向き（ピッチ・ヨー）は進行方向から逆算し、ロールは制御点間を線形補間する。
 - Edit モードの描画では、アクティブなレールを黄色、それ以外を黒で表示する。
-- Play モードの描画では、編集用の目印（制御点の球・曲線の点列・着地範囲）は出さず、レール本体を管（`RailTube/railTube.obj` を 120 区間つないだもの、半径 0.05）で描く。インクで塗った区間（`PaintActiveRail(t)` で広げ、`ClearPaint()` で消す）は黄色、それ以外はピンクにする。
+- Play モードの描画では、編集用の目印（制御点の目印・曲線の点列・着地範囲）は出さず、レール本体を管（`RailTube/railTube.obj` を 120 区間つないだもの、半径 0.05）で描く。インクで塗った区間（`PaintActiveRail(t)` で広げ、`ClearPaint()` で消す）は黄色、それ以外はピンクにする。
 
 #### ImGui パネル「Rail Editor」
 
@@ -687,7 +687,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | New Rail | レールを 1 本追加し、アクティブにする |
 | Add Control Point | アクティブなレールの末尾に制御点を追加する |
 | Save / Load | 全レールを JSON に保存する / JSON から読み込む |
-| Show Control Point Models / Show Rail Curve | 制御点の球 / 曲線の表示切り替え |
+| Show Control Point Models / Show Rail Curve | 制御点の目印（`RailMarker/railMarker.obj`、上下に尖った宝石の形） / 曲線の表示切り替え |
 | Show Landing Range | 着地できる範囲（レールの左右、緑の点列）の表示切り替え |
 | 制御点一覧 | クリックで選択し、Position / Rotation / Speed / 分岐設定を編集する。Reset で初期値に戻す。Delete で削除する（最後の 1 点は削除できない） |
 
@@ -787,7 +787,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | --- | --- |
 | F1 | 俯瞰デバッグカメラの切り替え。ON にした瞬間に、制御点全体が映るよう自動で合わせる |
 | WASD / Q E | 俯瞰カメラ中の平面移動 / 高さの移動 |
-| F4 | 制御点の球の表示切り替え |
+| F4 | 制御点の目印の表示切り替え |
 | F5 | レール曲線の表示切り替え |
 
 ### クリア画面・ゲームオーバー画面

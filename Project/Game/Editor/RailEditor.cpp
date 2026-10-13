@@ -38,7 +38,12 @@ namespace{
 	// 着地できる範囲を示す点列の色(レール本体と区別できるよう緑にする)
 	constexpr Vector4 kLandingRangeColor = {0.2f, 1.0f, 0.4f, 1.0f};
 
-	// 制御点の球の表示スケール
+	// 制御点の目印に使うモデル(上下に尖った宝石の形。半径1)
+	const std::string kControlPointModelPath = "RailMarker/railMarker.obj";
+	// 曲線の点列・着地できる範囲の点に使うモデル(半径1の球)
+	const std::string kSampleModelPath = "Sphere/sphere.obj";
+
+	// 制御点の目印の表示スケール
 	constexpr float kControlPointScale = 0.2f;
 	// レール曲線のサンプリング点の表示スケール(線のように見せるため制御点より小さくする)
 	constexpr float kCurveScale = 0.04f;
@@ -52,11 +57,11 @@ namespace{
 RailEditor::RailEditor() = default;
 RailEditor::~RailEditor() = default;
 
-// 制御点描画用のObj3Dを1つ生成する(Initialize/追加ボタン/ロードで共通利用)
-std::unique_ptr<Obj3D> RailEditor::CreatePointObject(){
+// 制御点・曲線の点列・着地範囲の描画用のObj3Dを1つ生成する(Initialize/追加ボタン/ロードで共通利用)
+std::unique_ptr<Obj3D> RailEditor::CreatePointObject(const std::string& modelPath){
 	auto obj = std::make_unique<Obj3D>();
 	obj->Initialize(objCommon_);
-	obj->SetModel("Sphere/sphere.obj");
+	obj->SetModel(modelPath);
 	return obj;
 }
 
@@ -64,7 +69,7 @@ std::unique_ptr<Obj3D> RailEditor::CreatePointObject(){
 void RailEditor::SyncPointObjectsToControlPoints(Rail& rail){
 	// 足りなければ生成、多ければ末尾を削る
 	while(rail.pointObjects.size() < rail.controlPoints.size()){
-		rail.pointObjects.push_back(CreatePointObject());
+		rail.pointObjects.push_back(CreatePointObject(kControlPointModelPath));
 	}
 	while(rail.pointObjects.size() > rail.controlPoints.size()){
 		rail.pointObjects.pop_back();
@@ -76,19 +81,19 @@ void RailEditor::AddRail(){
 	Rail rail;
 	rail.name = "Rail " + std::to_string(rails_.size());
 	rail.controlPoints.push_back(kDefaultControlPoint);
-	rail.pointObjects.push_back(CreatePointObject());
+	rail.pointObjects.push_back(CreatePointObject(kControlPointModelPath));
 
 	// レール曲線可視化用のサンプリング点オブジェクトを固定数だけ生成しておく
 	rail.curveObjects.reserve(kCurveSampleCount);
 	for(int i = 0; i < kCurveSampleCount; ++i){
-		rail.curveObjects.push_back(CreatePointObject());
+		rail.curveObjects.push_back(CreatePointObject(kSampleModelPath));
 	}
 
 	// 着地できる範囲可視化用のオブジェクトも固定数だけ生成しておく(1サンプルにつき左右2個)
 	const int landingRangeObjectCount = kLandingRangeSampleCount * 2;
 	rail.landingRangeObjects.reserve(landingRangeObjectCount);
 	for(int i = 0; i < landingRangeObjectCount; ++i){
-		rail.landingRangeObjects.push_back(CreatePointObject());
+		rail.landingRangeObjects.push_back(CreatePointObject(kSampleModelPath));
 	}
 
 	// Play中のレール本体の管も固定数だけ生成しておく
@@ -116,8 +121,9 @@ std::string RailEditor::GetRailFilePath(int index) const{
 void RailEditor::Initialize(Obj3dCommon* objCommon){
 	objCommon_ = objCommon;
 
-	// 制御点描画用のモデルをロード
-	ModelManager::GetInstance()->LoadModel("Sphere/sphere.obj");
+	// 制御点の目印と、曲線の点列・着地範囲の点のモデルをロード
+	ModelManager::GetInstance()->LoadModel(kControlPointModelPath);
+	ModelManager::GetInstance()->LoadModel(kSampleModelPath);
 	// Play中のレール本体の管のモデルをロード
 	ModelManager::GetInstance()->LoadModel(kTubeModelPath);
 
@@ -161,7 +167,7 @@ void RailEditor::Update(){
 		activeRail.controlPoints.push_back(kDefaultControlPoint);
 
 		// 追加した制御点用の3Dオブジェクトを生成
-		activeRail.pointObjects.push_back(CreatePointObject());
+		activeRail.pointObjects.push_back(CreatePointObject(kControlPointModelPath));
 	}
 
 	ImGui::Separator();

@@ -10,8 +10,8 @@
 #include "Editor/RailEditor.h"
 
 namespace{
-	// プレイヤーの表示に使用するモデル
-	const std::string kPlayerModelPath = "human/walk.gltf";
+	// プレイヤーの表示に使用するモデル(インクタンクを背負い、ブラスターを構えたキャラクター)
+	const std::string kPlayerModelPath = "Player/player.obj";
 
 	// 体の色(参考にしたスプラトゥーンの映像に合わせ、自分のインクと同じ黄色にする)
 	constexpr Vector4 kPlayerColor = {1.0f, 0.85f, 0.15f, 1.0f};
@@ -24,7 +24,7 @@ Player::~Player() = default;
 void Player::Initialize(Obj3dCommon* objCommon,const std::string& paramGroup){
 	paramGroup_ = paramGroup;
 
-	// 人型モデルの読み込みと生成
+	// プレイヤーのモデルの読み込みと生成
 	ModelManager::GetInstance()->LoadModel(kPlayerModelPath);
 	obj_ = std::make_unique<Obj3D>();
 	obj_->Initialize(objCommon);
