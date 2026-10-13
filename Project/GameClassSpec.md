@@ -244,6 +244,7 @@ Game/
 レールの終端に到達したときの画面。
 
 - 背景に `resource/circle.png` を緑系の色で表示する。
+- 画面の中央に「GAME CLEAR!」と「SPACE でタイトルへ」を描いた画像（`resource/UI/clearTitle.png`、仮素材）を表示する。ImGui を使わないため Release 構成でも表示される。
 - 「STAGE CLEAR!」と操作説明を ImGui で表示する（専用のフォント描画が無いため）。
 - SPACE で GAME へ戻る（タイトルから始まる）。
 
@@ -252,6 +253,7 @@ Game/
 プレイヤーの体力が 0 になったときの画面。ClearScene と同じ構成。
 
 - 背景に `resource/circle.png` を赤系の色で表示する。
+- 画面の中央に「GAME OVER」と「SPACE でタイトルへ」を描いた画像（`resource/UI/gameOverTitle.png`、仮素材）を表示する。ImGui を使わないため Release 構成でも表示される。
 - 「GAME OVER」と操作説明を ImGui で表示する。
 - SPACE で GAME へ戻る（タイトルから始まる）。
 

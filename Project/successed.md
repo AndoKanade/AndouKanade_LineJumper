@@ -818,3 +818,15 @@ GameScene.cpp が約1000行あり、道中作りでさらに処理が増える�
 ### ビルド確認（8.）
 
 この変更は Windows でのビルド・実機での確認をしていない。DirectX・Windows のヘッダーを仮のものに置き換えて clang で構文チェックだけ行い、Game フォルダの全ての .cpp に ImGui がある構成・無い構成どちらでもエラーが無いことを確認した。
+
+### 9. クリア画面・ゲームオーバー画面に画面の名前の画像を出した
+
+対象ファイル: `Game/scenes/ClearScene.h/.cpp`、`Game/scenes/GameOverScene.h/.cpp`、`tools/generate_result_assets.py`（新規）、`resource/UI/clearTitle.png` / `gameOverTitle.png`（新規）
+
+- どちらの画面も丸の画像と ImGui の文字だけで、今どの画面なのか分かりにくく、Release 構成では文字が出なかった。
+- 画面の中央に、画面の名前（クリアは黄色の「GAME CLEAR!」、ゲームオーバーはピンクの「GAME OVER」）と「SPACE でタイトルへ」を描いた画像を表示するようにした。仮素材で、`tools/generate_result_assets.py` で生成する（Project フォルダで `python tools/generate_result_assets.py`、Pillow が必要）。
+- これまでの丸の背景と ImGui のウィンドウ（結果の表示）はそのまま残している。
+
+### ビルド確認（9.）
+
+この変更は Windows でのビルド・実機での確認をしていない。clang で構文チェックだけ行い、ImGui がある構成・無い構成どちらでもエラーが無いことを確認した。
