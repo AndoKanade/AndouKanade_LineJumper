@@ -12,8 +12,6 @@ namespace{
 	// tools/generate_start_stage_assets.py で生成した画像
 	// 操作案内(SPACE 出発する)
 	const std::string kPromptTexture = "resource/UI/startPrompt.png";
-	// ステージ情報(番号・ステージ名・目標)
-	const std::string kStageCardTexture = "resource/UI/stageCard.png";
 	// GO!
 	const std::string kGoTexture = "resource/UI/go.png";
 	// 目標の文言
@@ -48,7 +46,6 @@ void StageIntroUI::Initialize(SpriteCommon* spriteCommon){
 	};
 
 	promptSprite_ = createSprite(kPromptTexture,kPromptSize);
-	stageCardSprite_ = createSprite(kStageCardTexture,kStageCardSize);
 	goSprite_ = createSprite(kGoTexture,kGoSize);
 	missionSprite_ = createSprite(kMissionTexture,kMissionSize);
 }
@@ -58,8 +55,6 @@ void StageIntroUI::Reset(){
 	isPromptVisible_ = false;
 	promptAlpha_ = 0.0f;
 	promptTime_ = 0.0f;
-	isStageCardVisible_ = false;
-	stageCardProgress_ = 0.0f;
 	goTimer_ = 0.0f;
 	isGoActive_ = false;
 }
@@ -83,15 +78,6 @@ void StageIntroUI::Update(float deltaTime){
 	promptSprite_->SetPosition({centerX, screenHeight * kPromptHeightRate + kPromptBobHeight * std::sin(promptTime_ * kPromptBobSpeed)});
 	promptSprite_->SetColor(WhiteWithAlpha(promptAlpha_));
 	promptSprite_->Update();
-
-	// ステージ情報は画面の上から勢いよく下ろし、少し行き過ぎてから止める(引っ込めるときは逆にたどる)
-	float slideStep = deltaTime / kStageCardSlideDuration;
-	stageCardProgress_ = std::clamp(stageCardProgress_ + (isStageCardVisible_?slideStep:-slideStep),0.0f,1.0f);
-	const float cardHiddenY = -kStageCardSize.y * kCenterAnchor.y;
-	const float cardShownY = screenHeight * kStageCardHeightRate;
-	stageCardSprite_->SetPosition({centerX, Lerp(cardHiddenY,cardShownY,Easing::EaseOutBack(stageCardProgress_))});
-	stageCardSprite_->SetColor(WhiteWithAlpha(stageCardProgress_));
-	stageCardSprite_->Update();
 
 	if(!isGoActive_){
 		return;
@@ -146,9 +132,6 @@ void StageIntroUI::Draw(){
 
 	if(promptAlpha_ > kPromptMinVisibleAlpha){
 		promptSprite_->Draw();
-	}
-	if(stageCardProgress_ > 0.0f){
-		stageCardSprite_->Draw();
 	}
 	if(isGoActive_){
 		missionSprite_->Draw();

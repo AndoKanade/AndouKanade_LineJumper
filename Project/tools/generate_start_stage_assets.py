@@ -3,8 +3,8 @@
 # 出力先:
 #   resource/StartPlatform/  ゲートの前の目印・出発時に広がる輪(ring)
 #                            (台とゲートの柱・ランプ・遮断棒は、既存の立方体 startPlatform.obj を使う)
-#   resource/UI/             出発の操作案内(startPrompt)、ステージ情報(stageCard)、GO!(go)、目標の表示(missionText)
-# ステージ名・目標の文言・色は、下の定数を書き換えてから実行し直せば変えられる。
+#   resource/UI/             出発の操作案内(startPrompt)、GO!(go)、目標の表示(missionText)
+# 目標の文言・色は、下の定数を書き換えてから実行し直せば変えられる。
 
 from pathlib import Path
 
@@ -18,9 +18,6 @@ UI_DIR = Path("resource/UI")
 FONT_PATH = Path("resource/fonts/MochiyPopPOne-Regular.ttf")
 
 # 画面表示の文言
-STAGE_NUMBER = "01"
-STAGE_LABEL = "STAGE"
-STAGE_NAME = "雲海ライン"
 MISSION_TEXT = "的を撃ちぬいて ゴールをめざせ!"
 PROMPT_KEY = "SPACE"
 PROMPT_TEXT = "出発する"
@@ -121,37 +118,6 @@ def generate_prompt():
     image.save(UI_DIR / "startPrompt.png")
 
 
-def generate_stage_card():
-    """ステージ情報: 番号の丸・ステージ名・目標を並べた横長の札"""
-    width, height = 1024, 256
-    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
-    draw.rounded_rectangle([8, 24, width - 9, height - 25], radius=36, fill=PANEL_COLOR)
-    # 左端の黄色の帯
-    draw.rounded_rectangle([8, 24, 40, height - 25], radius=16, fill=INK_YELLOW)
-    draw.rectangle([24, 24, 40, height - 25], fill=INK_YELLOW)
-    # 番号の丸
-    center = (148, height // 2)
-    radius = 78
-    draw.ellipse([center[0] - radius, center[1] - radius, center[0] + radius, center[1] + radius], fill=INK_YELLOW)
-    label_font = load_font(22)
-    label_box = draw.textbbox((0, 0), STAGE_LABEL, font=label_font)
-    draw.text((center[0] - (label_box[2] - label_box[0]) / 2 - label_box[0], center[1] - 50 - label_box[1]), STAGE_LABEL, font=label_font, fill=DARK_NAVY)
-    number_font = load_font(70)
-    number_box = draw.textbbox((0, 0), STAGE_NUMBER, font=number_font)
-    draw.text((center[0] - (number_box[2] - number_box[0]) / 2 - number_box[0], center[1] - 22 - number_box[1]), STAGE_NUMBER, font=number_font, fill=DARK_NAVY)
-    # ステージ名
-    name_font = load_font(64)
-    draw_outlined_text(draw, (260, 52), STAGE_NAME, name_font, WHITE, DARK_NAVY, 3)
-    # 目標(矢印の後に文言)
-    draw.line([(262, 172), (950, 172)], fill=(255, 255, 255, 70), width=2)
-    arrow_y = 196
-    draw.polygon([(262, arrow_y - 14), (286, arrow_y), (262, arrow_y + 14)], fill=INK_YELLOW)
-    mission_font = load_font(34)
-    mission_box = draw.textbbox((0, 0), MISSION_TEXT, font=mission_font)
-    draw.text((300 - mission_box[0], arrow_y - (mission_box[3] - mission_box[1]) / 2 - mission_box[1]), MISSION_TEXT, font=mission_font, fill=WHITE)
-    image.save(UI_DIR / "stageCard.png")
-
 
 def generate_go():
     """GO!: インクの黄色の太い文字に、濃い縁取りと斜体の傾き、外側の淡い光を付ける"""
@@ -197,7 +163,6 @@ def main():
     generate_ring_model()
     generate_ring_texture()
     generate_prompt()
-    generate_stage_card()
     generate_go()
     generate_mission_text()
     print(f"生成しました: {MODEL_DIR}/, {UI_DIR}/")

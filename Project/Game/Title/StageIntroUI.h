@@ -9,7 +9,7 @@ class SpriteCommon;
 
 /// <summary>
 /// 出発までの画面表示
-/// 出発台のゲートの前に立ったときの操作案内、ゲートを開けている間のステージ情報、
+/// 出発台のゲートの前に立ったときの操作案内と、
 /// レールに乗り込んだ瞬間の「GO!」と、その後に出す目標の文言を表示する。
 /// ImGui を使わずスプライトで描くため、Release 構成でも表示される。
 /// </summary>
@@ -27,12 +27,6 @@ public:
 	// 操作案内を出すかどうか(切り替えるとふわっと出たり消えたりする)
 	void SetPromptVisible(bool isVisible){ isPromptVisible_ = isVisible; }
 
-	// ステージ情報を画面上から下ろして出す
-	void ShowStageCard(){ isStageCardVisible_ = true; }
-
-	// ステージ情報を画面上へ引っ込める
-	void HideStageCard(){ isStageCardVisible_ = false; }
-
 	// 「GO!」を出し、続けて目標の文言を出す
 	void BeginGo();
 
@@ -47,8 +41,6 @@ private:
 
 	// 操作案内(SPACE 出発する)
 	std::unique_ptr<Sprite> promptSprite_;
-	// ステージ情報(番号・ステージ名・目標)
-	std::unique_ptr<Sprite> stageCardSprite_;
 	// GO!
 	std::unique_ptr<Sprite> goSprite_;
 	// 目標の文言
@@ -58,21 +50,16 @@ private:
 	bool isPromptVisible_ = false;
 	float promptAlpha_ = 0.0f;
 	float promptTime_ = 0.0f;
-	// ステージ情報を出すかどうかと、出し入れの進行度(0で画面外、1で表示位置)
-	bool isStageCardVisible_ = false;
-	float stageCardProgress_ = 0.0f;
 	// GO! を出してからの経過時間(秒)と、表示中かどうか
 	float goTimer_ = 0.0f;
 	bool isGoActive_ = false;
 
 	// 画像の大きさ(ピクセル)。生成した画像を縮めて表示する
 	static constexpr Vector2 kPromptSize = {384.0f, 96.0f};
-	static constexpr Vector2 kStageCardSize = {768.0f, 192.0f};
 	static constexpr Vector2 kGoSize = {480.0f, 240.0f};
 	static constexpr Vector2 kMissionSize = {768.0f, 96.0f};
 	// 画面上の位置(画面の幅・高さに対する割合)
 	static constexpr float kPromptHeightRate = 0.78f;
-	static constexpr float kStageCardHeightRate = 0.17f;
 	static constexpr float kGoHeightRate = 0.42f;
 	static constexpr float kMissionHeightRate = 0.15f;
 
@@ -83,8 +70,6 @@ private:
 	// 操作案内の上下の揺れ幅(ピクセル)と速さ(1秒あたりの位相の進み、ラジアン)
 	static constexpr float kPromptBobHeight = 4.0f;
 	static constexpr float kPromptBobSpeed = 4.0f;
-	// ステージ情報を出し入れする時間(秒)
-	static constexpr float kStageCardSlideDuration = 0.35f;
 
 	// GO! が飛び出してくる時間(秒)と、飛び出し始めの大きさの倍率
 	static constexpr float kGoPopDuration = 0.25f;

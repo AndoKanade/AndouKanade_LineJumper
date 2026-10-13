@@ -679,7 +679,7 @@ void GameScene::Draw(){
 		stageHUD_->Draw();
 	}
 
-	// 開始演出のタイトル表示(PRESS SPACE)と、出発までの表示(操作案内・ステージ情報・GO!)を最前面に描画する
+	// 開始演出のタイトル表示(PRESS SPACE)と、出発までの表示(操作案内・GO!)を最前面に描画する
 	if(startSequence_){
 		startSequence_->Draw2D();
 	}

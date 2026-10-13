@@ -27,7 +27,7 @@ public:
 		Title,      // タイトル表示中(スタート入力待ち)
 		CameraTurn, // カメラがプレイヤーの背後へ回り込み中
 		Standby,    // スタート台の上を自由に動ける(出発ゲートは閉じている。ゲートの前で SPACE を押すと開く)
-		GateOpen,   // 出発ゲートを開けている最中(ステージ情報を表示する。プレイヤーは動けない)
+		GateOpen,   // 出発ゲートを開けている最中(プレイヤーは動けない)
 		Boarding,   // 出発ゲートが開き、自分で歩いてレールへ乗り込むのを待っている
 		Playing,    // プレイ中
 	};
@@ -73,7 +73,7 @@ public:
 	// 3D描画処理(タイトルロゴのモデル)
 	void Draw3D();
 
-	// 2D描画処理(PRESS SPACE・操作案内・ステージ情報・GO! のスプライト)
+	// 2D描画処理(PRESS SPACE・操作案内・GO! のスプライト)
 	void Draw2D();
 
 	// レール進行・操作・射撃などのゲーム処理を動かしてよいか
@@ -116,7 +116,7 @@ private:
 	std::unique_ptr<TitleLogo> titleLogo_;
 	// タイトル表示(PRESS SPACE)
 	std::unique_ptr<TitleUI> titleUI_;
-	// 出発までの表示(操作案内・ステージ情報・GO!・目標)
+	// 出発までの表示(操作案内・GO!・目標)
 	std::unique_ptr<StageIntroUI> introUI_;
 	// 出発ゲートを開け閉めするスタート台(GameScene が持つ)
 	StartPlatform* startPlatform_ = nullptr;

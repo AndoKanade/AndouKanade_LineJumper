@@ -105,7 +105,7 @@ void StartSequence::Stop(){
 
 // 更新処理
 void StartSequence::Update(float deltaTime,const Vector3& playerPosition){
-	// 出発までの表示(操作案内・ステージ情報・GO!)は、どの段階でも出し入れの動きを進める
+	// 出発までの表示(操作案内・GO!)は、どの段階でも出し入れの動きを進める
 	if(introUI_ && phase_ != Phase::None){
 		introUI_->Update(deltaTime);
 	}
@@ -170,11 +170,10 @@ void StartSequence::Update(float deltaTime,const Vector3& playerPosition){
 			introUI_->SetPromptVisible(isAtGate);
 		}
 		if(isAtGate && input_ && input_->TriggerKey(DIK_SPACE)){
-			// ゲートのランプを順に点けている間、これから遊ぶステージの情報を見せる
+			// ゲートのランプを順に点けて開け始め、操作案内は消す
 			startPlatform_->BeginOpenGate();
 			if(introUI_){
 				introUI_->SetPromptVisible(false);
-				introUI_->ShowStageCard();
 			}
 			SoundManager::GetInstance()->PlayAudio(kDecideSePath,GetVolume(kSeVolumeKey));
 			phase_ = Phase::GateOpen;
@@ -183,11 +182,8 @@ void StartSequence::Update(float deltaTime,const Vector3& playerPosition){
 	}
 
 	case Phase::GateOpen:
-		// ゲートが開ききったらステージ情報を引っ込め、レールへ歩いて乗れるようにする
+		// ゲートが開ききったら、レールへ歩いて乗れるようにする
 		if(!startPlatform_ || startPlatform_->IsGateOpened()){
-			if(introUI_){
-				introUI_->HideStageCard();
-			}
 			phase_ = Phase::Boarding;
 		}
 		break;
