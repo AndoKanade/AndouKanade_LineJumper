@@ -116,7 +116,7 @@ private:
 	std::unique_ptr<TitleLogo> titleLogo_;
 	// タイトル表示(PRESS SPACE)
 	std::unique_ptr<TitleUI> titleUI_;
-	// 出発までの表示(操作案内・GO!・目標)
+	// 出発までの表示(操作案内・GO!)
 	std::unique_ptr<StageIntroUI> introUI_;
 	// 出発ゲートを開け閉めするスタート台(GameScene が持つ)
 	StartPlatform* startPlatform_ = nullptr;

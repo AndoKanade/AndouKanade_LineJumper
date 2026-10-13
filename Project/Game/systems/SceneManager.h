@@ -64,7 +64,8 @@ public:
 	/// 暗転中に呼ばれた場合は無視します(同じ遷移が二重に起きないようにするため)。
 	/// </summary>
 	/// <param name="sceneName">遷移先のシーン名</param>
-	void ChangeScene(const std::string& sceneName);
+	/// <param name="style">画面を覆う演出の種類(クリア・ゲームオーバーなど、切り替える理由に合わせて選ぶ)</param>
+	void ChangeScene(const std::string& sceneName,SceneTransition::Style style = SceneTransition::Style::Fade);
 
 	/// <summary>
 	/// シーンを切り替えずに暗転だけを行う(落下リスタートなど、シーンの中で画面のつながりが切れるとき用)

@@ -3,8 +3,8 @@
 # 出力先:
 #   resource/StartPlatform/  ゲートの前の目印・出発時に広がる輪(ring)
 #                            (台とゲートの柱・ランプ・遮断棒は、既存の立方体 startPlatform.obj を使う)
-#   resource/UI/             出発の操作案内(startPrompt)、GO!(go)、目標の表示(missionText)
-# 目標の文言・色は、下の定数を書き換えてから実行し直せば変えられる。
+#   resource/UI/             出発の操作案内(startPrompt)、GO!(go)
+# 文言・色は、下の定数を書き換えてから実行し直せば変えられる。
 
 from pathlib import Path
 
@@ -18,7 +18,6 @@ UI_DIR = Path("resource/UI")
 FONT_PATH = Path("resource/fonts/MochiyPopPOne-Regular.ttf")
 
 # 画面表示の文言
-MISSION_TEXT = "的を撃ちぬいて ゴールをめざせ!"
 PROMPT_KEY = "SPACE"
 PROMPT_TEXT = "出発する"
 GO_TEXT = "GO!"
@@ -145,17 +144,6 @@ def generate_go():
     image.save(UI_DIR / "go.png")
 
 
-def generate_mission_text():
-    """目標の表示: プレイ開始直後に画面上部へ出す白い文字(濃い縁取り付き)"""
-    width, height = 1024, 128
-    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
-    font = load_font(60)
-    box = draw.textbbox((0, 0), MISSION_TEXT, font=font, stroke_width=8)
-    origin = ((width - (box[2] - box[0])) / 2 - box[0], (height - (box[3] - box[1])) / 2 - box[1])
-    draw.text(origin, MISSION_TEXT, font=font, fill=WHITE, stroke_width=8, stroke_fill=DARK_NAVY)
-    image.save(UI_DIR / "missionText.png")
-
 
 def main():
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -164,7 +152,6 @@ def main():
     generate_ring_texture()
     generate_prompt()
     generate_go()
-    generate_mission_text()
     print(f"生成しました: {MODEL_DIR}/, {UI_DIR}/")
 
 

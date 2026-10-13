@@ -14,8 +14,6 @@ namespace{
 	const std::string kPromptTexture = "resource/UI/startPrompt.png";
 	// GO!
 	const std::string kGoTexture = "resource/UI/go.png";
-	// 目標の文言
-	const std::string kMissionTexture = "resource/UI/missionText.png";
 
 	// 白(画像の色をそのまま出す)。α値だけ変えて使う
 	constexpr Vector4 kWhite = {1.0f, 1.0f, 1.0f, 1.0f};
@@ -47,7 +45,6 @@ void StageIntroUI::Initialize(SpriteCommon* spriteCommon){
 
 	promptSprite_ = createSprite(kPromptTexture,kPromptSize);
 	goSprite_ = createSprite(kGoTexture,kGoSize);
-	missionSprite_ = createSprite(kMissionTexture,kMissionSize);
 }
 
 // 何も表示していない状態に戻す
@@ -59,7 +56,7 @@ void StageIntroUI::Reset(){
 	isGoActive_ = false;
 }
 
-// 「GO!」を出し、続けて目標の文言を出す
+// 「GO!」を出す
 void StageIntroUI::BeginGo(){
 	goTimer_ = 0.0f;
 	isGoActive_ = true;
@@ -102,22 +99,8 @@ void StageIntroUI::Update(float deltaTime){
 	goSprite_->SetColor(WhiteWithAlpha(goAlpha));
 	goSprite_->Update();
 
-	// 目標の文言は GO! が消え始めると同時に、少し上から下りてきて表示し、しばらくしたら消える
-	float missionTime = goTimer_ - kMissionStartTime;
-	float missionAlpha = 0.0f;
-	float missionDrop = 0.0f;
-	if(missionTime >= 0.0f){
-		float appearProgress = std::clamp(missionTime / kMissionAppearDuration,0.0f,1.0f);
-		float fadeProgress = std::clamp((missionTime - kMissionAppearDuration - kMissionHoldTime) / kMissionFadeDuration,0.0f,1.0f);
-		missionAlpha = appearProgress * (1.0f - fadeProgress);
-		missionDrop = kMissionDropDistance * (1.0f - Easing::EaseOutCubic(appearProgress));
-	}
-	missionSprite_->SetPosition({centerX, screenHeight * kMissionHeightRate - missionDrop});
-	missionSprite_->SetColor(WhiteWithAlpha(missionAlpha));
-	missionSprite_->Update();
-
-	// 目標の文言を消し終えたら、すべての表示が終わる
-	if(missionTime >= kMissionAppearDuration + kMissionHoldTime + kMissionFadeDuration){
+	// GO! が消え終わったら、すべての表示が終わる
+	if(goTimer_ >= goFadeStartTime + kGoFadeDuration){
 		isGoActive_ = false;
 	}
 }
@@ -134,7 +117,6 @@ void StageIntroUI::Draw(){
 		promptSprite_->Draw();
 	}
 	if(isGoActive_){
-		missionSprite_->Draw();
 		goSprite_->Draw();
 	}
 }

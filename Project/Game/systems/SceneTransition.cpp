@@ -6,6 +6,7 @@
 #include "Easing.h"
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <string>
 #include <utility>
 
@@ -15,6 +16,43 @@ namespace{
 	const std::string kFadeTexture = "resource/white16x16.png";
 	// RetryCutIn で差し込む「RETRY」の文字(白で描いた画像に色を掛けて使う。仮素材)
 	const std::string kRetryTexture = "resource/UI/retry.png";
+	// InkBurst で弾けるインクのしみ(白で描いた画像に色を掛けて使う。tools/generate_transition_assets.py で生成する)
+	const std::string kInkSplatTextures[] = {
+		"resource/UI/transition/inkSplat0.png",
+		"resource/UI/transition/inkSplat1.png",
+		"resource/UI/transition/inkSplat2.png",
+	};
+	// InkDrip で垂れるインクの先の丸み(白い円。同じスクリプトで生成する)
+	const std::string kDripTipTexture = "resource/UI/transition/dripTip.png";
+	// 垂れるインクの本体は上の端を基準に下へ伸ばすため、上の辺の中央を基準点にする
+	constexpr Vector2 kTopCenterAnchor = {0.5f, 0.0f};
+
+	// InkBurst のしみ1つ分の置き方
+	struct InkSplatLayout{
+		Vector2 position; // 中心の位置(画面の幅・高さに対する割合)
+		float sizeScale;  // 大きさ(画面の高さに対する倍率)
+		float angle;      // 傾き(ラジアン)
+		int textureIndex; // 使うしみの画像の番号
+	};
+	// 画面の中心から外へ向かう順に並べ、この順に弾けさせる(大きさ・傾き・画像を変えて同じ形が並ばないようにする)
+	constexpr InkSplatLayout kInkSplatLayouts[] = {
+		{{0.5f, 0.5f}, 1.3f, 0.3f, 0},
+		{{0.27f, 0.33f}, 1.2f, 1.9f, 1},
+		{{0.73f, 0.64f}, 1.25f, 4.0f, 2},
+		{{0.72f, 0.24f}, 1.15f, 2.6f, 0},
+		{{0.28f, 0.76f}, 1.2f, 5.1f, 1},
+		{{0.06f, 0.5f}, 1.1f, 0.9f, 2},
+		{{0.94f, 0.45f}, 1.15f, 3.3f, 0},
+		{{0.5f, 0.1f}, 1.1f, 5.8f, 1},
+		{{0.52f, 0.92f}, 1.15f, 1.2f, 2},
+		{{0.08f, 0.1f}, 1.05f, 2.2f, 0},
+		{{0.92f, 0.9f}, 1.1f, 4.6f, 1},
+		{{0.1f, 0.92f}, 1.05f, 0.5f, 2},
+		{{0.92f, 0.1f}, 1.05f, 3.8f, 0},
+	};
+	constexpr int kInkSplatCount = static_cast<int>(std::size(kInkSplatLayouts));
+	// しみの色を交互に変えるための割る数
+	constexpr int kInkColorAlternateCount = 2;
 	// スプライトを左上基準で配置するためのアンカー
 	constexpr Vector2 kTopLeftAnchor = {0.0f, 0.0f};
 	// 帯を傾けても中心がずれないよう、中心基準で配置するためのアンカー
@@ -119,6 +157,28 @@ void SceneTransition::Initialize(SpriteCommon* spriteCommon){
 	// 文字は画像の大きさ(Initialize で設定される)を基準に拡大して、演出中は変えない
 	const Vector2& textureSize = cutInTextSprite_->GetSize();
 	cutInTextSprite_->SetSize({textureSize.x * kCutInTextScale, textureSize.y * kCutInTextScale});
+
+	// InkBurst のしみ
+	for(const std::string& texture : kInkSplatTextures){
+		TextureManager::GetInstance()->LoadTexture(texture);
+	}
+	for(const InkSplatLayout& layout : kInkSplatLayouts){
+		inkSplatSprites_.push_back(createBandSprite(kInkSplatTextures[layout.textureIndex]));
+	}
+
+	// InkDrip の垂れるインク(本体は上の端を基準に伸ばす)
+	TextureManager::GetInstance()->LoadTexture(kDripTipTexture);
+	for(int i = 0; i < kDripCount; ++i){
+		std::unique_ptr<Sprite> rim = createBandSprite(kFadeTexture);
+		rim->SetAnchorPoint(kTopCenterAnchor);
+		dripRimSprites_.push_back(std::move(rim));
+		dripRimTipSprites_.push_back(createBandSprite(kDripTipTexture));
+
+		std::unique_ptr<Sprite> body = createBandSprite(kFadeTexture);
+		body->SetAnchorPoint(kTopCenterAnchor);
+		dripSprites_.push_back(std::move(body));
+		dripTipSprites_.push_back(createBandSprite(kDripTipTexture));
+	}
 }
 
 // スプライトを解放する
@@ -131,6 +191,11 @@ void SceneTransition::Finalize(){
 	cutInCoverSprite_.reset();
 	cutInBandSprite_.reset();
 	cutInTextSprite_.reset();
+	inkSplatSprites_.clear();
+	dripRimSprites_.clear();
+	dripRimTipSprites_.clear();
+	dripSprites_.clear();
+	dripTipSprites_.clear();
 	onCovered_ = nullptr;
 	phase_ = Phase::None;
 	coverRate_ = kNotCovered;
@@ -200,6 +265,12 @@ void SceneTransition::Update(float deltaTime){
 	case Style::RetryCutIn:
 		UpdateRetryCutIn();
 		break;
+	case Style::InkBurst:
+		UpdateInkBurst();
+		break;
+	case Style::InkDrip:
+		UpdateInkDrip();
+		break;
 	case Style::Fade:
 	default:
 		UpdateFade();
@@ -243,6 +314,27 @@ void SceneTransition::Draw(){
 		cutInTextSprite_->Draw();
 		break;
 
+	case Style::InkBurst:
+		// しみを描いてから、隙間を埋める全体の塗りを重ねる
+		for(const std::unique_ptr<Sprite>& sprite : inkSplatSprites_){
+			sprite->Draw();
+		}
+		fadeSprite_->Draw();
+		break;
+
+	case Style::InkDrip:
+		// 暗くした画面 → 差し色の縁取り → 本体 の順に重ね、本体より先に出た縁取りだけが見えるようにする
+		fadeSprite_->Draw();
+		for(size_t i = 0; i < dripRimSprites_.size(); ++i){
+			dripRimSprites_[i]->Draw();
+			dripRimTipSprites_[i]->Draw();
+		}
+		for(size_t i = 0; i < dripSprites_.size(); ++i){
+			dripSprites_[i]->Draw();
+			dripTipSprites_[i]->Draw();
+		}
+		break;
+
 	case Style::Fade:
 	default:
 		fadeSprite_->Draw();
@@ -259,6 +351,10 @@ float SceneTransition::GetCoverDuration() const{
 		return kColumnCoverDuration;
 	case Style::RetryCutIn:
 		return kCutInCoverDuration;
+	case Style::InkBurst:
+		return kInkBurstCoverDuration;
+	case Style::InkDrip:
+		return kDripCoverDuration;
 	case Style::Fade:
 	default:
 		return kFadeCoverDuration;
@@ -274,6 +370,10 @@ float SceneTransition::GetRevealDuration() const{
 		return kColumnRevealDuration;
 	case Style::RetryCutIn:
 		return kCutInRevealDuration;
+	case Style::InkBurst:
+		return kInkBurstRevealDuration;
+	case Style::InkDrip:
+		return kDripRevealDuration;
 	case Style::Fade:
 	default:
 		return kFadeRevealDuration;
@@ -400,4 +500,80 @@ void SceneTransition::UpdateRetryCutIn(){
 	PlaceSprite(cutInCoverSprite_.get(),kScreenCenter,kCutInAngle,{length, coverThickness},kBaseColor);
 	PlaceSprite(cutInBandSprite_.get(),MoveAlong(kScreenCenter,lengthAxis,bandSlide),kCutInAngle,{length, kCutInBandThickness},kAccentColor);
 	PlaceSprite(cutInTextSprite_.get(),MoveAlong(kScreenCenter,lengthAxis,textSlide),kCutInAngle,cutInTextSprite_->GetSize(),kBaseColor);
+}
+
+// InkBurst: 自分の黄色いインクのしみが画面の中心から外へ次々に弾けて広がり、最後に隙間を塗って画面を覆う
+// 戻すときは、しみが少し持ち上がってから下へ垂れ落ちるように抜けていく
+void SceneTransition::UpdateInkBurst(){
+	const bool isRevealing = phase_ == Phase::Revealing;
+
+	for(int i = 0; i < kInkSplatCount; ++i){
+		const InkSplatLayout& layout = kInkSplatLayouts[i];
+		float scale = kProgressMax;
+		float drop = 0.0f;
+		if(isRevealing){
+			float progress = GetStaggeredProgress(kFullyCovered - coverRate_,i,kInkSplatCount,kInkSplatRevealStagger);
+			drop = kScreenHeight * kInkSplatFallScale * Easing::EaseInBack(progress);
+		} else{
+			// 弾けた勢いで少し大きくなりすぎてから収まる
+			float progress = GetStaggeredProgress(coverRate_,i,kInkSplatCount,kInkSplatCoverStagger);
+			scale = Easing::EaseOutBack(progress);
+		}
+
+		float size = kScreenHeight * layout.sizeScale * scale;
+		Vector2 center = {kScreenWidth * layout.position.x, kScreenHeight * layout.position.y + drop};
+		const Vector4& color = (i % kInkColorAlternateCount == 0) ? kInkColor : kInkShadeColor;
+		PlaceSprite(inkSplatSprites_[i].get(),center,layout.angle,{size, size},color);
+	}
+
+	// しみの隙間に見えている画面を、覆い終わる直前に全体を塗って隠す(戻し始めにすぐ消して、しみが落ちる様子を見せる)
+	float fillAlpha = isRevealing
+		? kProgressMax - GetRangeProgress(kFullyCovered - coverRate_,kProgressMin,kInkFillRevealEnd)
+		: GetRangeProgress(coverRate_,kInkFillCoverStart,kFullyCovered);
+	fadeSprite_->SetColor({kInkColor.x, kInkColor.y, kInkColor.z, fillAlpha});
+	fadeSprite_->Update();
+}
+
+// InkDrip: 画面の上の縁を暗いインクで埋めてから、太さの違うインクが順番ばらばらに加速しながら垂れてきて画面を覆う
+// 戻すときは、覆ったインクがひとかたまりのまま下へ沈んでいく
+void SceneTransition::UpdateInkDrip(){
+	const bool isRevealing = phase_ == Phase::Revealing;
+	const float spacing = kScreenWidth / static_cast<float>(kDripCount);
+	const float bandLength = kScreenHeight * kDripBandRate;
+	constexpr int widthScaleCount = static_cast<int>(std::size(kDripWidthScales));
+
+	// 戻すときに沈む距離と、画面を暗くする濃さ
+	float sink = 0.0f;
+	float tintAlpha = 0.0f;
+	if(isRevealing){
+		sink = kScreenHeight * kDripSinkScale * Easing::EaseInCubic(kFullyCovered - coverRate_);
+		tintAlpha = kDripTintAlpha * coverRate_;
+	} else{
+		// 垂れている間は少しずつ暗くし、覆い終わる直前に隙間が残っていても隠れるよう濃さを1まで上げる
+		tintAlpha = (std::max)(kDripTintAlpha * Easing::EaseOutCubic(coverRate_),GetRangeProgress(coverRate_,kDripFillStart,kFullyCovered));
+	}
+	fadeSprite_->SetColor({kBaseColor.x, kBaseColor.y, kBaseColor.z, tintAlpha});
+	fadeSprite_->Update();
+
+	for(int i = 0; i < kDripCount; ++i){
+		float width = spacing * kDripWidthScales[i % widthScaleCount];
+		// 先の丸みの分だけ長くして、垂れきったときに画面の下の端まで届くようにする
+		float fullLength = kScreenHeight + width * kHalf;
+
+		float length = fullLength;
+		if(!isRevealing){
+			// 上の縁の帯はすぐに埋め、そこから先は重さで加速するように垂れる
+			int order = (i * kDripOrderStep) % kDripCount;
+			float progress = GetStaggeredProgress(coverRate_,order,kDripCount,kDripStagger);
+			float band = bandLength * Easing::EaseOutCubic(GetRangeProgress(coverRate_,kProgressMin,kDripBandEnd));
+			length = band + (fullLength - band) * progress * progress;
+		}
+
+		float x = (static_cast<float>(i) + kHalf) * spacing;
+		// 差し色の縁取りは本体より少しだけ長くして、垂れた先にだけ見えるようにする
+		PlaceSprite(dripRimSprites_[i].get(),{x, sink},0.0f,{width, length + kDripRimLead},kAccentColor);
+		PlaceSprite(dripRimTipSprites_[i].get(),{x, sink + length + kDripRimLead},0.0f,{width, width},kAccentColor);
+		PlaceSprite(dripSprites_[i].get(),{x, sink},0.0f,{width, length},kBaseColor);
+		PlaceSprite(dripTipSprites_[i].get(),{x, sink + length},0.0f,{width, width},kBaseColor);
+	}
 }

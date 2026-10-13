@@ -759,3 +759,39 @@ GameScene.cpp が約1000行あり、道中作りでさらに処理が増える�
 ### ビルド確認（5.）
 
 この変更は Windows でのビルド・実機での確認をしていない。4. と同じく clang で構文チェックだけ行い、エラーが無いことを確認した。
+
+### 6. GO! の後の目標の文言をなくした
+
+対象ファイル: `Game/Title/StageIntroUI.h/.cpp`、`tools/generate_start_stage_assets.py`、`resource/UI/missionText.png`（削除）
+
+- GO! が消え始めると同時に画面上部に出していた目標の文言（的を撃ちぬいて ゴールをめざせ!）はいらないため削除した。GO! が消え終わった時点で出発までの表示は終わる。
+
+### 7. クリア・ゲームオーバーへの切り替えの演出
+
+対象ファイル: `Game/systems/SceneTransition.h/.cpp`、`Game/systems/SceneManager.h/.cpp`、`Game/scenes/GameScene.cpp`、`tools/generate_transition_assets.py`（新規）、`resource/UI/transition/`（新規）
+
+これまではどの切り替えも黒のフェードだった。ゲームの「自分のインク（黄色）でレールを塗りながら進む」見た目に合わせ、クリアとゲームオーバーで正反対の動きのインクの演出にした。
+
+| 切り替え | 演出 | 内容 |
+| --- | --- | --- |
+| ゲーム → クリア | `InkBurst` | 自分の黄色いインクのしみが、画面の中心から外へ次々に弾けて広がる（勢い余って少し大きくなってから収まる）。最後に隙間を黄色で塗って覆う。クリア画面に変わったら塗りを消し、しみが少し持ち上がってから下へ垂れ落ちて抜けていく |
+| ゲーム → ゲームオーバー | `InkDrip` | 画面が少しずつ暗くなり、上の縁を暗いインクが埋めた後、太さの違うインクが順番ばらばらに、重さで加速しながら垂れてきて覆う。垂れた先にはピンクの縁取りが見える。ゲームオーバー画面に変わったら、覆ったインクがひとかたまりのまま下へ沈んでいく |
+
+- 弾ける（上向き・明るい）と垂れる（下向き・暗い）で、成功と失敗が一目で分かるようにした。
+- `SceneManager::ChangeScene()` に演出の種類を渡せるようにした（省略時はこれまでどおり `Fade`）。クリア画面・ゲームオーバー画面からゲームへ戻るときは `Fade` のまま。
+- ImGui の「Fall Transition」の選択肢に `InkBurst` / `InkDrip` を足した。Preview でクリア・ゲームオーバーにならなくても見た目を確認できる。
+- しみと垂れるインクの先の丸みの画像は `tools/generate_transition_assets.py` で生成する（Project フォルダで `python tools/generate_transition_assets.py`、numpy と Pillow が必要）。しみは、本体の円から先の丸い腕を突き出してなめらかにつなぎ、周りにしずくを飛ばした形を 3 種類作っている。
+- 実装の前に、同じ計算を Python で再現して動きのコマ割りを確認し、戻すときの塗りやインクの動きが角ばって見えないよう調整した。
+
+| 定数 | 値 | 内容 |
+| --- | --- | --- |
+| `kInkBurstCoverDuration` / `kInkBurstRevealDuration` | 0.9f / 0.7f | クリアの演出の覆う・戻す時間（秒） |
+| `kInkFillCoverStart` | 0.8f | しみの隙間を黄色で塗り始める覆い具合 |
+| `kDripCoverDuration` / `kDripRevealDuration` | 1.1f / 0.7f | ゲームオーバーの演出の覆う・戻す時間（秒） |
+| `kDripCount` | 16 | 垂れるインクの本数 |
+| `kDripWidthScales` | 1.3, 0.9, 1.5, 1.0, 1.2, 0.85, 1.4, 1.1 | 垂れるインクの太さの倍率（隣り合う 2 本の和を 2 以上にして隙間を作らない） |
+| `kDripTintAlpha` | 0.45f | 垂れている間に画面を暗くする濃さ |
+
+### ビルド確認（6.・7.）
+
+この変更は Windows でのビルド・実機での確認をしていない。DirectX・Windows のヘッダーを仮のものに置き換えて clang で構文チェックだけ行い、Game フォルダの全ての .cpp にエラーが無いことを確認した。

@@ -22,6 +22,8 @@ public:
 		RailStripes, // レールを模した斜めの帯が左右から走って覆い、始点の方向(左)へ抜けていく
 		FallAndLift, // 帯が上から落ちてきて覆い、下に沈んでから上へ持ち上げるように抜けていく
 		RetryCutIn,  // 画面を暗くして斜めの帯と「RETRY」の文字を差し込み、黒の帯を広げて覆う
+		InkBurst,    // 自分の黄色いインクが画面の中心から外へ次々に弾けて塗りつぶし、下へ垂れ落ちて抜けていく(クリア)
+		InkDrip,     // 暗いインクが画面の上から不揃いに垂れてきて覆い、そのまま下へ沈んで抜けていく(ゲームオーバー)
 	};
 
 	SceneTransition();
@@ -64,6 +66,8 @@ private:
 	void UpdateRailStripes();
 	void UpdateFallAndLift();
 	void UpdateRetryCutIn();
+	void UpdateInkBurst();
+	void UpdateInkDrip();
 
 	// 今の段階
 	Phase phase_ = Phase::None;
@@ -87,6 +91,13 @@ private:
 	std::unique_ptr<Sprite> cutInCoverSprite_;
 	std::unique_ptr<Sprite> cutInBandSprite_;
 	std::unique_ptr<Sprite> cutInTextSprite_;
+	// InkBurst の、画面に弾けるインクのしみ(全面を塗る色は fadeSprite_ に色を掛けて使う)
+	std::vector<std::unique_ptr<Sprite>> inkSplatSprites_;
+	// InkDrip の、垂れるインクの本体と先の丸み(差し色の縁取り用と、本体の色用の2層)
+	std::vector<std::unique_ptr<Sprite>> dripRimSprites_;
+	std::vector<std::unique_ptr<Sprite>> dripRimTipSprites_;
+	std::vector<std::unique_ptr<Sprite>> dripSprites_;
+	std::vector<std::unique_ptr<Sprite>> dripTipSprites_;
 
 	// 演出の色(色数を黒と差し色の2色に絞り、何が起きたかを一目で分かるようにする)
 	static constexpr Vector4 kBaseColor = {0.03f, 0.03f, 0.05f, 1.0f};
@@ -157,4 +168,46 @@ private:
 	static constexpr float kCutInTextScale = 1.5f;
 	// 画面を戻すときに、帯と文字が抜けきる進み具合
 	static constexpr float kCutInExitEnd = 0.5f;
+
+	// InkBurst の調整項目(しみの位置・大きさ・傾きの並びは SceneTransition.cpp の kInkSplatLayouts)
+	// 画面を覆いきる・戻しきるまでの時間(秒)
+	static constexpr float kInkBurstCoverDuration = 0.9f;
+	static constexpr float kInkBurstRevealDuration = 0.7f;
+	// しみどうしが弾け始める・落ち始めるタイミングのずれ(覆い具合に対する割合)
+	static constexpr float kInkSplatCoverStagger = 0.05f;
+	static constexpr float kInkSplatRevealStagger = 0.04f;
+	// しみが落ちていく距離(画面の高さに対する倍率)
+	static constexpr float kInkSplatFallScale = 1.8f;
+	// しみの隙間を埋めるため、画面全体をインクの色で塗り始める覆い具合
+	static constexpr float kInkFillCoverStart = 0.8f;
+	// 画面を戻すときに、全体の塗りが消えきる進み具合
+	static constexpr float kInkFillRevealEnd = 0.3f;
+	// 自分のインクの色(黄色)と、重なりを見分けやすくするための少し濃い色(しみごとに交互に使う)
+	static constexpr Vector4 kInkColor = {1.0f, 0.85f, 0.15f, 1.0f};
+	static constexpr Vector4 kInkShadeColor = {0.95f, 0.62f, 0.1f, 1.0f};
+
+	// InkDrip の調整項目
+	// 画面を覆いきる・戻しきるまでの時間(秒。重さを出すため覆う側を長めにする)
+	static constexpr float kDripCoverDuration = 1.1f;
+	static constexpr float kDripRevealDuration = 0.7f;
+	// 垂れるインクの本数
+	static constexpr int kDripCount = 16;
+	// 垂れ始める順番をばらけさせるため、番号にこの数を掛けて本数で割った余りを順番にする(本数と互いに素な数)
+	static constexpr int kDripOrderStep = 5;
+	// 垂れるインクどうしが垂れ始めるタイミングのずれ(覆い具合に対する割合)
+	static constexpr float kDripStagger = 0.03f;
+	// 最初に画面の上の縁を埋める帯の長さ(画面の高さに対する割合)と、埋め終わる覆い具合
+	static constexpr float kDripBandRate = 0.12f;
+	static constexpr float kDripBandEnd = 0.25f;
+	// 本数で分けた幅に対する、垂れるインクの太さの倍率(不揃いに見せるため順に使う)
+	// 隣り合う2本の倍率の和が2以上になるようにして、垂れきったときに隙間ができないようにする
+	static constexpr float kDripWidthScales[] = {1.3f, 0.9f, 1.5f, 1.0f, 1.2f, 0.85f, 1.4f, 1.1f};
+	// 差し色の縁取りを本体より先に出す長さ(ピクセル)
+	static constexpr float kDripRimLead = 8.0f;
+	// 垂れている間に画面を暗くする濃さ
+	static constexpr float kDripTintAlpha = 0.45f;
+	// 隙間が残っても画面を覆いきれるよう、暗くする濃さを1まで上げ始める覆い具合
+	static constexpr float kDripFillStart = 0.92f;
+	// 画面を戻すときに沈んでいく距離(画面の高さに対する倍率)
+	static constexpr float kDripSinkScale = 1.6f;
 };

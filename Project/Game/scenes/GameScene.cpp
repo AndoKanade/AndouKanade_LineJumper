@@ -65,7 +65,7 @@ namespace{
 
 #ifdef USE_IMGUI
 	// 落下リスタートの演出の名前(ImGui の切り替えに表示する。SceneTransition::Style と同じ順番にする)
-	const char* kFallTransitionNames[] = {"Fade", "RailStripes", "FallAndLift", "RetryCutIn"};
+	const char* kFallTransitionNames[] = {"Fade", "RailStripes", "FallAndLift", "RetryCutIn", "InkBurst", "InkDrip"};
 #endif
 }
 
@@ -381,7 +381,8 @@ void GameScene::UpdateGameplay(){
 		StageResult::destroyedTargetCount = targetManager_->GetDestroyedCount();
 		StageResult::totalTargetCount = targetManager_->GetTotalCount();
 		StageResult::maxCombo = comboCounter_->GetMaxCombo();
-		sceneManager_->ChangeScene("CLEAR");
+		// クリアは自分の黄色いインクが弾けて画面を塗りつぶす演出で切り替える
+		sceneManager_->ChangeScene("CLEAR",SceneTransition::Style::InkBurst);
 		return;
 	}
 
@@ -439,7 +440,8 @@ void GameScene::UpdateGameplay(){
 	// 体力が0になったらゲームオーバー画面へ遷移する
 	// クリア判定と同じく、以降の落下リスタートなどの処理を行わないようここで抜ける
 	if(isGameplayActive && player_->IsDead()){
-		sceneManager_->ChangeScene("GAMEOVER");
+		// ゲームオーバーは暗いインクが上から垂れてきて画面を覆う演出で切り替える
+		sceneManager_->ChangeScene("GAMEOVER",SceneTransition::Style::InkDrip);
 		return;
 	}
 

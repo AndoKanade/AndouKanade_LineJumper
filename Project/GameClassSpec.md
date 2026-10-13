@@ -97,7 +97,7 @@ Game/
 | `GetInstance()` | インスタンスの取得 |
 | `SetFactory(AbstractSceneFactory*)` | シーン生成に使う工場を登録する |
 | `SetCommonPtr(Obj3dCommon*, Input*, SpriteCommon*)` | 各シーンに渡す共通リソースを登録する |
-| `ChangeScene(const std::string&)` | 暗転を始め、画面を覆い終わったら次のシーンを予約する。実際の切り替えはその直後の `Update()` の冒頭。最初のシーンだけは暗転せずに切り替える。暗転中に呼ばれたら無視する |
+| `ChangeScene(const std::string&, SceneTransition::Style)` | 指定した演出（省略時は `Fade`）で暗転を始め、画面を覆い終わったら次のシーンを予約する。実際の切り替えはその直後の `Update()` の冒頭。最初のシーンだけは暗転せずに切り替える。暗転中に呼ばれたら無視する |
 | `StartTransition(std::function<void()>)` | シーンを切り替えずに暗転だけを行い、画面を覆い終わった瞬間に渡された処理を1回呼ぶ（落下リスタート用） |
 | `IsTransitioning()` | 暗転中なら true。GameScene はこれを見て入力・ゲームの進行を止める |
 | `Update()` | 予約があれば「旧シーンの Finalize → 新シーンの生成 → SetSceneManager → Initialize」を行ってから、現在のシーンを更新する |
@@ -115,11 +115,19 @@ Game/
 | 段階 | 内容 |
 | --- | --- |
 | `None` | 何もしていない |
-| `Covering` | 0.4 秒かけて画面を黒で覆う |
-| `Covered` | 真っ暗な画面を1フレーム描画した後、`Start()` で渡された処理を1回呼ぶ |
-| `Revealing` | 0.4 秒かけて黒を薄くして画面を戻す |
+| `Covering` | 演出ごとの時間をかけて画面を覆う |
+| `Covered` | 覆いきった画面を1フレーム描画した後、`Start()` で渡された処理を1回呼ぶ |
+| `Revealing` | 演出ごとの時間をかけて画面を戻す |
 
-- 黒の濃さは `Easing::EaseInOutCubic` で変える。
+| 演出（`Style`） | 使う場面 | 覆う / 戻す時間 | 内容 |
+| --- | --- | --- | --- |
+| `Fade` | 上記以外のシーンの切り替え | 0.4 / 0.4 秒 | 黒の濃さを `Easing::EaseInOutCubic` で変える |
+| `RailStripes` / `FallAndLift` / `RetryCutIn` | 落下リスタート（ImGui の「Fall Transition」で選ぶ） | — | 落下リスタート用の案 |
+| `InkBurst` | ゲーム → クリア | 0.9 / 0.7 秒 | 自分の黄色いインクのしみ 13 個が、画面の中心から外へ順に弾けて広がり（`EaseOutBack`）、最後に隙間を黄色で塗って覆う。戻すときは塗りを消し、しみが少し持ち上がってから下へ垂れ落ちる（`EaseInBack`） |
+| `InkDrip` | ゲーム → ゲームオーバー | 1.1 / 0.7 秒 | 画面を少し暗くしながら、上の縁を暗いインクで埋め、太さの違う 16 本のインクが順番ばらばらに加速しながら垂れてきて覆う。垂れた先にはピンクの縁取りが見える。戻すときは、覆ったインクがひとかたまりのまま下へ沈んでいく |
+
+- `InkBurst` / `InkDrip` の画像は `tools/generate_transition_assets.py` で生成する（`resource/UI/transition/`）。しみの位置・大きさ・傾きは `SceneTransition.cpp` の `kInkSplatLayouts` で決めている。
+- ImGui の「Fall Transition」で `InkBurst` / `InkDrip` も選べるので、Preview でその場で見た目を確認できる。
 - 進め方（`Update()`）と見た目（`Draw()`）を分けているため、後から見た目だけを別の演出に差し替えられる。
 
 ---
@@ -250,7 +258,7 @@ Game/
 GameScene の中で「タイトル → カメラの回り込み → スタート台で準備 → 出発ゲートを開ける → レールへ乗り込む → プレイ」を進めるクラス群。
 GameScene が直接触るのは StartSequence だけで、残りのクラスは StartSequence の内部で使う（スタート台 StartPlatform は GameScene が持ち、StartSequence にポインタを渡す）。
 
-出発までの流れは、スプラトゥーン2 オクト・エキスパンションの「駅のホームを歩いて改札を通ると、ステージで GO! が出る」雰囲気を参考にした。改札・駅・ポイントの支払いなどの要素はそのまま使わず、「台の上を歩ける → 目印の上で出発の操作 → ランプが点いてゲートが開く → 自分の足で乗り込む → GO! と目標の表示」という流れだけを取り入れた。
+出発までの流れは、スプラトゥーン2 オクト・エキスパンションの「駅のホームを歩いて改札を通ると、ステージで GO! が出る」雰囲気を参考にした。改札・駅・ポイントの支払いなどの要素はそのまま使わず、「台の上を歩ける → 目印の上で出発の操作 → ランプが点いてゲートが開く → 自分の足で乗り込む → GO!」という流れだけを取り入れた。
 
 > 2026-09-30 実装。ビルドは確認済みで、実際の画面での見た目はまだ確認していない。
 
@@ -268,7 +276,7 @@ GameScene が直接触るのは StartSequence だけで、残りのクラスは 
 | `Standby` | スタート台の上を動ける（出発ゲートは閉じている）。ゲートの前の目印に立つと「SPACE 出発する」を表示する | 目印の上で SPACE を押す |
 | `GateOpen` | ゲートのランプを下から順に点け、遮断棒を上げる。プレイヤーは動けない | ゲートが開ききる |
 | `Boarding` | また動けるようにする。開いたゲートをくぐってレールの始点へ歩くと乗る | `NotifyBoarded()` が呼ばれる |
-| `Playing` | プレイ中。「GO!」を出し、続けて目標の文言を表示する | なし |
+| `Playing` | プレイ中。「GO!」を出す | なし |
 
 #### 関数
 
@@ -392,14 +400,13 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | --- | --- | --- | --- |
 | 操作案内（SPACE 出発する） | `resource/UI/startPrompt.png` | 画面上から 78% の高さ、384 × 96 | ゲートの前に立つとふわっと出て、小さく上下に揺れる |
 | GO! | `resource/UI/go.png` | 画面上から 42% の高さ、480 × 240 | 1.8 倍から 0.25 秒で飛び出すように収まり、0.65 秒表示した後、広がりながら 0.3 秒で消える |
-| 目標の文言 | `resource/UI/missionText.png` | 画面上から 15% の高さ、768 × 96 | GO! が消え始めると同時に少し上から下りてきて、2.5 秒表示してから 0.4 秒で消える |
 
 | 関数 | 内容 |
 | --- | --- |
 | `Initialize(SpriteCommon*)` | テクスチャの読み込みとスプライトの生成 |
 | `Reset()` | 何も表示していない状態に戻す |
 | `SetPromptVisible(bool)` | 操作案内を出すかどうか |
-| `BeginGo()` | GO! を出し、続けて目標の文言を出す |
+| `BeginGo()` | GO! を出す |
 | `Update(float)` / `Draw()` | 表示の動きを進める / 描画（見えていないものは描かない） |
 
 ### Easing（`Engine/Base/Easing.h`）
