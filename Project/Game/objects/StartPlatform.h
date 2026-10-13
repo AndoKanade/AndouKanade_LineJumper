@@ -72,6 +72,13 @@ public:
 	/// <returns>押し戻した後の座標</returns>
 	Vector3 ClampBehindClosedGate(const Vector3& position) const;
 
+	/// <summary>
+	/// 台の上を歩いている間に端から落ちないよう、台の上面の範囲(端から少し内側)に押し戻す
+	/// </summary>
+	/// <param name="position">プレイヤーの座標</param>
+	/// <returns>押し戻した後の座標</returns>
+	Vector3 ClampInsideTop(const Vector3& position) const;
+
 	// 台の上面の高さを取得
 	float GetTopHeight() const{ return topCenter_.y; }
 	// プレイヤーを立たせる開始位置(台の上面の、ゲートから離れた後ろ寄りの位置)を取得
@@ -129,15 +136,17 @@ private:
 	Vector3 launchRingPosition_ = {0.0f, 0.0f, 0.0f};
 
 	// 台の左右の幅の半分
-	static constexpr float kHalfWidth = 2.0f;
+	static constexpr float kHalfWidth = 3.0f;
 	// 台の前後の長さの半分
-	static constexpr float kHalfLength = 4.0f;
+	static constexpr float kHalfLength = 5.5f;
 	// 台の厚みの半分
 	static constexpr float kHalfHeight = 0.5f;
 	// 台の前の端を、レールの始点からどれだけ先まで重ねるか(重ねた範囲に入ればレールに乗れる)
 	static constexpr float kRailOverlapLength = 1.5f;
 	// プレイヤーを立たせる開始位置の、台の上面の中央から後ろへの距離(ゲートまで少し歩かせる)
-	static constexpr float kSpawnBackOffset = 2.0f;
+	static constexpr float kSpawnBackOffset = 3.0f;
+	// 台の上を歩けるのを、端からどれだけ内側までにするか(プレイヤーの体が台からはみ出さないようにする)
+	static constexpr float kEdgeMargin = 0.3f;
 
 	// ゲートを立てる位置の、台の上面の中央から前への距離
 	static constexpr float kGateDistance = 1.4f;

@@ -14,8 +14,7 @@ namespace{
 	// タイトル中に流すBGM
 	const std::string kTitleBgmPath = "resource/music/bgm/nemui.mp3";
 	// SPACE を押してスタートしたとき・出発ゲートを開けたときの決定音
-	const std::string kDecideSePath = "resource/music/se/decide.mp3";
-	// GlobalVariablesのグループ名(タイトル演出の調整項目)
+	const std::string kDecideSePath = "resource/music/se/decide.mp3";	// GlobalVariablesのグループ名(タイトル演出の調整項目)
 	const char* kTitleGroup = "Title";
 	// BGM・SEの音量の調整項目名
 	const char* kBgmVolumeKey = "bgmVolume";

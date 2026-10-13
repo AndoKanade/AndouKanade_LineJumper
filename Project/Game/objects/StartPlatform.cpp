@@ -280,6 +280,21 @@ Vector3 StartPlatform::ClampBehindClosedGate(const Vector3& position) const{
 	return position - forwardXZ_ * overshoot;
 }
 
+// 台の上を歩いている間に端から落ちないよう、台の上面の範囲に押し戻す
+// 台の中心からの差を台の前方向・右方向の成分に分け、それぞれを端から少し内側までの範囲に収めてから座標に戻す
+Vector3 StartPlatform::ClampInsideTop(const Vector3& position) const{
+	Vector3 diff = {position.x - topCenter_.x, 0.0f, position.z - topCenter_.z};
+	const float limitForward = kHalfLength - kEdgeMargin;
+	const float limitRight = kHalfWidth - kEdgeMargin;
+	const float forwardAmount = std::clamp(Dot(diff,forwardXZ_),-limitForward,limitForward);
+	const float rightAmount = std::clamp(Dot(diff,rightXZ_),-limitRight,limitRight);
+	return {
+		topCenter_.x + forwardXZ_.x * forwardAmount + rightXZ_.x * rightAmount,
+		position.y,
+		topCenter_.z + forwardXZ_.z * forwardAmount + rightXZ_.z * rightAmount
+	};
+}
+
 // 台の上面の中央を原点にした、台の向きでの座標をワールド座標に変換する
 Vector3 StartPlatform::ToWorld(const Vector3& local) const{
 	return topCenter_ + rightXZ_ * local.x + Vector3{0.0f, local.y, 0.0f} + forwardXZ_ * local.z;

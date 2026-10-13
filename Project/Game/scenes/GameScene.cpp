@@ -180,6 +180,11 @@ void GameScene::Finalize(){
 		isCursorVisible_ = true;
 		::ShowCursor(TRUE);
 	}
+	// カーソルをウィンドウ内に閉じ込めたままだと他のシーンやアプリで操作できなくなるため解除する
+	if(isCursorClipped_){
+		isCursorClipped_ = false;
+		::ClipCursor(nullptr);
+	}
 }
 
 // ゲームを初期状態(レール先頭)から始め直す
@@ -280,6 +285,28 @@ void GameScene::UpdateCursorVisibility(bool isPlayMode){
 		isCursorVisible_ = !isCursorVisible_;
 		::ShowCursor(isCursorVisible_?TRUE:FALSE);
 	}
+
+	// カーソルを隠している間は、ウィンドウの外へ出てミスクリックしないようクライアント領域内に閉じ込める
+	// 照準はDirectInputのマウス移動量で行うため、カーソルが端で止まっても振り向きは途切れない
+	// ClipCursorは画面全体に効くため、ウィンドウが非アクティブになったら解除し、Alt+Tabなどで他のアプリを操作できるようにする
+	// (GetActiveWindowは自分のウィンドウがアクティブでない間はnullptrを返す)
+	HWND activeWindow = ::GetActiveWindow();
+	const bool shouldClip = !isCursorVisible_ && activeWindow != nullptr;
+	if(shouldClip && !isCursorClipped_){
+		// クライアント領域をスクリーン座標に変換して閉じ込める範囲にする
+		RECT clientRect{};
+		::GetClientRect(activeWindow,&clientRect);
+		POINT topLeft{clientRect.left,clientRect.top};
+		POINT bottomRight{clientRect.right,clientRect.bottom};
+		::ClientToScreen(activeWindow,&topLeft);
+		::ClientToScreen(activeWindow,&bottomRight);
+		RECT clipRect{topLeft.x,topLeft.y,bottomRight.x,bottomRight.y};
+		::ClipCursor(&clipRect);
+		isCursorClipped_ = true;
+	} else if(!shouldClip && isCursorClipped_){
+		::ClipCursor(nullptr);
+		isCursorClipped_ = false;
+	}
 }
 
 // プレイ中のゲーム処理
@@ -295,6 +322,11 @@ void GameScene::UpdateGameplay(){
 	if(isPlayMode && !wasPlayMode_){
 		// 俯瞰デバッグカメラがONのままだとプレイ用の視点にならないため、Playに入ったら自動でOFFにする
 		debugTopCamera_->Disable();
+		// Playに入ったらカーソルを隠してウィンドウ内に閉じ込め、照準操作中にウィンドウ外をクリックしないようにする(TABで再表示できる)
+		if(isCursorVisible_){
+			isCursorVisible_ = false;
+			::ShowCursor(FALSE);
+		}
 		ResetPlayState();
 		startSequence_->Start(skipTitle_);
 	} else if(!isPlayMode && wasPlayMode_){

@@ -203,6 +203,12 @@ bool Player::UpdateMovement(Input* input,RailEditor* railEditor,const StartPlatf
 	// スタート台の出発ゲートが閉じている間は、ゲートより先へ進めない(ジャンプで飛び越えることもできない)
 	if(startPlatform){
 		freePosition_ = startPlatform->ClampBehindClosedGate(freePosition_);
+
+		// 台の上に立って歩いている間は、端から落ちないよう台の範囲内に押し戻す
+		// ジャンプ中は押し戻さないため、自分から飛び降りることはできる
+		if(isOnPlatform_){
+			freePosition_ = startPlatform->ClampInsideTop(freePosition_);
+		}
 	}
 
 	// 重力を適用してY方向の速度を更新し、位置に反映する

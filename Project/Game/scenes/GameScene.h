@@ -128,6 +128,8 @@ private:
 
 	// マウスカーソルの表示状態(Playモード中にTABキーで切り替え。Editモードでは常に表示する)
 	bool isCursorVisible_ = true;
+	// マウスカーソルをウィンドウ内に閉じ込めているか(カーソルを隠している間だけ閉じ込め、ウィンドウ外の誤クリックを防ぐ)
+	bool isCursorClipped_ = false;
 
 	// Playに入ったときにタイトル演出を飛ばしてすぐプレイを始めるか(デバッグ用。ImGuiのチェックボックスで切り替える)
 	bool skipTitle_ = false;

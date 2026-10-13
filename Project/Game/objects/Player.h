@@ -170,7 +170,7 @@ private:
 	// 重力加速度(1秒あたりの下方向への速度変化量)
 	static constexpr float kGravity = 9.8f;
 	// オフレール中のWASD移動速度(1秒あたりの移動量)
-	static constexpr float kMoveSpeed = 8.0f;
+	static constexpr float kMoveSpeed = 5.0f;
 	// レールの終端の進行度
 	static constexpr float kRailEndT = 1.0f;
 	// 並走レールへの乗り換えができる水平方向(XZ平面)の最大距離
