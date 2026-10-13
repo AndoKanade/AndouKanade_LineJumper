@@ -58,6 +58,11 @@ namespace{
 	// 弾が画面中央のレティクルへ向かって飛ぶよう、カメラの前方のこの距離の点を狙って撃ち出す
 	// (カメラはプレイヤーの後ろ上にあるため、カメラと同じ向きで平行に撃つとレティクルより下にずれる)
 	constexpr float kAimConvergeDistance = 30.0f;
+
+#ifdef USE_IMGUI
+	// 落下リスタートの演出の名前(ImGui の切り替えに表示する。SceneTransition::Style と同じ順番にする)
+	const char* kFallTransitionNames[] = {"Fade", "RailStripes", "FallAndLift", "RetryCutIn"};
+#endif
 }
 
 GameScene::GameScene() = default;
@@ -289,7 +294,8 @@ void GameScene::UpdateGameplay(){
 	}
 
 	// レール進行・操作・射撃・勝敗判定は、開始演出が終わってプレイ可能になってから動かす
-	const bool isGameplayActive = isPlayMode && startSequence_->IsPlayable();
+	// 暗転中(クリア・ゲームオーバーへの切り替え中、落下リスタート中)も、入力や判定が二重に起きないよう止めておく
+	const bool isGameplayActive = isPlayMode && startSequence_->IsPlayable() && !sceneManager_->IsTransitioning();
 
 	// マウスカーソルの表示/非表示切り替え
 	UpdateCursorVisibility(isPlayMode);
@@ -384,10 +390,13 @@ void GameScene::UpdateGameplay(){
 
 	// プレイヤーの自立(ジャンプ+WASD移動)
 	// どのレールにも乗れないまま地面の高さまで落ちたら、レール先頭からやり直す
+	// 一瞬で始点へ戻ると何が起きたか分かりにくいため、暗転で画面を覆っている間に始点へ戻す
 	if(isGameplayActive){
 		bool needsRestart = player_->UpdateMovement(input_,railEditor_.get(),cameraForward,railCamera_->GetRight(),ground_->GetHeight(),kDeltaTime);
 		if(needsRestart){
-			ResetPlayState();
+			sceneManager_->StartTransition([this](){
+				ResetPlayState();
+			},fallTransitionStyle_);
 		}
 	}
 
@@ -478,6 +487,15 @@ void GameScene::ShowEditorPanels(){
 
 	// ONにすると、Playを押したときにタイトル演出を飛ばしてすぐプレイを始める(デバッグ用)
 	ImGui::Checkbox("Skip Title",&skipTitle_);
+
+	// 落下リスタートの演出を切り替える。Preview を押すと落ちなくてもその場で演出だけを確認できる
+	int fallStyleIndex = static_cast<int>(fallTransitionStyle_);
+	if(ImGui::Combo("Fall Transition",&fallStyleIndex,kFallTransitionNames,IM_ARRAYSIZE(kFallTransitionNames))){
+		fallTransitionStyle_ = static_cast<SceneTransition::Style>(fallStyleIndex);
+	}
+	if(ImGui::Button("Preview Fall Transition")){
+		sceneManager_->StartTransition(nullptr,fallTransitionStyle_);
+	}
 
 	// カメラ設定のUI
 	if(ImGui::CollapsingHeader("Camera Settings")){
