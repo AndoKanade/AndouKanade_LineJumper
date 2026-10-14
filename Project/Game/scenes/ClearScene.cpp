@@ -8,6 +8,9 @@
 #include "TextureManager.h"
 #include "WinAPI.h"
 
+// 操作説明
+#include "UI/HelpOverlay.h"
+
 // プレイの結果(GameSceneがクリア直前に書き込む)
 #include "objects/StageResult.h"
 
@@ -67,6 +70,10 @@ void ClearScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommo
 		static_cast<float>(WinAPI::kClientWidth) * 0.5f,
 		static_cast<float>(WinAPI::kClientHeight) * 0.5f
 		});
+
+	// 操作説明
+	helpOverlay_ = std::make_unique<HelpOverlay>();
+	helpOverlay_->Initialize(spriteCommon_);
 }
 
 // 終了処理
@@ -82,6 +89,12 @@ void ClearScene::Update(){
 	}
 	if(titleSprite_){
 		titleSprite_->Update();
+	}
+
+	// 操作説明の開閉(H キー)。開いている間は SPACE でタイトルへ戻らないよう、以降の処理を止める
+	helpOverlay_->Update(input_,true);
+	if(helpOverlay_->IsOpen()){
+		return;
 	}
 
 	// "CLEAR"の文字表現(専用のフォント描画機能が無いため、ImGuiでテキスト表示する)
@@ -115,4 +128,7 @@ void ClearScene::Draw(){
 			titleSprite_->Draw();
 		}
 	}
+
+	// 操作説明(閉じている間は左下の案内)を最前面に描画する
+	helpOverlay_->Draw();
 }

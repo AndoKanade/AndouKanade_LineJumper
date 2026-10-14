@@ -27,6 +27,7 @@ class InkEffectManager;
 class ComboCounter;
 class StageHUD;
 class SpeedLines;
+class HelpOverlay;
 
 /// <summary>
 /// ゲームシーン
@@ -122,6 +123,9 @@ private:
 
 	// レールを進んでいる間に出すスピード線
 	std::unique_ptr<SpeedLines> speedLines_;
+
+	// H キーで開く操作説明(操作方法と画面の流れ)
+	std::unique_ptr<HelpOverlay> helpOverlay_;
 
 	// 前フレームがPlayモードだったか(Playに入った瞬間を検出してリセットするのに使う)
 	bool wasPlayMode_ = false;

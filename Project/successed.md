@@ -830,3 +830,21 @@ GameScene.cpp が約1000行あり、道中作りでさらに処理が増える�
 ### ビルド確認（9.）
 
 この変更は Windows でのビルド・実機での確認をしていない。clang で構文チェックだけ行い、ImGui がある構成・無い構成どちらでもエラーが無いことを確認した。
+
+---
+
+## 2026-10-14
+
+### 1. H キーで開く操作説明を追加した
+
+対象ファイル: `Game/UI/HelpOverlay.h/.cpp`（新規）、`resource/UI/help.png`・`resource/UI/helpHint.png`（新規）、`tools/generate_help_texture.py`（新規）、`Game/scenes/GameScene.h/.cpp`、`Game/scenes/ClearScene.h/.cpp`、`Game/scenes/GameOverScene.h/.cpp`、`MyGameEngine.vcxproj(.filters)`
+
+- Release 版を初めて遊ぶ人が操作も画面の進め方も分からなかったため、H キーで開閉する操作説明を作った。ImGui を使わずスプライトで描くので Release 構成でも表示される。
+- 説明には操作（マウス・左クリック・SPACE・A/D+SPACE・WASD・R・TAB・H）と、画面の流れ（タイトル → スタート台 → ゲートの前で SPACE・レールに乗ってプレイ開始、プレイ → クリア / ゲームオーバー / 落下でスタート台からやり直し、クリア・ゲームオーバー → タイトル）とそれぞれの条件を載せた。
+- 閉じている間は画面の左下に「H あそびかた」の案内を出し、説明を開けることが分かるようにした。タイトル・プレイ中・クリア画面・ゲームオーバー画面のどこでも開ける（GameScene では Play モード中のみ）。
+- 開いている間はゲームの進行と入力を止める（タイトルの SPACE、クリア・ゲームオーバーの SPACE も受け付けない）。
+- 説明の画像は文字を描く機能が無いため、リポジトリのフォント（`resource/fonts/MochiyPopPOne-Regular.ttf`）で `tools/generate_help_texture.py` から生成する。
+
+### ビルド確認（1.）
+
+この変更は Windows でのビルド・実機での確認をしていない。`HelpOverlay.cpp` を仮のヘッダーで g++ の構文チェックにかけ、エラーが無いことだけ確認した。

@@ -10,6 +10,7 @@ class Input;
 class Obj3dCommon;
 class Sprite;
 class SpriteCommon;
+class HelpOverlay;
 
 /// <summary>
 /// クリア画面シーン
@@ -37,4 +38,6 @@ private:
 	std::unique_ptr<Sprite> backgroundSprite_;
 	// 今どの画面なのか分かるよう、画面の名前(「GAME CLEAR!」)と操作の案内を描いた画像
 	std::unique_ptr<Sprite> titleSprite_;
+	// H キーで開く操作説明(タイトルへ戻る方法もここで確認できる)
+	std::unique_ptr<HelpOverlay> helpOverlay_;
 };

@@ -31,7 +31,7 @@ Game/
 ├── Title/     GameScene 内で動くステージ開始演出（タイトル → 回り込み → スタート台で準備 → 出発ゲート → レールへ乗り込む）
 ├── objects/   Player / PlayerBulletManager / TargetManager / Enemy / EnemyManager / Ground / StartPlatform / InkEffectManager / ComboCounter / StageResult
 ├── Camera/    RailCamera（プレイ用カメラ）/ DebugTopCamera（俯瞰デバッグカメラ）
-├── UI/        Reticle（画面中央のレティクル）/ StageHUD（体力・的の数・連鎖数）/ SpeedLines（スピード線）
+├── UI/        Reticle（画面中央のレティクル）/ StageHUD（体力・的の数・連鎖数）/ SpeedLines（スピード線）/ HelpOverlay（H キーで開く操作説明）
 └── Editor/    RailEditor / TargetEditor / EnemyEditor（Editモード中の配置ツール）
 ```
 
@@ -163,6 +163,7 @@ Game/
 | `comboCounter_` | 連鎖数（ComboCounter） |
 | `stageHUD_` | 体力・壊した的の数・連鎖数の表示（StageHUD） |
 | `speedLines_` | スピード線（SpeedLines） |
+| `helpOverlay_` | H キーで開く操作説明（HelpOverlay） |
 
 #### 初期化（Initialize）
 
@@ -716,6 +717,21 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Initialize(SpriteCommon*)` | テクスチャの読み込みとスプライトの生成 |
 | `Reset()` | 線を置き直し、表示の濃さを 0 に戻す |
 | `Update(isActive, deltaTime)` / `Draw()` | 線の移動と表示の濃さの更新 / 描画 |
+
+### HelpOverlay（`UI/HelpOverlay.h/.cpp`）
+
+H キーで開閉する操作説明。操作方法と画面の流れ（どうすれば各画面へ進むか）を 1 枚の画像（`UI/help.png`、1440 × 800）で画面中央に等倍表示し、後ろのゲーム画面を黒の半透明で暗くする。閉じている間は左下に「H あそびかた」の案内（`UI/helpHint.png`）を出す。ImGui を使わずスプライトで描くため、Release 構成でも表示される。
+
+- 画像は `tools/generate_help_texture.py` で生成する（Project フォルダで `python tools/generate_help_texture.py`、Pillow が必要）。操作やキーを変えたときは、スクリプトの `CONTROLS` / `FLOWS` を書き換えて実行し直す。
+- GameScene では Play モード中だけ開ける（Edit モードで ImGui の文字入力に H を打っても開かないようにするため）。開いている間は `Update()` の冒頭で戻り、ゲームの進行と入力をすべて止める。
+- ClearScene / GameOverScene でも開ける。開いている間は SPACE でタイトルへ戻らない。
+
+| 関数 | 内容 |
+| --- | --- |
+| `Initialize(SpriteCommon*)` | テクスチャの読み込みとスプライトの生成 |
+| `Update(input, isEnabled)` | H キーで開閉する。`isEnabled` が false の間は閉じて、案内も出さない |
+| `IsOpen()` | 説明を開いているか |
+| `Draw()` | スプライト共通の描画前処理を行ってから描画する |
 
 ---
 
