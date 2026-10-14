@@ -15,6 +15,7 @@ class RailEditor;
 class StartSequence;
 class Ground;
 class Sun;
+class StartPlatform;
 class Player;
 class RailCamera;
 class DebugTopCamera;
@@ -80,6 +81,9 @@ private:
 	// 簡易的な地面
 	std::unique_ptr<Ground> ground_;
 
+	// 最初のレールの手前に置くスタート台
+	std::unique_ptr<StartPlatform> startPlatform_;
+
 	// 太陽(見た目は持たない光源)
 	std::unique_ptr<Sun> sun_;
 
@@ -101,7 +105,7 @@ private:
 	// 雑魚敵
 	std::unique_ptr<EnemyManager> enemyManager_;
 
-	// ステージ開始演出(タイトル → カメラの回り込み → カウントダウン → プレイ)
+	// ステージ開始演出(タイトル → カメラの回り込み → スタート台で準備 → 出発ゲートを開ける → レールへ乗り込む → プレイ)
 	std::unique_ptr<StartSequence> startSequence_;
 
 	// 画面中央固定のレティクル(照準)
@@ -124,12 +128,11 @@ private:
 
 	// マウスカーソルの表示状態(Playモード中にTABキーで切り替え。Editモードでは常に表示する)
 	bool isCursorVisible_ = true;
+	// マウスカーソルをウィンドウ内に閉じ込めているか(カーソルを隠している間だけ閉じ込め、ウィンドウ外の誤クリックを防ぐ)
+	bool isCursorClipped_ = false;
 
 	// Playに入ったときにタイトル演出を飛ばしてすぐプレイを始めるか(デバッグ用。ImGuiのチェックボックスで切り替える)
 	bool skipTitle_ = false;
-
-	// レールから落ちてリスタートするときの画面を覆う演出(見比べるため ImGui で切り替える)
-	SceneTransition::Style fallTransitionStyle_ = SceneTransition::Style::RailStripes;
 
 	// 1フレームの経過時間(エンジンが固定60fps前提(TimeManagerで60fps固定)なので、そのまま合わせる)
 	static constexpr float kDeltaTime = 1.0f / 60.0f;
@@ -137,4 +140,6 @@ private:
 	static constexpr int kShootMouseButton = 0;
 	// 弾を撃ったときに手元から飛び散らせるインクのしぶきの数
 	static constexpr int kMuzzleSplashCount = 3;
+	// レールに乗り込んで出発した瞬間に、足元から飛び散らせるインクのしぶきの数
+	static constexpr int kLaunchSplashCount = 10;
 };

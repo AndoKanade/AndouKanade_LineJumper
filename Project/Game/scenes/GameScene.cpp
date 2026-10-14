@@ -18,12 +18,13 @@
 
 // レールエディター
 #include "Editor/RailEditor.h"
-// ステージ開始演出(タイトル → カメラの回り込み → カウントダウン)
+// ステージ開始演出(タイトル → カメラの回り込み → スタート台で準備 → レールへ乗り込む)
 #include "Title/StartSequence.h"
 // ゲームオブジェクト
 #include "objects/Ground.h"
 #include "objects/Sun.h"
 #include "objects/Player.h"
+#include "objects/StartPlatform.h"
 #include "objects/PlayerBulletManager.h"
 #include "objects/TargetManager.h"
 #include "objects/EnemyManager.h"
@@ -37,6 +38,7 @@
 #include "UI/Reticle.h"
 #include "UI/StageHUD.h"
 #include "UI/SpeedLines.h"
+#include <iterator>
 
 namespace{
 	// スカイボックスのテクスチャパス
@@ -59,9 +61,35 @@ namespace{
 	// (カメラはプレイヤーの後ろ上にあるため、カメラと同じ向きで平行に撃つとレティクルより下にずれる)
 	constexpr float kAimConvergeDistance = 30.0f;
 
+	// レールに乗り込んで出発した瞬間のインクのしぶきを飛ばす向き(真上)
+	constexpr Vector3 kWorldUp = {0.0f, 1.0f, 0.0f};
+
+	// 落下リスタート・クリア画面への切り替えの演出を保存する調整項目名(SceneTransition::Style の番号で保存する)
+	// GameScene はシーンが切り替わるたびに作り直されるため、ImGui で選んだ演出を調整項目に持たせて保存・保持する
+	const char* kFallTransitionKey = "fallTransitionStyle";
+	const char* kClearTransitionKey = "clearTransitionStyle";
+	// 演出の初期値(保存済みJSONがあればそちらが優先される)
+	constexpr SceneTransition::Style kDefaultFallTransitionStyle = SceneTransition::Style::RailStripes;
+	constexpr SceneTransition::Style kDefaultClearTransitionStyle = SceneTransition::Style::InkBurst;
+
+	// 調整項目に保存した番号から演出の種類を取得する
+	SceneTransition::Style GetTransitionStyle(const char* key){
+		return static_cast<SceneTransition::Style>(GlobalVariables::GetInstance()->GetIntValue(kGameSceneGroup,key));
+	}
+
 #ifdef USE_IMGUI
 	// 落下リスタートの演出の名前(ImGui の切り替えに表示する。SceneTransition::Style と同じ順番にする)
 	const char* kFallTransitionNames[] = {"Fade", "RailStripes", "FallAndLift", "RetryCutIn"};
+
+	// クリア画面へ切り替えるときの演出の候補と、ImGui の切り替えに表示する名前(同じ順番にする)
+	constexpr SceneTransition::Style kClearTransitionStyles[] = {
+		SceneTransition::Style::InkBurst,
+		SceneTransition::Style::RailPaint,
+		SceneTransition::Style::GoalStamp,
+		SceneTransition::Style::CloudRise,
+	};
+	const char* kClearTransitionNames[] = {"InkBurst", "RailPaint", "GoalStamp", "CloudRise"};
+	static_assert(std::size(kClearTransitionStyles) == std::size(kClearTransitionNames),"クリアの演出の候補と名前の数が合っていない");
 #endif
 }
 
@@ -101,11 +129,20 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	ground_ = std::make_unique<Ground>();
 	ground_->Initialize(object3dCommon_,railEditor_->GetPositionOnRail(0.0f),railEditor_->GetForwardOnRail(0.0f),kGameSceneGroup);
 
+	// 最初のレールの手前に置くスタート台の生成(Edit中にも見えるよう、ここで一度レールの始点に合わせて置いておく)
+	startPlatform_ = std::make_unique<StartPlatform>();
+	startPlatform_->Initialize(object3dCommon_);
+	startPlatform_->Place(railEditor_->GetPositionOnRail(0.0f),railEditor_->GetForwardOnRail(0.0f));
+
 	// 調整項目(GlobalVariables)のグループを作成する
 	// 各クラスがこのグループに自分の調整項目を登録する
 	// ImGuiの "Global Variables" ウィンドウから実行中に編集・保存でき、
 	// resource/GlobalVariables/GameScene.json を外部で書き換えると自動反映される(ホットリロード)
 	GlobalVariables::GetInstance()->CreateGroup(kGameSceneGroup);
+
+	// 落下リスタート・クリア画面への切り替えの演出(ImGui で選んだものを "Global Variables" の Save で保存できる)
+	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kFallTransitionKey,static_cast<int32_t>(kDefaultFallTransitionStyle));
+	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kClearTransitionKey,static_cast<int32_t>(kDefaultClearTransitionStyle));
 
 	// 太陽の生成(方角はレール開始地点の進行方向を基準にする)
 	sun_ = std::make_unique<Sun>();
@@ -160,7 +197,8 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 
 	// ステージ開始演出の生成(Playに入った瞬間にタイトルから始める)
 	startSequence_ = std::make_unique<StartSequence>();
-	startSequence_->Initialize(object3dCommon_,spriteCommon_,input_);
+	// スタート台を渡し、出発ゲートの開け閉めを開始演出に任せる
+	startSequence_->Initialize(object3dCommon_,spriteCommon_,input_,startPlatform_.get());
 }
 
 // シーンの終了処理
@@ -169,6 +207,11 @@ void GameScene::Finalize(){
 	if(!isCursorVisible_){
 		isCursorVisible_ = true;
 		::ShowCursor(TRUE);
+	}
+	// カーソルをウィンドウ内に閉じ込めたままだと他のシーンやアプリで操作できなくなるため解除する
+	if(isCursorClipped_){
+		isCursorClipped_ = false;
+		::ClipCursor(nullptr);
 	}
 }
 
@@ -188,6 +231,11 @@ void GameScene::ResetPlayState(){
 	if(railEditor_){
 		railEditor_->SwitchActiveRail(0);
 		railEditor_->ClearPaint();
+
+		// スタート台を最初のレールの手前に置き直し、プレイヤーを台の上から始めさせる
+		// Edit中にレールを動かしても反映されるよう、始め直すたびに置き直す
+		startPlatform_->Place(railEditor_->GetPositionOnRail(0.0f),railEditor_->GetForwardOnRail(0.0f));
+		player_->StartOnPlatform(startPlatform_->GetSpawnPosition(),railEditor_->GetRotationOnRail(0.0f));
 	}
 
 	// 出ている演出・連鎖数・スピード線も消す
@@ -206,6 +254,9 @@ void GameScene::Update(){
 
 	// 地面タイルの更新(霧のUVスクロールも行う)
 	ground_->Update(kDeltaTime);
+
+	// スタート台の出発ゲートの更新(ランプ・遮断棒・足元の目印・出発の輪の動き)
+	startPlatform_->Update(kDeltaTime);
 
 	// 太陽の光の向き・色・明るさを調整項目の最新値で更新する
 	sun_->Update();
@@ -262,6 +313,28 @@ void GameScene::UpdateCursorVisibility(bool isPlayMode){
 		isCursorVisible_ = !isCursorVisible_;
 		::ShowCursor(isCursorVisible_?TRUE:FALSE);
 	}
+
+	// カーソルを隠している間は、ウィンドウの外へ出てミスクリックしないようクライアント領域内に閉じ込める
+	// 照準はDirectInputのマウス移動量で行うため、カーソルが端で止まっても振り向きは途切れない
+	// ClipCursorは画面全体に効くため、ウィンドウが非アクティブになったら解除し、Alt+Tabなどで他のアプリを操作できるようにする
+	// (GetActiveWindowは自分のウィンドウがアクティブでない間はnullptrを返す)
+	HWND activeWindow = ::GetActiveWindow();
+	const bool shouldClip = !isCursorVisible_ && activeWindow != nullptr;
+	if(shouldClip && !isCursorClipped_){
+		// クライアント領域をスクリーン座標に変換して閉じ込める範囲にする
+		RECT clientRect{};
+		::GetClientRect(activeWindow,&clientRect);
+		POINT topLeft{clientRect.left,clientRect.top};
+		POINT bottomRight{clientRect.right,clientRect.bottom};
+		::ClientToScreen(activeWindow,&topLeft);
+		::ClientToScreen(activeWindow,&bottomRight);
+		RECT clipRect{topLeft.x,topLeft.y,bottomRight.x,bottomRight.y};
+		::ClipCursor(&clipRect);
+		isCursorClipped_ = true;
+	} else if(!shouldClip && isCursorClipped_){
+		::ClipCursor(nullptr);
+		isCursorClipped_ = false;
+	}
 }
 
 // プレイ中のゲーム処理
@@ -273,10 +346,15 @@ void GameScene::UpdateGameplay(){
 	// Playに入った瞬間、ゲームを初期状態から開始する(UnityのPlayと同じく毎回リセットして始まる)。
 	// これでPlayを押すとレール先頭=編集で見えていた画から始まる。
 	// 開始演出もタイトルから始め、Editモードへ戻ったときは止める。
-	// 落下リスタートでは ResetPlayState() だけを呼ぶため、タイトルを挟まずにすぐ再開する
+	// 落下リスタートでは ResetPlayState() だけを呼ぶため、タイトルや出発ゲートを挟まずにスタート台の上からすぐ再開する
 	if(isPlayMode && !wasPlayMode_){
 		// 俯瞰デバッグカメラがONのままだとプレイ用の視点にならないため、Playに入ったら自動でOFFにする
 		debugTopCamera_->Disable();
+		// Playに入ったらカーソルを隠してウィンドウ内に閉じ込め、照準操作中にウィンドウ外をクリックしないようにする(TABで再表示できる)
+		if(isCursorVisible_){
+			isCursorVisible_ = false;
+			::ShowCursor(FALSE);
+		}
 		ResetPlayState();
 		startSequence_->Start(skipTitle_);
 	} else if(!isPlayMode && wasPlayMode_){
@@ -288,14 +366,18 @@ void GameScene::UpdateGameplay(){
 	}
 	wasPlayMode_ = isPlayMode;
 
-	// 開始演出の更新(タイトル中のSPACE入力・カメラの回り込み・カウントダウン)
+	// 開始演出の更新(タイトル中のSPACE入力・カメラの回り込み・出発ゲートの前でのSPACE入力)
+	// ゲートの前にいるかは、前フレームで動かしたプレイヤーの座標で判定する
 	if(isPlayMode){
-		startSequence_->Update(kDeltaTime);
+		startSequence_->Update(kDeltaTime,player_->GetPosition());
 	}
 
 	// レール進行・操作・射撃・勝敗判定は、開始演出が終わってプレイ可能になってから動かす
 	// 暗転中(クリア・ゲームオーバーへの切り替え中、落下リスタート中)も、入力や判定が二重に起きないよう止めておく
 	const bool isGameplayActive = isPlayMode && startSequence_->IsPlayable() && !sceneManager_->IsTransitioning();
+	// 開始演出のうち、スタート台の上を自由に動ける段階か(出発ゲートの前で準備中と、ゲートが開いてレールへ乗り込むまで)
+	// 動き方(WASD・ジャンプ・台から落ちたときのリスタート)はプレイ中と同じで、敵・射撃・勝敗判定はまだ動かさない
+	const bool isPlayerMovable = isPlayMode && startSequence_->IsPlayerMovable() && !sceneManager_->IsTransitioning();
 
 	// マウスカーソルの表示/非表示切り替え
 	UpdateCursorVisibility(isPlayMode);
@@ -314,7 +396,8 @@ void GameScene::UpdateGameplay(){
 	}
 
 	// カメラを基準位置の後ろ上に置き、照準の入力を反映する
-	railCamera_->Update(player_->GetBasePosition(),player_->GetBaseRotation(),isGameplayActive,input_,kDeltaTime);
+	// スタート台の上を動ける間も照準(カメラの向き)を動かせるようにして、周りを見回せるようにする
+	railCamera_->Update(player_->GetBasePosition(),player_->GetBaseRotation(),isGameplayActive || isPlayerMovable,input_,kDeltaTime);
 	const Vector3& cameraPos = railCamera_->GetPosition();
 	const Vector3& cameraForward = railCamera_->GetForward();
 
@@ -326,7 +409,8 @@ void GameScene::UpdateGameplay(){
 		StageResult::destroyedTargetCount = targetManager_->GetDestroyedCount();
 		StageResult::totalTargetCount = targetManager_->GetTotalCount();
 		StageResult::maxCombo = comboCounter_->GetMaxCombo();
-		sceneManager_->ChangeScene("CLEAR");
+		// クリアは ImGui で選んだ演出(初期値は黄色いインクが弾けて画面を塗りつぶす InkBurst)で切り替える
+		sceneManager_->ChangeScene("CLEAR",GetTransitionStyle(kClearTransitionKey));
 		return;
 	}
 
@@ -384,19 +468,29 @@ void GameScene::UpdateGameplay(){
 	// 体力が0になったらゲームオーバー画面へ遷移する
 	// クリア判定と同じく、以降の落下リスタートなどの処理を行わないようここで抜ける
 	if(isGameplayActive && player_->IsDead()){
-		sceneManager_->ChangeScene("GAMEOVER");
+		// ゲームオーバーは暗いインクが上から垂れてきて画面を覆う演出で切り替える
+		sceneManager_->ChangeScene("GAMEOVER",SceneTransition::Style::InkDrip);
 		return;
 	}
 
 	// プレイヤーの自立(ジャンプ+WASD移動)
 	// どのレールにも乗れないまま地面の高さまで落ちたら、レール先頭からやり直す
 	// 一瞬で始点へ戻ると何が起きたか分かりにくいため、暗転で画面を覆っている間に始点へ戻す
-	if(isGameplayActive){
-		bool needsRestart = player_->UpdateMovement(input_,railEditor_.get(),cameraForward,railCamera_->GetRight(),ground_->GetHeight(),kDeltaTime);
+	// 開始演出でスタート台の上を動ける間も、同じ動き方で動かす
+	if(isGameplayActive || isPlayerMovable){
+		bool needsRestart = player_->UpdateMovement(input_,railEditor_.get(),startPlatform_.get(),cameraForward,railCamera_->GetRight(),ground_->GetHeight(),kDeltaTime);
 		if(needsRestart){
 			sceneManager_->StartTransition([this](){
 				ResetPlayState();
-			},fallTransitionStyle_);
+			},GetTransitionStyle(kFallTransitionKey));
+		}
+
+		// 出発ゲートをくぐってレールに乗り込んだ瞬間に、足元から輪とインクのしぶきを広げて「GO!」でプレイを始める
+		if(startSequence_->IsBoarding() && player_->IsOnRail()){
+			const Vector3 boardedPos = railEditor_->GetPositionOnRail(player_->GetRailT());
+			startSequence_->NotifyBoarded();
+			startPlatform_->EmitLaunchRing(boardedPos);
+			inkEffect_->EmitInkSplash(boardedPos,kWorldUp,kLaunchSplashCount);
 		}
 	}
 
@@ -489,12 +583,30 @@ void GameScene::ShowEditorPanels(){
 	ImGui::Checkbox("Skip Title",&skipTitle_);
 
 	// 落下リスタートの演出を切り替える。Preview を押すと落ちなくてもその場で演出だけを確認できる
-	int fallStyleIndex = static_cast<int>(fallTransitionStyle_);
+	// 選んだ演出は調整項目に書き込み、"Global Variables" ウィンドウの Save で JSON に保存する
+	GlobalVariables* gv = GlobalVariables::GetInstance();
+	const SceneTransition::Style fallTransitionStyle = GetTransitionStyle(kFallTransitionKey);
+	int fallStyleIndex = static_cast<int>(fallTransitionStyle);
 	if(ImGui::Combo("Fall Transition",&fallStyleIndex,kFallTransitionNames,IM_ARRAYSIZE(kFallTransitionNames))){
-		fallTransitionStyle_ = static_cast<SceneTransition::Style>(fallStyleIndex);
+		gv->SetValue(kGameSceneGroup,kFallTransitionKey,static_cast<int32_t>(fallStyleIndex));
 	}
 	if(ImGui::Button("Preview Fall Transition")){
-		sceneManager_->StartTransition(nullptr,fallTransitionStyle_);
+		sceneManager_->StartTransition(nullptr,fallTransitionStyle);
+	}
+
+	// クリア画面へ切り替えるときの演出を切り替える。Preview を押すとクリアしなくてもその場で演出だけを確認できる
+	const SceneTransition::Style clearTransitionStyle = GetTransitionStyle(kClearTransitionKey);
+	int clearStyleIndex = 0;
+	for(int i = 0; i < static_cast<int>(std::size(kClearTransitionStyles)); ++i){
+		if(kClearTransitionStyles[i] == clearTransitionStyle){
+			clearStyleIndex = i;
+		}
+	}
+	if(ImGui::Combo("Clear Transition",&clearStyleIndex,kClearTransitionNames,IM_ARRAYSIZE(kClearTransitionNames))){
+		gv->SetValue(kGameSceneGroup,kClearTransitionKey,static_cast<int32_t>(kClearTransitionStyles[clearStyleIndex]));
+	}
+	if(ImGui::Button("Preview Clear Transition")){
+		sceneManager_->StartTransition(nullptr,clearTransitionStyle);
 	}
 
 	// カメラ設定のUI
@@ -559,6 +671,9 @@ void GameScene::Draw(){
 	// 雲海の雲の部分を描画(他のオブジェクトより先に描く)
 	ground_->Draw();
 
+	// スタート台を描画
+	startPlatform_->Draw();
+
 	// レールエディターの描画
 	if(railEditor_){
 		railEditor_->Draw();
@@ -584,6 +699,9 @@ void GameScene::Draw(){
 	// インクのしぶき・的の破片・閃光を描画
 	inkEffect_->Draw();
 
+	// スタート台の足元の目印と出発の輪を描画(半透明なので、不透明な3Dオブジェクトの後に描く)
+	startPlatform_->DrawEffects();
+
 	// 雲の上の霧を描画(半透明なので、奥にあるオブジェクトが透けて見えるよう3Dオブジェクトの最後に描く)
 	ground_->DrawFog();
 
@@ -593,13 +711,14 @@ void GameScene::Draw(){
 	}
 
 	// 画面中央固定のレティクルを描画
-	// タイトル中・カメラの回り込み中は照準を使わないため表示しない
+	// タイトルからレールに乗り込むまでは撃てないため表示しない
 	bool isTitleShowing = startSequence_ && startSequence_->IsControllingCamera();
+	bool isIntroRunning = startSequence_ && startSequence_->IsIntroRunning();
 
 	// スピード線はレティクル・画面表示より奥に見えるよう先に描く
 	speedLines_->Draw();
 
-	if(!isTitleShowing){
+	if(!isIntroRunning){
 		reticle_->Draw();
 	}
 
@@ -608,7 +727,7 @@ void GameScene::Draw(){
 		stageHUD_->Draw();
 	}
 
-	// 開始演出のタイトル表示(PRESS SPACE)を最前面に描画する
+	// 開始演出のタイトル表示(PRESS SPACE)と、出発までの表示(操作案内・GO!)を最前面に描画する
 	if(startSequence_){
 		startSequence_->Draw2D();
 	}

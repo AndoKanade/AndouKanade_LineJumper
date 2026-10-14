@@ -1,6 +1,8 @@
 #include "StartSequence.h"
 #include "Title/TitleLogo.h"
 #include "Title/TitleUI.h"
+#include "Title/StageIntroUI.h"
+#include "objects/StartPlatform.h"
 #include "Input.h"
 #include "SoundManager.h"
 #include "GlobalVariables.h"
@@ -11,9 +13,8 @@
 namespace{
 	// タイトル中に流すBGM
 	const std::string kTitleBgmPath = "resource/music/bgm/nemui.mp3";
-	// SPACE を押してスタートしたときの決定音
-	const std::string kDecideSePath = "resource/music/se/decide.mp3";
-	// GlobalVariablesのグループ名(タイトル演出の調整項目)
+	// SPACE を押してスタートしたとき・出発ゲートを開けたときの決定音
+	const std::string kDecideSePath = "resource/music/se/decide.mp3";	// GlobalVariablesのグループ名(タイトル演出の調整項目)
 	const char* kTitleGroup = "Title";
 	// BGM・SEの音量の調整項目名
 	const char* kBgmVolumeKey = "bgmVolume";
@@ -32,14 +33,18 @@ StartSequence::StartSequence() = default;
 StartSequence::~StartSequence() = default;
 
 // 初期化
-void StartSequence::Initialize(Obj3dCommon* object3dCommon,SpriteCommon* spriteCommon,Input* input){
+void StartSequence::Initialize(Obj3dCommon* object3dCommon,SpriteCommon* spriteCommon,Input* input,StartPlatform* startPlatform){
 	input_ = input;
+	startPlatform_ = startPlatform;
 
 	titleLogo_ = std::make_unique<TitleLogo>();
 	titleLogo_->Initialize(object3dCommon);
 
 	titleUI_ = std::make_unique<TitleUI>();
 	titleUI_->Initialize(spriteCommon);
+
+	introUI_ = std::make_unique<StageIntroUI>();
+	introUI_->Initialize(spriteCommon);
 
 	// BGM・SEの読み込み
 	SoundManager::GetInstance()->SoundLoadFile(kTitleBgmPath);
@@ -57,10 +62,20 @@ void StartSequence::Initialize(Obj3dCommon* object3dCommon,SpriteCommon* spriteC
 void StartSequence::Start(bool skipTitle){
 	playerHopTimer_ = 0.0f;
 	cameraDirector_.Reset();
-	countdown_.Stop();
+	if(introUI_){
+		introUI_->Reset();
+	}
+	// 出発ゲートを閉じた状態から始める
+	if(startPlatform_){
+		startPlatform_->ResetGate();
+	}
 
 	// タイトル演出を飛ばす場合は、BGMも鳴らさずにそのままプレイ中にする
+	// 出発ゲートも開けておき、台の上からすぐレールへ歩いて乗れるようにする
 	if(skipTitle){
+		if(startPlatform_){
+			startPlatform_->BeginOpenGate();
+		}
 		phase_ = Phase::Playing;
 		return;
 	}
@@ -79,12 +94,22 @@ void StartSequence::Start(bool skipTitle){
 // 演出を止める
 void StartSequence::Stop(){
 	phase_ = Phase::None;
-	countdown_.Stop();
+	if(introUI_){
+		introUI_->Reset();
+	}
+	if(startPlatform_){
+		startPlatform_->ResetGate();
+	}
 	SoundManager::GetInstance()->StopAudio(kTitleBgmPath);
 }
 
 // 更新処理
-void StartSequence::Update(float deltaTime){
+void StartSequence::Update(float deltaTime,const Vector3& playerPosition){
+	// 出発までの表示(操作案内・GO!)は、どの段階でも出し入れの動きを進める
+	if(introUI_ && phase_ != Phase::None){
+		introUI_->Update(deltaTime);
+	}
+
 	switch(phase_){
 	case Phase::Title:
 		// カメラをゆっくり揺らしながら、SPACE の入力を待つ
@@ -130,30 +155,59 @@ void StartSequence::Update(float deltaTime){
 		// タイトル表示と同じく、回り込みの進行に合わせてBGMを小さくしていく
 		SoundManager::GetInstance()->SetVolume(kTitleBgmPath,GetVolume(kBgmVolumeKey) * (kTitleVisible - cameraDirector_.GetTurnProgress()));
 		if(cameraDirector_.IsTurnFinished()){
-			// 回り込みが終わったらBGMを止める
+			// 回り込みが終わったらBGMを止め、スタート台の上を動けるようにする
 			SoundManager::GetInstance()->StopAudio(kTitleBgmPath);
-			countdown_.Start();
-			phase_ = Phase::Countdown;
+			phase_ = Phase::Standby;
 		}
 		break;
 
-	case Phase::Countdown:
-		// GO になった瞬間からプレイ可能にする
-		countdown_.Update(deltaTime);
-		if(countdown_.IsCountFinished()){
-			phase_ = Phase::Playing;
+	case Phase::Standby:
+	{
+		// 出発ゲートの前の目印に立っている間だけ操作案内を出し、SPACE で出発する
+		// (この段階ではジャンプより先に判定し、押した瞬間に GateOpen へ移るため、同じ SPACE でジャンプはしない)
+		const bool isAtGate = startPlatform_ && startPlatform_->IsInGateArea(playerPosition);
+		if(introUI_){
+			introUI_->SetPromptVisible(isAtGate);
 		}
+		if(isAtGate && input_ && input_->TriggerKey(DIK_SPACE)){
+			// ゲートのランプを順に点けて開け始め、操作案内は消す
+			startPlatform_->BeginOpenGate();
+			if(introUI_){
+				introUI_->SetPromptVisible(false);
+			}
+			SoundManager::GetInstance()->PlayAudio(kDecideSePath,GetVolume(kSeVolumeKey));
+			phase_ = Phase::GateOpen;
+		}
+		break;
+	}
+
+	case Phase::GateOpen:
+		// ゲートが開ききったら、レールへ歩いて乗れるようにする
+		if(!startPlatform_ || startPlatform_->IsGateOpened()){
+			phase_ = Phase::Boarding;
+		}
+		break;
+
+	case Phase::Boarding:
+		// プレイヤーがレールに乗ったら、GameScene から NotifyBoarded() で知らせてもらう
 		break;
 
 	case Phase::Playing:
-		// プレイ開始後もしばらく GO を表示するため、カウントダウンの更新を続ける
-		countdown_.Update(deltaTime);
-		break;
-
 	case Phase::None:
 	default:
 		break;
 	}
+}
+
+// プレイヤーがレールに乗り込んだことを伝える
+void StartSequence::NotifyBoarded(){
+	if(phase_ != Phase::Boarding){
+		return;
+	}
+	if(introUI_){
+		introUI_->BeginGo();
+	}
+	phase_ = Phase::Playing;
 }
 
 // タイトルロゴを配置する
@@ -170,10 +224,13 @@ void StartSequence::Draw3D(){
 	}
 }
 
-// 2D描画処理(タイトル表示はタイトル中と回り込み中だけ描画する)
+// 2D描画処理(タイトル表示はタイトル中と回り込み中だけ、出発までの表示は Edit 中以外で描画する)
 void StartSequence::Draw2D(){
 	if(titleUI_ && IsControllingCamera()){
 		titleUI_->Draw();
+	}
+	if(introUI_ && phase_ != Phase::None){
+		introUI_->Draw();
 	}
 }
 

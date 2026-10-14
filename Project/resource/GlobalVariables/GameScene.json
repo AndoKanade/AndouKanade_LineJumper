@@ -6,9 +6,20 @@
         "aimYawLimit": 0.6000000238418579,
         "cameraDistance": 3.0,
         "cameraFollowSharpness": 8.0,
-        "cameraHeightOffset": 0.8,
+        "cameraHeightOffset": 0.800000011920929,
+        "clearTransitionStyle": 6,
+        "fallTransitionStyle": 1,
+        "fogDensity": 1.0,
         "mouseSensitivity": 0.00039999998989515007,
         "noseOffset": 2.0,
-        "railSpeed": 4.0
+        "railSpeed": 4.0,
+        "sunAzimuthDegree": 50.0,
+        "sunColor": [
+            1.0,
+            0.9200000166893005,
+            0.800000011920929
+        ],
+        "sunElevationDegree": 25.0,
+        "sunIntensity": 1.5
     }
 }

@@ -267,6 +267,9 @@
     <ClCompile Include="Game\objects\Ground.cpp">
       <Filter>ソース ファイル\Game\objects</Filter>
     </ClCompile>
+    <ClCompile Include="Game\objects\StartPlatform.cpp">
+      <Filter>ソース ファイル\Game\objects</Filter>
+    </ClCompile>
     <ClCompile Include="Game\objects\Player.cpp">
       <Filter>ソース ファイル\Game\objects</Filter>
     </ClCompile>
@@ -303,7 +306,7 @@
     <ClCompile Include="Game\Title\LogoHidePattern.cpp">
       <Filter>ソース ファイル\Game\Title</Filter>
     </ClCompile>
-    <ClCompile Include="Game\Title\StartCountdown.cpp">
+    <ClCompile Include="Game\Title\StageIntroUI.cpp">
       <Filter>ソース ファイル\Game\Title</Filter>
     </ClCompile>
     <ClCompile Include="Game\Title\StartSequence.cpp">
@@ -470,6 +473,9 @@
     <ClInclude Include="Game\objects\Ground.h">
       <Filter>ヘッダー ファイル\Game\objects</Filter>
     </ClInclude>
+    <ClInclude Include="Game\objects\StartPlatform.h">
+      <Filter>ヘッダー ファイル\Game\objects</Filter>
+    </ClInclude>
     <ClInclude Include="Game\objects\Player.h">
       <Filter>ヘッダー ファイル\Game\objects</Filter>
     </ClInclude>
@@ -512,7 +518,7 @@
     <ClInclude Include="Game\Title\LogoHidePattern.h">
       <Filter>ヘッダー ファイル\Game\Title</Filter>
     </ClInclude>
-    <ClInclude Include="Game\Title\StartCountdown.h">
+    <ClInclude Include="Game\Title\StageIntroUI.h">
       <Filter>ヘッダー ファイル\Game\Title</Filter>
     </ClInclude>
     <ClInclude Include="Game\Title\StartSequence.h">

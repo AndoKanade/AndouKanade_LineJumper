@@ -93,7 +93,7 @@ void SceneManager::Draw(){
 // シーン制御
 // -------------------------------------------------
 
-void SceneManager::ChangeScene(const std::string& sceneName){
+void SceneManager::ChangeScene(const std::string& sceneName,SceneTransition::Style style){
 	// ファクトリーがセットされていない状態で切り替えはできないためアサート
 	assert(sceneFactory_);
 
@@ -107,7 +107,7 @@ void SceneManager::ChangeScene(const std::string& sceneName){
 	// ※実際の切り替え処理は、その直後の Update() の冒頭で行われるため、重い初期化も真っ暗な間に済む
 	transition_.Start([this,sceneName](){
 		nextSceneName_ = sceneName;
-	});
+	},style);
 }
 
 bool SceneManager::StartTransition(std::function<void()> onCovered,SceneTransition::Style style){
