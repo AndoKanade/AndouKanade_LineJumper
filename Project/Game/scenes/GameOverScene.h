@@ -10,6 +10,7 @@ class Input;
 class Obj3dCommon;
 class Sprite;
 class SpriteCommon;
+class HelpOverlay;
 
 /// <summary>
 /// ゲームオーバー画面シーン
@@ -35,4 +36,6 @@ private:
 
 	// --- メンバ変数：内部リソース (所有するもの) ---
 	std::unique_ptr<Sprite> backgroundSprite_;
+	// H キーで開く操作説明(タイトルへ戻る方法もここで確認できる)
+	std::unique_ptr<HelpOverlay> helpOverlay_;
 };

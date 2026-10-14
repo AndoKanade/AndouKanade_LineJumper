@@ -300,6 +300,9 @@
     <ClCompile Include="Game\UI\SpeedLines.cpp">
       <Filter>ソース ファイル\Game\UI</Filter>
     </ClCompile>
+    <ClCompile Include="Game\UI\HelpOverlay.cpp">
+      <Filter>ソース ファイル\Game\UI</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Title\LogoHidePattern.cpp">
       <Filter>ソース ファイル\Game\Title</Filter>
     </ClCompile>
@@ -504,6 +507,9 @@
       <Filter>ヘッダー ファイル\Game\UI</Filter>
     </ClInclude>
     <ClInclude Include="Game\UI\SpeedLines.h">
+      <Filter>ヘッダー ファイル\Game\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\UI\HelpOverlay.h">
       <Filter>ヘッダー ファイル\Game\UI</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Base\Easing.h">

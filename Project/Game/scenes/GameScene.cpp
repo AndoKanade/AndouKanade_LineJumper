@@ -37,6 +37,7 @@
 #include "UI/Reticle.h"
 #include "UI/StageHUD.h"
 #include "UI/SpeedLines.h"
+#include "UI/HelpOverlay.h"
 
 namespace{
 	// スカイボックスのテクスチャパス
@@ -154,6 +155,10 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	speedLines_ = std::make_unique<SpeedLines>();
 	speedLines_->Initialize(spriteCommon_);
 
+	// H キーで開く操作説明(操作方法と画面の流れ)
+	helpOverlay_ = std::make_unique<HelpOverlay>();
+	helpOverlay_->Initialize(spriteCommon_);
+
 	// 的の撃破時に発生させる火花パーティクルのグループを事前に生成しておく
 	TextureManager::GetInstance()->LoadTexture(kHitParticleTexture);
 	ParticleManager::GetInstance()->CreateParticleGroup(kHitParticleGroupName,kHitParticleTexture);
@@ -201,6 +206,14 @@ void GameScene::ResetPlayState(){
 
 // シーンの更新処理
 void GameScene::Update(){
+	// 操作説明の開閉(H キー)
+	// Editモードでは ImGui の文字入力で H を打っても開かないよう、Play中だけ開けるようにする
+	// 開いている間は落ち着いて読めるよう、ゲームの進行と入力をすべて止める
+	helpOverlay_->Update(input_,EditorContext::GetInstance()->IsPlayMode());
+	if(helpOverlay_->IsOpen()){
+		return;
+	}
+
 	// パーティクルの更新(発生タイミング・経過時間の進行。カメラ行列は描画時に反映する)
 	ParticleManager::GetInstance()->Update();
 
@@ -612,4 +625,7 @@ void GameScene::Draw(){
 	if(startSequence_){
 		startSequence_->Draw2D();
 	}
+
+	// 操作説明(閉じている間は左下の案内)は、タイトル表示よりさらに手前に描画する
+	helpOverlay_->Draw();
 }
