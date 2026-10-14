@@ -15,8 +15,9 @@ class StartPlatform;
 /// <summary>
 /// プレイヤー
 /// スタート台の上から始まり、台の上をWASDで自由に動いて、台と重なったレールの始点へ歩いて乗る(出発ゲートが閉じている間はゲートより先へ進めない)。
-/// レールに沿って自動で進み、ジャンプでレールを離れるとWASDで自由に動ける。
-/// 落下中にレールの真上でレールの高さを跨ぐと、そのレールに乗り移る。
+/// レールに沿って自動で進み、レール上ではWASDで自由に動けない(射撃に専念させる)。
+/// レール上でジャンプするとレールに沿って進みながらその場で跳ね、A/Dを押しながらジャンプすると並走しているレールへ飛び移る。
+/// スタート台から落下中にレールの真上でレールの高さを跨ぐと、そのレールに乗る。
 /// 体力を持ち、敵弾が当たると減る(被弾後は一定時間無敵)。
 /// </summary>
 class Player{
@@ -66,7 +67,7 @@ public:
 	void TakeDamage();
 
 	/// <summary>
-	/// ジャンプ・WASD移動・着地判定
+	/// ジャンプ・WASD移動・着地判定(レール上ではWASD移動はせず、その場でのジャンプと並走レールへの乗り換えのみ)
 	/// </summary>
 	/// <param name="input">入力</param>
 	/// <param name="railEditor">着地先を探すレール</param>
@@ -101,6 +102,8 @@ public:
 	// デバッグ表示用の取得
 	float GetRailT() const{ return railT_; }
 	bool IsOnRail() const{ return isOnRail_; }
+	// 足がレールに着いているかどうか(オンレール中で、跳ねている途中でも並走レールへ飛び移っている途中でもないときtrue)
+	bool IsGroundedOnRail() const{ return isOnRail_ && !isRailHopping_ && !isSwitchingRail_; }
 	float GetFreeVelocityY() const{ return freeVelocityY_; }
 	int GetHp() const{ return hp_; }
 	int GetMaxHp() const{ return kMaxHp; }
@@ -112,12 +115,18 @@ public:
 
 private:
 	/// <summary>
-	/// 押した方向のすぐ横を並走しているレールへ直接乗り換える
+	/// 押した方向のすぐ横を並走しているレールへ、飛び移る動きを付けて乗り換える
 	/// </summary>
 	/// <param name="railEditor">乗り換え先を探すレール</param>
 	/// <param name="sideDirXZ">乗り換えたい方向(XZ平面の正規化ベクトル)</param>
 	/// <returns>乗り換えられたときtrue</returns>
 	bool TrySwitchToSideRail(RailEditor* railEditor,const Vector3& sideDirXZ);
+
+	/// <summary>
+	/// レール上でのジャンプ(その場で跳ねる)と、並走レールへ飛び移る動きを進める
+	/// </summary>
+	/// <param name="deltaTime">経過時間(秒)</param>
+	void UpdateRailJump(float deltaTime);
 
 	// 描画用の3Dオブジェクト(三人称視点用のプレイヤーのモデル)
 	std::unique_ptr<Obj3D> obj_;
@@ -131,8 +140,24 @@ private:
 	bool isRailFinished_ = false;
 
 	// レール座標によるオンレール判定
-	// レールの乗り換えはジャンプしてプレイヤーを移動させ、着地判定で行う
+	// レール上でのジャンプ・並走レールへの乗り換え中もオンレールのままにし、レールに沿った進行を止めない
 	bool isOnRail_ = true;
+
+	// レール上でのジャンプ用の状態
+	// レール上でジャンプして跳ねている途中か(跳ねている間は次のジャンプを受け付けない)
+	bool isRailHopping_ = false;
+	// レール上の位置から浮き上がっている高さ
+	float railHopHeight_ = 0.0f;
+	// レール上で跳ねているときのY方向の速度
+	float railHopVelocityY_ = 0.0f;
+
+	// 並走レールへ飛び移る動きの状態
+	// 並走レールへ飛び移っている途中か(飛び移っている間は次のジャンプを受け付けない)
+	bool isSwitchingRail_ = false;
+	// 飛び移り始めてからの経過時間(秒)
+	float railSwitchTimer_ = 0.0f;
+	// 飛び移り始めた瞬間の、乗り換え先レール上の位置から見た乗り換え前の位置のずれ(これを0まで減らして乗り換え先へ寄せる)
+	Vector3 railSwitchStartOffset_ = {0.0f, 0.0f, 0.0f};
 
 	// プレイヤーの自立(ジャンプ+WASD移動)用の状態
 	// オフレール中の基準座標(オンレール中のレール上の座標に相当する、カメラ・プレイヤーの共通の基準点)
@@ -156,7 +181,9 @@ private:
 	float invincibleTimer_ = 0.0f;
 
 	// レール全体の進行速度の初期値(1秒あたりに進むワールド座標の距離。保存済みJSONがあればそちらが優先される)
-	static constexpr float kDefaultRailSpeed = 4.0f;
+	static constexpr float kDefaultRailSpeed = 6.0f;
+	// レール上で跳ねている間・並走レールへ飛び移っている間に、レールに沿って進む速さに掛ける割合(0で空中では前へ進まない)
+	static constexpr float kRailAirborneSpeedRate = 0.3f;
 	// モデルの表示スケール
 	static constexpr float kScale = 0.3f;
 	// 弾を撃ち出す高さ(足元からの高さ。モデルの身長1.66にkScaleを掛けた約0.5のうち、胸の高さにする)
@@ -174,11 +201,17 @@ private:
 	// レールの終端の進行度
 	static constexpr float kRailEndT = 1.0f;
 	// 並走レールへの乗り換えができる水平方向(XZ平面)の最大距離
-	static constexpr float kSideRailSwitchMaxDistance = 6.0f;
+	static constexpr float kSideRailSwitchMaxDistance = 8.0f;
 	// 並走レールへの乗り換えができる高さの差の最大値
 	static constexpr float kSideRailSwitchMaxHeightDiff = 3.0f;
 	// 並走レールが押した方向の真横にあるとみなす、方向ベクトルとの内積の下限(1に近いほど真横に限定される)
 	static constexpr float kSideRailDirectionThreshold = 0.7f;
+	// 並走レールへ飛び移るのにかける時間(秒)
+	static constexpr float kRailSwitchDuration = 0.4f;
+	// 並走レールへ飛び移るときの山なりの最も高い位置の高さ
+	static constexpr float kRailSwitchArcHeight = 1.0f;
+	// 進行度0〜1の放物線 s*(1-s) の頂点(s=0.5で0.25)を1にそろえるための係数
+	static constexpr float kParabolaPeakScale = 4.0f;
 	// スタート台の上からレールへ歩いて乗れる、レールとの高さの差の最大値
 	static constexpr float kPlatformBoardHeightRange = 0.5f;
 };

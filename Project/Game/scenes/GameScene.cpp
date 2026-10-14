@@ -438,7 +438,8 @@ void GameScene::UpdateGameplay(){
 	const Vector3& playerPos = player_->GetPosition();
 
 	// レールを進んでいる間は、足元から後ろへインクのしぶきを飛ばして勢いを見せる
-	if(isRidingRail){
+	// 跳ねている間・並走レールへ飛び移っている間は足がレールから離れているため出さない
+	if(isRidingRail && player_->IsGroundedOnRail()){
 		inkEffect_->EmitRailTrail(playerPos,-railEditor_->GetForwardOnRail(player_->GetRailT()));
 	}
 
