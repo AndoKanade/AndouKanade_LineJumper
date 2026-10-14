@@ -9,6 +9,7 @@
 #include "Input.h"
 #include "Editor/RailEditor.h"
 #include "objects/StartPlatform.h"
+#include "Easing.h"
 
 namespace{
 	// プレイヤーの表示に使用するモデル(インクタンクを背負い、ブラスターを構えたキャラクター)
@@ -50,6 +51,13 @@ void Player::Reset(){
 	freeVelocityY_ = 0.0f;
 	isOnPlatform_ = false;
 
+	// レール上でのジャンプ・並走レールへの乗り換えの途中状態も消す
+	isRailHopping_ = false;
+	railHopHeight_ = 0.0f;
+	railHopVelocityY_ = 0.0f;
+	isSwitchingRail_ = false;
+	railSwitchTimer_ = 0.0f;
+
 	// 体力・無敵時間も初期状態に戻す
 	hp_ = kMaxHp;
 	invincibleTimer_ = 0.0f;
@@ -80,6 +88,12 @@ void Player::UpdateRailProgress(const RailEditor* railEditor,bool isGameplayActi
 	// 現在位置に対応する制御点のSpeed値を取得し、全体速度(railSpeed)に掛けて今フレームに進む距離を求める
 	// 進行度に直接足すと制御点間の距離で速さが変わるため、距離として進めて一定の速さにする
 	float pointSpeed = railEditor->GetSpeedOnRail(railT_);
+
+	// レール上で跳ねている間・並走レールへ飛び移っている間は、空中で前へ流されすぎないよう進む速さを落とす
+	if(!IsGroundedOnRail()){
+		railSpeed *= kRailAirborneSpeedRate;
+	}
+
 	railT_ = railEditor->AdvanceTByDistance(railT_,pointSpeed * railSpeed * deltaTime);
 	if(railT_ >= kRailEndT){
 		railT_ = kRailEndT; // 終端で固定する
@@ -89,6 +103,7 @@ void Player::UpdateRailProgress(const RailEditor* railEditor,bool isGameplayActi
 
 // 基準位置・基準向きの計算
 // オフレール中は、直前フレームで更新した自由移動座標(freePosition_)とジャンプ時に固定した向き(freeBaseRotation_)を基準にする
+// オンレール中にジャンプ・並走レールへの乗り換えをしている間は、レール上の位置に浮き上がりとずれを加える
 void Player::UpdateBasePose(const RailEditor* railEditor){
 	if(!railEditor){
 		return;
@@ -96,6 +111,20 @@ void Player::UpdateBasePose(const RailEditor* railEditor){
 
 	Vector3 railPos = railEditor->GetPositionOnRail(railT_);
 	Vector3 railRot = railEditor->GetRotationOnRail(railT_);
+
+	// レール上で跳ねている高さを加える(レールの坂に合わせて上下しつつ跳ねる)
+	railPos.y += railHopHeight_;
+
+	if(isSwitchingRail_){
+		const float progress = railSwitchTimer_ / kRailSwitchDuration;
+
+		// 乗り換え先レールの上を進みながら、乗り換え前の位置からのずれを減らしていき乗り換え先へ寄せる
+		// 勢いよく飛び出して乗り換え先の上でゆっくり収まるよう、減速するイージングを使う
+		railPos += railSwitchStartOffset_ * (1.0f - Easing::EaseOutCubic(progress));
+
+		// 飛び移っている間は山なりに浮かせる(始まりと終わりで0、真ん中で最も高くなる)
+		railPos.y += kRailSwitchArcHeight * kParabolaPeakScale * progress * (1.0f - progress);
+	}
 
 	basePosition_ = isOnRail_?railPos:freePosition_;
 	baseRotation_ = isOnRail_?railRot:freeBaseRotation_;
@@ -146,34 +175,36 @@ void Player::TakeDamage(){
 }
 
 // プレイヤーの自立(ジャンプ+WASD移動)
-// オンレール中はジャンプ入力でレールを離れて自由移動状態に切り替え、
-// オフレール中はWASDでの水平移動と重力・ジャンプ初速による垂直移動を行い、
-// レール座標によるオンレール判定を使って着地先レールへ再度乗り移る
+// オンレール中はWASDで自由に動かさず、レールに沿った進行(UpdateRailProgress)を続けたまま、
+// その場でのジャンプと並走レールへの乗り換えだけを行う(参考にしたスプラトゥーンのレールと同じく、レール上では射撃に専念させる)
+// オフレール中(スタート台の上やそこから飛び降りた後)はWASDでの水平移動と重力・ジャンプ初速による垂直移動を行い、
+// レール座標によるオンレール判定を使って着地先レールへ乗る
 bool Player::UpdateMovement(Input* input,RailEditor* railEditor,const StartPlatform* startPlatform,const Vector3& cameraForward,const Vector3& cameraRight,float groundHeight,float deltaTime){
 	if(!input || !railEditor){
 		return false;
 	}
 
 	if(isOnRail_){
-		// ジャンプキー(SPACE)でレールを離れ、自由移動状態に切り替える
+		// 跳ねている高さ・飛び移りの経過時間を進める
+		UpdateRailJump(deltaTime);
+
+		// 足がレールに着いているときだけジャンプキー(SPACE)を受け付ける(空中での連続ジャンプ・飛び移り中の再入力を防ぐ)
 		// タイトルのスタートもSPACEだが、押した瞬間はまだプレイ可能になっていないためジャンプしない
-		if(input->TriggerKey(DIK_SPACE)){
-			// A/Dを押しながらジャンプしたときは、その方向に並走しているレールがあれば直接乗り換える
-			// (撃ちながらジャンプで飛び移るのは難しいため、簡単に乗り換えられる操作として用意する)
+		if(!isRailHopping_ && !isSwitchingRail_ && input->TriggerKey(DIK_SPACE)){
+			// A/Dを押しながらジャンプしたときは、その方向に並走しているレールがあれば飛び移る
 			Vector3 rightXZ = Normalize(Vector3{cameraRight.x, 0.0f, cameraRight.z});
 			Vector3 sideDir = {0.0f, 0.0f, 0.0f};
 			if(input->PushKey(DIK_D)) sideDir += rightXZ;
 			if(input->PushKey(DIK_A)) sideDir += -rightXZ;
 
-			// A/D同時押しで打ち消し合ったときは方向なしとして、通常のジャンプにする
+			// A/D同時押しで打ち消し合ったときや、押した方向にレールがないときは、その場で跳ねるジャンプにする
 			if(Length(sideDir) > 0.0f && TrySwitchToSideRail(railEditor,sideDir)){
 				return false;
 			}
 
-			isOnRail_ = false;
-			freePosition_ = basePosition_;
-			freeVelocityY_ = kJumpSpeed;
-			freeBaseRotation_ = baseRotation_; // 離脱時点の向きをオフレール中のカメラ基準向きとして固定する
+			// レールからは離れず、レールに沿って進みながら上へ跳ねる
+			isRailHopping_ = true;
+			railHopVelocityY_ = kJumpSpeed;
 		}
 		return false;
 	}
@@ -262,8 +293,9 @@ bool Player::UpdateMovement(Input* input,RailEditor* railEditor,const StartPlatf
 	return !isOnRail_ && freePosition_.y <= groundHeight;
 }
 
-// 押した方向のすぐ横を並走しているレールへ直接乗り換える
+// 押した方向のすぐ横を並走しているレールへ、飛び移る動きを付けて乗り換える
 // 今のレール以外で最も近いレールを探し、「近い」「押した方向の真横にある」「高さが近い」をすべて満たすときだけ乗り換える
+// 乗り換え自体はすぐに行い、見た目の位置だけを乗り換え前の位置から乗り換え先へ山なりに寄せていく
 bool Player::TrySwitchToSideRail(RailEditor* railEditor,const Vector3& sideDirXZ){
 	RailEditor::NearestRailResult nearest = railEditor->FindNearestRail(basePosition_,railEditor->GetActiveRailIndex());
 	if(nearest.railIndex < 0){
@@ -288,10 +320,42 @@ bool Player::TrySwitchToSideRail(RailEditor* railEditor,const Vector3& sideDirXZ
 	}
 
 	// 乗り換え先レールの最近傍点からそのまま進行を続ける
+	// 飛び移っている間も乗り換え先レールに沿って進めることで、勢いを保ったまま横へ移る動きにする
 	railEditor->SwitchActiveRail(nearest.railIndex);
 	railT_ = nearest.t;
 	isRailFinished_ = false; // 乗り換え先レールを最後まで進めるようにする
+
+	// 乗り換え前の位置(足がレールに着いているときだけ乗り換えるため、基準位置がそのままレール上の位置)からのずれを覚えて、飛び移る動きを始める
+	railSwitchStartOffset_ = basePosition_ - nearest.position;
+	railSwitchTimer_ = 0.0f;
+	isSwitchingRail_ = true;
 	return true;
+}
+
+// レール上でのジャンプ(その場で跳ねる)と、並走レールへ飛び移る動きを進める
+// レールに沿った進行はUpdateRailProgressで続けているため、ここでは高さと経過時間だけを扱う
+void Player::UpdateRailJump(float deltaTime){
+	if(isRailHopping_){
+		// 重力を適用してY方向の速度を更新し、跳ねている高さに反映する
+		railHopVelocityY_ -= kGravity * deltaTime;
+		railHopHeight_ += railHopVelocityY_ * deltaTime;
+
+		// レールの高さまで戻ったら着地させる(レールから外れることはないため、必ず同じレールに着地する)
+		if(railHopHeight_ <= 0.0f){
+			railHopHeight_ = 0.0f;
+			railHopVelocityY_ = 0.0f;
+			isRailHopping_ = false;
+		}
+	}
+
+	if(isSwitchingRail_){
+		// 決めた時間が経ったら乗り換え先レールの上に着地させる(このときずれと山なりの高さはちょうど0になる)
+		railSwitchTimer_ += deltaTime;
+		if(railSwitchTimer_ >= kRailSwitchDuration){
+			railSwitchTimer_ = kRailSwitchDuration;
+			isSwitchingRail_ = false;
+		}
+	}
 }
 
 // 描画処理
