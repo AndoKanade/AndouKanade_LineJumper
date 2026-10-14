@@ -34,11 +34,19 @@ namespace{
 	const std::string kTubeModelPath = "RailTube/railTube.obj";
 	// 管の1区間の中で、塗ったかどうかを判定する位置(区間の長さに対する割合。中央で判定する)
 	constexpr float kTubeSegmentMiddleRate = 0.5f;
+	// レールの始点になる制御点のインデックス(0番目は曲線の向きを決めるだけで、曲線は1番目から始まる)
+	// 終点も同じく、最後の制御点から同じ数だけ手前の点になる
+	constexpr size_t kRailStartPointIndex = 1;
 
 	// 着地できる範囲を示す点列の色(レール本体と区別できるよう緑にする)
 	constexpr Vector4 kLandingRangeColor = {0.2f, 1.0f, 0.4f, 1.0f};
 
-	// 制御点の球の表示スケール
+	// 制御点の目印に使うモデル(上下に尖った宝石の形。半径1)
+	const std::string kControlPointModelPath = "RailMarker/railMarker.obj";
+	// 曲線の点列・着地できる範囲の点に使うモデル(半径1の球)
+	const std::string kSampleModelPath = "Sphere/sphere.obj";
+
+	// 制御点の目印の表示スケール
 	constexpr float kControlPointScale = 0.2f;
 	// レール曲線のサンプリング点の表示スケール(線のように見せるため制御点より小さくする)
 	constexpr float kCurveScale = 0.04f;
@@ -52,11 +60,11 @@ namespace{
 RailEditor::RailEditor() = default;
 RailEditor::~RailEditor() = default;
 
-// 制御点描画用のObj3Dを1つ生成する(Initialize/追加ボタン/ロードで共通利用)
-std::unique_ptr<Obj3D> RailEditor::CreatePointObject(){
+// 制御点・曲線の点列・着地範囲の描画用のObj3Dを1つ生成する(Initialize/追加ボタン/ロードで共通利用)
+std::unique_ptr<Obj3D> RailEditor::CreatePointObject(const std::string& modelPath){
 	auto obj = std::make_unique<Obj3D>();
 	obj->Initialize(objCommon_);
-	obj->SetModel("Sphere/sphere.obj");
+	obj->SetModel(modelPath);
 	return obj;
 }
 
@@ -64,7 +72,7 @@ std::unique_ptr<Obj3D> RailEditor::CreatePointObject(){
 void RailEditor::SyncPointObjectsToControlPoints(Rail& rail){
 	// 足りなければ生成、多ければ末尾を削る
 	while(rail.pointObjects.size() < rail.controlPoints.size()){
-		rail.pointObjects.push_back(CreatePointObject());
+		rail.pointObjects.push_back(CreatePointObject(kControlPointModelPath));
 	}
 	while(rail.pointObjects.size() > rail.controlPoints.size()){
 		rail.pointObjects.pop_back();
@@ -76,19 +84,19 @@ void RailEditor::AddRail(){
 	Rail rail;
 	rail.name = "Rail " + std::to_string(rails_.size());
 	rail.controlPoints.push_back(kDefaultControlPoint);
-	rail.pointObjects.push_back(CreatePointObject());
+	rail.pointObjects.push_back(CreatePointObject(kControlPointModelPath));
 
 	// レール曲線可視化用のサンプリング点オブジェクトを固定数だけ生成しておく
 	rail.curveObjects.reserve(kCurveSampleCount);
 	for(int i = 0; i < kCurveSampleCount; ++i){
-		rail.curveObjects.push_back(CreatePointObject());
+		rail.curveObjects.push_back(CreatePointObject(kSampleModelPath));
 	}
 
 	// 着地できる範囲可視化用のオブジェクトも固定数だけ生成しておく(1サンプルにつき左右2個)
 	const int landingRangeObjectCount = kLandingRangeSampleCount * 2;
 	rail.landingRangeObjects.reserve(landingRangeObjectCount);
 	for(int i = 0; i < landingRangeObjectCount; ++i){
-		rail.landingRangeObjects.push_back(CreatePointObject());
+		rail.landingRangeObjects.push_back(CreatePointObject(kSampleModelPath));
 	}
 
 	// Play中のレール本体の管も固定数だけ生成しておく
@@ -116,8 +124,9 @@ std::string RailEditor::GetRailFilePath(int index) const{
 void RailEditor::Initialize(Obj3dCommon* objCommon){
 	objCommon_ = objCommon;
 
-	// 制御点描画用のモデルをロード
-	ModelManager::GetInstance()->LoadModel("Sphere/sphere.obj");
+	// 制御点の目印と、曲線の点列・着地範囲の点のモデルをロード
+	ModelManager::GetInstance()->LoadModel(kControlPointModelPath);
+	ModelManager::GetInstance()->LoadModel(kSampleModelPath);
 	// Play中のレール本体の管のモデルをロード
 	ModelManager::GetInstance()->LoadModel(kTubeModelPath);
 
@@ -161,7 +170,7 @@ void RailEditor::Update(){
 		activeRail.controlPoints.push_back(kDefaultControlPoint);
 
 		// 追加した制御点用の3Dオブジェクトを生成
-		activeRail.pointObjects.push_back(CreatePointObject());
+		activeRail.pointObjects.push_back(CreatePointObject(kControlPointModelPath));
 	}
 
 	ImGui::Separator();
@@ -389,6 +398,16 @@ void RailEditor::BuildTubes(){
 			continue;
 		}
 
+		// レールの始点と終点に制御点の目印を置く
+		// Catmull-Romの曲線は2番目の制御点から最後の1つ前の制御点までを通るため、その2点がレールの始点と終点になる
+		// Play中は形が変わらないため、目印の行列も管と同じくここで1回だけ求める
+		for(size_t pointIndex : {kRailStartPointIndex, rail.controlPoints.size() - 1 - kRailStartPointIndex}){
+			Obj3D* marker = rail.pointObjects[pointIndex].get();
+			marker->SetTranslate(rail.controlPoints[pointIndex].position);
+			marker->SetScale({kControlPointScale, kControlPointScale, kControlPointScale});
+			marker->Update();
+		}
+
 		// 区間の終点は次の区間の始点になるため、前の区間の終点を使い回して座標の計算を1回で済ませる
 		Vector3 start = ComputePositionOnRail(rail.controlPoints,0.0f);
 		for(int i = 0; i < kTubeSegmentCount; ++i){
@@ -427,7 +446,24 @@ void RailEditor::BuildTubes(){
 void RailEditor::DrawTubes(){
 	Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera();
 
-	for(Rail& rail : rails_){
+	for(size_t railIndex = 0; railIndex < rails_.size(); ++railIndex){
+		Rail& rail = rails_[railIndex];
+
+		// 管を作ったレールだけ、レールの始点と終点の制御点の目印を描画する(色はEdit中と同じく今乗っているレールかどうかで分ける)
+		if(rail.controlPoints.size() >= 4){
+			Vector4 markerColor = (static_cast<int>(railIndex) == activeRailIndex_)?kActiveRailColor:kInactiveRailColor;
+			for(size_t pointIndex : {kRailStartPointIndex, rail.controlPoints.size() - 1 - kRailStartPointIndex}){
+				Obj3D* marker = rail.pointObjects[pointIndex].get();
+				if(Model::Material* mat = marker->GetMaterial()){
+					mat->color = markerColor;
+				}
+				if(activeCamera){
+					marker->SetCamera(activeCamera);
+				}
+				marker->Draw();
+			}
+		}
+
 		for(int i = 0; i < kTubeSegmentCount; ++i){
 			if(!rail.tubeSegmentVisible[i]){
 				continue;

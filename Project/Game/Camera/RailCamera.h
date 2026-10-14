@@ -73,8 +73,6 @@ private:
 	static constexpr float kDefaultFollowSharpness = 8.0f;
 	// マウス1移動量あたりの回転量(ラジアン)
 	static constexpr float kDefaultMouseSensitivity = 0.0004f;
-	// 左右の可動範囲(約34度)
-	static constexpr float kDefaultAimYawLimit = 0.6f;
 	// 上下の可動範囲(約29度)
 	static constexpr float kDefaultAimPitchLimit = 0.5f;
 

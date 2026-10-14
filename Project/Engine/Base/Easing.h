@@ -43,6 +43,17 @@ namespace Easing{
 		return kCubicCoefficient * t * t * t - kBackAmount * t * t;
 	}
 
+	// 勢いよく進んで目標を少し行き過ぎてから、戻って止まる(ポンと飛び出して収まるような動き)
+	inline float EaseOutBack(float t){
+		// 行き過ぎる量の係数(EaseInBack と同じ値で、最大で約10%行き過ぎる)
+		constexpr float kBackAmount = 1.70158f;
+		// 3次の項の係数(t=1でちょうど1になるよう kBackAmount + 1 にする)
+		constexpr float kCubicCoefficient = kBackAmount + 1.0f;
+
+		float reversed = t - 1.0f;
+		return 1.0f + kCubicCoefficient * reversed * reversed * reversed + kBackAmount * reversed * reversed;
+	}
+
 	// 落ちてきて地面で数回弾み、だんだん弾みが小さくなって止まる
 	inline float EaseOutBounce(float t){
 		// 放物線の鋭さの係数(一般的に使われる値)

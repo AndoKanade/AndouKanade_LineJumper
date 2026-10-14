@@ -44,8 +44,7 @@ void RailCamera::Initialize(const std::string& paramGroup){
 	gv->AddItem(paramGroup_,"cameraFollowSharpness",kDefaultFollowSharpness);    // レールの向きへの追従の速さ
 	// 照準(エイム)まわりの手触り調整用パラメータ(照準操作はマウスで行う)
 	gv->AddItem(paramGroup_,"mouseSensitivity",kDefaultMouseSensitivity); // マウス1移動量あたりの回転量(ラジアン)
-	gv->AddItem(paramGroup_,"aimYawLimit",kDefaultAimYawLimit);           // 左右の可動範囲
-	gv->AddItem(paramGroup_,"aimPitchLimit",kDefaultAimPitchLimit);       // 上下の可動範囲
+	gv->AddItem(paramGroup_,"aimPitchLimit",kDefaultAimPitchLimit);       // 上下の可動範囲(左右は360度振り向けるため制限しない)
 }
 
 // 照準オフセットを初期状態に戻す
@@ -65,7 +64,6 @@ void RailCamera::Update(const Vector3& basePosition,const Vector3& baseRotation,
 	float distance = gv->GetFloatValue(paramGroup_,"cameraDistance");
 	float followSharpness = gv->GetFloatValue(paramGroup_,"cameraFollowSharpness");
 	float mouseSensitivity = gv->GetFloatValue(paramGroup_,"mouseSensitivity");
-	float aimYawLimit = gv->GetFloatValue(paramGroup_,"aimYawLimit");
 	float aimPitchLimit = gv->GetFloatValue(paramGroup_,"aimPitchLimit");
 
 	// プレイヤー入力で照準(カメラの向き)をレールの向きに上乗せする
@@ -74,9 +72,10 @@ void RailCamera::Update(const Vector3& basePosition,const Vector3& baseRotation,
 		aimYawOffset_ += input->GetMouseDeltaX() * mouseSensitivity;
 		aimPitchOffset_ += input->GetMouseDeltaY() * mouseSensitivity;
 
-		// 可動範囲でクランプ(振り向きすぎないように)
-		if(aimYawOffset_ > aimYawLimit) aimYawOffset_ = aimYawLimit;
-		if(aimYawOffset_ < -aimYawLimit) aimYawOffset_ = -aimYawLimit;
+		// 左右は360度振り向けるよう制限せず、回し続けても値が大きくなりすぎないよう -π〜π に収める
+		aimYawOffset_ = WrapAngle(aimYawOffset_,kPi);
+
+		// 上下は真上・真下を越えて画面が反転しないよう可動範囲でクランプする
 		if(aimPitchOffset_ > aimPitchLimit) aimPitchOffset_ = aimPitchLimit;
 		if(aimPitchOffset_ < -aimPitchLimit) aimPitchOffset_ = -aimPitchLimit;
 	}
