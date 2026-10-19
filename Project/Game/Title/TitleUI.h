@@ -8,7 +8,7 @@ class Sprite;
 class SpriteCommon;
 
 /// <summary>
-/// タイトル中の2D表示(PRESS SPACE)
+/// タイトル中の2D表示(PRESS SPACE と、右上の「ESC ゲーム終了」の案内)
 /// 専用素材が無いため、今は既存テクスチャを仮のスプライトとして表示する。
 /// タイトルロゴは3Dモデルとして TitleLogo が表示する。
 /// </summary>
@@ -38,6 +38,8 @@ private:
 
 	// PRESS SPACE の表示(仮)
 	std::unique_ptr<Sprite> pressSprite_;
+	// 画面の右上に出す「ESC ゲーム終了」の案内
+	std::unique_ptr<Sprite> quitHintSprite_;
 	// タイトル開始時に黒から明るくするための、画面全体を覆うスプライト
 	std::unique_ptr<Sprite> fadeSprite_;
 
@@ -52,6 +54,10 @@ private:
 	static constexpr Vector2 kPressSize = {360.0f, 60.0f};
 	// PRESS SPACE の中心の高さ(画面上端からの割合)
 	static constexpr float kPressHeightRate = 0.8f;
+	// 「ESC ゲーム終了」の案内の大きさ(ピクセル)・画面の端からの距離(ピクセル。「H あそびかた」とそろえる)・濃さ
+	static constexpr Vector2 kQuitHintSize = {340.0f, 64.0f};
+	static constexpr float kQuitHintMargin = 32.0f;
+	static constexpr float kQuitHintAlpha = 0.85f;
 	// 点滅の速さ(1秒あたりの位相の進み、ラジアン)
 	static constexpr float kBlinkSpeed = 4.0f;
 	// 点滅で最も薄くなったときの濃さ

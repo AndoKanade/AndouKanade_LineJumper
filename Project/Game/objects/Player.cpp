@@ -61,6 +61,10 @@ void Player::Reset(){
 	// 体力・無敵時間も初期状態に戻す
 	hp_ = kMaxHp;
 	invincibleTimer_ = 0.0f;
+
+	// 速さを上げている途中なら止める
+	railBoostDuration_ = 0.0f;
+	railBoostTimer_ = 0.0f;
 }
 
 // スタート台の上に立たせ、オフレールの状態から始める
@@ -72,6 +76,41 @@ void Player::StartOnPlatform(const Vector3& startPosition,const Vector3& startRo
 	freeVelocityY_ = 0.0f;
 	// カメラはレールの始点の向きを正面にする
 	freeBaseRotation_ = startRotation;
+}
+
+// レールの始点にオンレールの状態で乗せる
+// 体力・無敵時間は残したまま、レールの進行とレール上でのジャンプ・乗り換えの途中状態だけを初めに戻す
+void Player::BoardRailStart(){
+	railT_ = 0.0f;
+	isRailFinished_ = false;
+	isOnRail_ = true;
+	isOnPlatform_ = false;
+	freeVelocityY_ = 0.0f;
+	isRailHopping_ = false;
+	railHopHeight_ = 0.0f;
+	railHopVelocityY_ = 0.0f;
+	isSwitchingRail_ = false;
+	railSwitchTimer_ = 0.0f;
+}
+
+// 出発の演出中に、プレイヤーの表示を演出側で決めた位置・向き・大きさにする
+// 敵の検知・カメラの基準にも使う表示位置(position_)も、演出の位置にそろえる
+void Player::SetDirectedPose(const Vector3& position,const Vector3& rotate,const Vector3& scaleRate){
+	position_ = position;
+	if(!obj_){
+		return;
+	}
+	obj_->SetTranslate(position_);
+	obj_->SetRotate(rotate);
+	obj_->SetScale({kScale * scaleRate.x, kScale * scaleRate.y, kScale * scaleRate.z});
+	obj_->Update();
+}
+
+// レールを進む速さを一時的に上げる
+void Player::StartRailBoost(float rate,float duration){
+	railBoostRate_ = rate;
+	railBoostDuration_ = duration;
+	railBoostTimer_ = 0.0f;
 }
 
 // レールの進行
@@ -92,6 +131,12 @@ void Player::UpdateRailProgress(const RailEditor* railEditor,bool isGameplayActi
 	// レール上で跳ねている間・並走レールへ飛び移っている間は、空中で前へ流されすぎないよう進む速さを落とす
 	if(!IsGroundedOnRail()){
 		railSpeed *= kRailAirborneSpeedRate;
+	}
+
+	// 発射台から飛び出した直後は速さを上げ、勢いよく飛び出してから少しずつ元の速さへ戻す
+	if(railBoostTimer_ < railBoostDuration_){
+		railBoostTimer_ = (std::min)(railBoostTimer_ + deltaTime,railBoostDuration_);
+		railSpeed *= Lerp(railBoostRate_,1.0f,Easing::EaseOutCubic(railBoostTimer_ / railBoostDuration_));
 	}
 
 	railT_ = railEditor->AdvanceTByDistance(railT_,pointSpeed * railSpeed * deltaTime);

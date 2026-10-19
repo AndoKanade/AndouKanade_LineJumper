@@ -6,6 +6,7 @@
 #include "SoundManager.h"
 #include "CameraManager.h"
 #include "ParticleManager.h"
+#include "PaintManager.h"
 #include "TextureManager.h"
 #include "ModelManager.h"
 #include "TimeManager.h"
@@ -60,6 +61,11 @@ void Framework::Update(){
 
 	// --- 入力情報の更新 ---
 	input_->Update();
+
+	// ESC キーでゲームを終了する(ウィンドウを閉じたときと同じく終了リクエストを送る)
+	if(input_->TriggerKey(DIK_ESCAPE)){
+		endRequest_ = true;
+	}
 
 	// --- サウンドの更新 ---
 	// 出力デバイスが失われていたら、シーンが音を鳴らす前に作り直しておく
@@ -134,6 +140,7 @@ void Framework::Finalize(){
 
 	SoundManager::GetInstance()->Finalize();
 	ParticleManager::GetInstance()->Finalize();
+	PaintManager::GetInstance()->Finalize();
 	ModelManager::GetInstance()->Finalize();
 	TextureManager::GetInstance()->Finalize();
 	CameraManager::GetInstance()->Finalize();

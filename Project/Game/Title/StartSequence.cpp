@@ -19,6 +19,9 @@ namespace{
 	// BGM・SEの音量の調整項目名
 	const char* kBgmVolumeKey = "bgmVolume";
 	const char* kSeVolumeKey = "seVolume";
+	// ゲートを映す画のカメラ座標・注目する座標の調整項目名
+	const char* kGateCameraPositionKey = "gateCameraPosition";
+	const char* kGateCameraTargetKey = "gateCameraTarget";
 	// 音量の範囲(0=無音, 1=元の音量)
 	constexpr float kMinVolume = 0.0f;
 	constexpr float kMaxVolume = 1.0f;
@@ -56,18 +59,24 @@ void StartSequence::Initialize(Obj3dCommon* object3dCommon,SpriteCommon* spriteC
 	gv->CreateGroup(kTitleGroup);
 	gv->AddItem(kTitleGroup,kBgmVolumeKey,kDefaultBgmVolume);
 	gv->AddItem(kTitleGroup,kSeVolumeKey,kDefaultSeVolume);
+	// ゲートを映す画は、実際に見ながら構図を詰められるよう調整項目にする
+	gv->AddItem(kTitleGroup,kGateCameraPositionKey,kDefaultGateCameraPosition);
+	gv->AddItem(kTitleGroup,kGateCameraTargetKey,kDefaultGateCameraTarget);
 }
 
 // タイトルから始める
 void StartSequence::Start(bool skipTitle){
 	playerHopTimer_ = 0.0f;
 	cameraDirector_.Reset();
+	gateCameraDirector_.Reset();
 	if(introUI_){
 		introUI_->Reset();
 	}
 	// 出発ゲートを閉じた状態から始める
+	// 前回の出発で台に塗ったインクも消す(落下リスタートでは Start() を呼ばないため、インクは残る)
 	if(startPlatform_){
 		startPlatform_->ResetGate();
+		startPlatform_->ClearInk();
 	}
 
 	// タイトル演出を飛ばす場合は、BGMも鳴らさずにそのままプレイ中にする
@@ -94,6 +103,7 @@ void StartSequence::Start(bool skipTitle){
 // 演出を止める
 void StartSequence::Stop(){
 	phase_ = Phase::None;
+	gateCameraDirector_.Reset();
 	if(introUI_){
 		introUI_->Reset();
 	}
@@ -105,10 +115,19 @@ void StartSequence::Stop(){
 
 // 更新処理
 void StartSequence::Update(float deltaTime,const Vector3& playerPosition){
-	// 出発までの表示(操作案内・GO!)は、どの段階でも出し入れの動きを進める
+	// このフレームで出発ゲートを開け始めたかは、毎フレーム調べ直す
+	isGateOpenTriggered_ = false;
+
+	// 出発までの表示(操作案内・カウントダウン・GO!)は、どの段階でも出し入れの動きを進める
+	// カウントダウンの数は、ゲートのランプが点くのに合わせてスタート台から受け取る
 	if(introUI_ && phase_ != Phase::None){
+		if(startPlatform_){
+			introUI_->SetCountdown(startPlatform_->GetCountdownNumber());
+		}
 		introUI_->Update(deltaTime);
 	}
+	// ゲートを映すカメラは、レールに乗り込んだ後も戻りきるまで動かす
+	gateCameraDirector_.Update(deltaTime);
 
 	switch(phase_){
 	case Phase::Title:
@@ -170,26 +189,34 @@ void StartSequence::Update(float deltaTime,const Vector3& playerPosition){
 			introUI_->SetPromptVisible(isAtGate);
 		}
 		if(isAtGate && input_ && input_->TriggerKey(DIK_SPACE)){
-			// ゲートのランプを順に点けて開け始め、操作案内は消す
+			// 目印から柱へインクを流し込んでゲートを開け始め、操作案内は消す
 			startPlatform_->BeginOpenGate();
 			if(introUI_){
 				introUI_->SetPromptVisible(false);
 			}
 			SoundManager::GetInstance()->PlayAudio(kDecideSePath,GetVolume(kSeVolumeKey));
+			// カメラをゲートの斜め前へ寄せ、インクが塗り上がる様子を大きく見せる
+			gateCameraDirector_.BeginShot();
 			phase_ = Phase::GateOpen;
+			isGateOpenTriggered_ = true;
 		}
 		break;
 	}
 
 	case Phase::GateOpen:
-		// ゲートが開ききったら、レールへ歩いて乗れるようにする
+		// ゲートが開ききったら、カメラをプレイ用カメラへ戻し始め、レールへ歩いて乗れるようにする
 		if(!startPlatform_ || startPlatform_->IsGateOpened()){
+			gateCameraDirector_.BeginReturn();
 			phase_ = Phase::Boarding;
 		}
 		break;
 
 	case Phase::Boarding:
 		// プレイヤーがレールに乗ったら、GameScene から NotifyBoarded() で知らせてもらう
+		break;
+
+	case Phase::Departure:
+		// 出発の演出がレールへ乗せ終えたら、GameScene から NotifyBoarded() で知らせてもらう
 		break;
 
 	case Phase::Playing:
@@ -201,13 +228,25 @@ void StartSequence::Update(float deltaTime,const Vector3& playerPosition){
 
 // プレイヤーがレールに乗り込んだことを伝える
 void StartSequence::NotifyBoarded(){
-	if(phase_ != Phase::Boarding){
+	if(phase_ != Phase::Boarding && phase_ != Phase::Departure){
 		return;
 	}
 	if(introUI_){
 		introUI_->BeginGo();
 	}
 	phase_ = Phase::Playing;
+}
+
+// 出発の演出を始めたことを伝える
+// ゲートを開けている最中に始めたときは、演出のカメラに任せるため、ゲートを映すカメラを止める
+void StartSequence::BeginDeparture(){
+	if(phase_ != Phase::Boarding && phase_ != Phase::GateOpen){
+		return;
+	}
+	if(phase_ == Phase::GateOpen){
+		gateCameraDirector_.Reset();
+	}
+	phase_ = Phase::Departure;
 }
 
 // タイトルロゴを配置する
@@ -255,4 +294,16 @@ float StartSequence::GetPlayerHopHeight() const{
 // 演出中のカメラ座標・向きを求める
 void StartSequence::CalculateCamera(const Vector3& pivot,const Vector3& gameplayPosition,const Vector3& gameplayRotate,Vector3& outPosition,Vector3& outRotate) const{
 	cameraDirector_.Calculate(pivot,gameplayPosition,gameplayRotate,outPosition,outRotate);
+}
+
+// 出発ゲートを開ける様子を映すカメラの座標・向きを求める
+// 調整項目のゲートから見た座標を、台の置き方に合わせてワールド座標に直してから使う
+CameraPose StartSequence::CalculateGateCamera(const CameraPose& gameplayCamera) const{
+	if(!startPlatform_){
+		return gameplayCamera;
+	}
+	GlobalVariables* gv = GlobalVariables::GetInstance();
+	Vector3 shotPosition = startPlatform_->GateLocalToWorld(gv->GetVector3Value(kTitleGroup,kGateCameraPositionKey));
+	Vector3 shotTarget = startPlatform_->GateLocalToWorld(gv->GetVector3Value(kTitleGroup,kGateCameraTargetKey));
+	return gateCameraDirector_.Calculate(shotPosition,shotTarget,gameplayCamera);
 }

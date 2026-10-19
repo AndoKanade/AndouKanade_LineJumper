@@ -20,6 +20,8 @@
 #include "Editor/RailEditor.h"
 // ステージ開始演出(タイトル → カメラの回り込み → スタート台で準備 → レールへ乗り込む)
 #include "Title/StartSequence.h"
+// 出発の演出(スタート台からステージのレールへ移るときの演出)
+#include "Title/Departure/DepartureDirector.h"
 // ゲームオブジェクト
 #include "objects/Ground.h"
 #include "objects/Sun.h"
@@ -34,6 +36,8 @@
 // カメラ
 #include "Camera/RailCamera.h"
 #include "Camera/DebugTopCamera.h"
+#include "Camera/ScreenImpact.h"
+#include "Camera/CameraPose.h"
 // UI
 #include "UI/Reticle.h"
 #include "UI/StageHUD.h"
@@ -69,13 +73,26 @@ namespace{
 	// GameScene はシーンが切り替わるたびに作り直されるため、ImGui で選んだ演出を調整項目に持たせて保存・保持する
 	const char* kFallTransitionKey = "fallTransitionStyle";
 	const char* kClearTransitionKey = "clearTransitionStyle";
+	// 出発の演出を保存する調整項目名(DepartureStyle の番号で保存する)と、初期値
+	const char* kDepartureStyleKey = "departureStyle";
+	constexpr DepartureStyle kDefaultDepartureStyle = DepartureStyle::CountdownFlip;
 	// 演出の初期値(保存済みJSONがあればそちらが優先される)
 	constexpr SceneTransition::Style kDefaultFallTransitionStyle = SceneTransition::Style::RailStripes;
 	constexpr SceneTransition::Style kDefaultClearTransitionStyle = SceneTransition::Style::InkBurst;
 
+	// 提出用: レールに乗ってプレイが始まってから、暗転してタイトルへ戻すか(false にすると、そのままプレイを続ける)
+	constexpr bool kReturnToTitleAfterBoarding = true;
+	// レールに乗ってからタイトルへ戻し始めるまでの時間(秒)
+	constexpr float kReturnToTitleDelay = 2.0f;
+
 	// 調整項目に保存した番号から演出の種類を取得する
 	SceneTransition::Style GetTransitionStyle(const char* key){
 		return static_cast<SceneTransition::Style>(GlobalVariables::GetInstance()->GetIntValue(kGameSceneGroup,key));
+	}
+
+	// 調整項目に保存した番号から出発の演出の種類を取得する
+	DepartureStyle GetDepartureStyle(){
+		return static_cast<DepartureStyle>(GlobalVariables::GetInstance()->GetIntValue(kGameSceneGroup,kDepartureStyleKey));
 	}
 
 #ifdef USE_IMGUI
@@ -144,6 +161,7 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// 落下リスタート・クリア画面への切り替えの演出(ImGui で選んだものを "Global Variables" の Save で保存できる)
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kFallTransitionKey,static_cast<int32_t>(kDefaultFallTransitionStyle));
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kClearTransitionKey,static_cast<int32_t>(kDefaultClearTransitionStyle));
+	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kDepartureStyleKey,static_cast<int32_t>(kDefaultDepartureStyle));
 
 	// 太陽の生成(方角はレール開始地点の進行方向を基準にする)
 	sun_ = std::make_unique<Sun>();
@@ -156,6 +174,8 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// レール追従カメラの生成
 	railCamera_ = std::make_unique<RailCamera>();
 	railCamera_->Initialize(kGameSceneGroup);
+	// 衝撃の瞬間の画面演出(出発ゲートが開く瞬間のヒットストップ・画面の揺れ)
+	screenImpact_ = std::make_unique<ScreenImpact>();
 
 	// 俯瞰用のデバッグカメラを生成
 	debugTopCamera_ = std::make_unique<DebugTopCamera>();
@@ -180,6 +200,19 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// インクのしぶき・的の破片・閃光の演出(使い回す3Dオブジェクトをここでまとめて生成する)
 	inkEffect_ = std::make_unique<InkEffectManager>();
 	inkEffect_->Initialize(object3dCommon_);
+	// インクのしぶきがスタート台の上面に落ちたら、落ちたところにインクを塗る
+	inkEffect_->SetLandingHandler([this](const Vector3& from,const Vector3& to,float inkRadius){
+		return startPlatform_->TryLandInk(from,to,inkRadius);
+	});
+	// 弾がスタート台の上面に当たったら、当たったところにインクを塗り、しぶきを跳ねさせる
+	bulletManager_->SetLandingHandler([this](const Vector3& from,const Vector3& to,float inkRadius){
+		Vector3 landedPosition;
+		if(!startPlatform_->TryLandInk(from,to,inkRadius,&landedPosition)){
+			return false;
+		}
+		inkEffect_->EmitInkSplash(landedPosition,kWorldUp,kBulletLandSplashCount);
+		return true;
+	});
 
 	// 的を続けて壊したときの連鎖数
 	comboCounter_ = std::make_unique<ComboCounter>();
@@ -204,6 +237,10 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	startSequence_ = std::make_unique<StartSequence>();
 	// スタート台を渡し、出発ゲートの開け閉めを開始演出に任せる
 	startSequence_->Initialize(object3dCommon_,spriteCommon_,input_,startPlatform_.get());
+
+	// 出発の演出(使う演出は出発ゲートが開いた瞬間に、ImGui で選んだものに決める)
+	departureDirector_ = std::make_unique<DepartureDirector>();
+	departureDirector_->Initialize();
 }
 
 // シーンの終了処理
@@ -243,13 +280,40 @@ void GameScene::ResetPlayState(){
 		player_->StartOnPlatform(startPlatform_->GetSpawnPosition(),railEditor_->GetRotationOnRail(0.0f));
 	}
 
-	// 出ている演出・連鎖数・スピード線も消す
+	// タイトルへ戻すまでの時間も数え直す
+	playTimeSinceBoarded_ = 0.0f;
+
+	// 出ている演出・連鎖数・スピード線・画面の揺れ・出発の演出も消す
 	inkEffect_->Reset();
+	screenImpact_->Reset();
+	departureDirector_->Reset();
 	comboCounter_->Reset();
 	speedLines_->Reset();
 
 	// 雑魚敵も撃破前の初期状態(体力満タン)から始める
 	enemyManager_->Reset();
+}
+
+// 出発の演出が動かす・参照するものをまとめる
+DepartureContext GameScene::MakeDepartureContext() const{
+	DepartureContext context;
+	context.player = player_.get();
+	context.railEditor = railEditor_.get();
+	context.startPlatform = startPlatform_.get();
+	context.inkEffect = inkEffect_.get();
+	context.screenImpact = screenImpact_.get();
+	context.sceneManager = sceneManager_;
+	context.camera = CameraManager::GetInstance()->GetCamera(kDefaultCameraName);
+	return context;
+}
+
+// レールに乗り込んで「GO!」でプレイを始める瞬間の演出
+// 足元から輪とインクのしぶきを広げ、足元には大きなインクの跡を残し、高く飛び散ったしぶきは台に落ちたところに跡を残す
+void GameScene::PlayBoardedEffects(const Vector3& boardedPos){
+	startPlatform_->EmitLaunchRing(boardedPos);
+	startPlatform_->PaintInk(boardedPos,kLaunchInkRadius);
+	inkEffect_->EmitInkSplash(boardedPos,kWorldUp,kLaunchSplashCount);
+	inkEffect_->EmitLaunchBurst(boardedPos,kLaunchBurstCount);
 }
 
 // シーンの更新処理
@@ -268,8 +332,28 @@ void GameScene::Update(){
 	// 地面タイルの更新(霧のUVスクロールも行う)
 	ground_->Update(kDeltaTime);
 
-	// スタート台の出発ゲートの更新(ランプ・遮断棒・足元の目印・出発の輪の動き)
-	startPlatform_->Update(kDeltaTime);
+	// 衝撃の瞬間の画面演出を進める
+	// ヒットストップ中は、出発ゲートとインクの演出の時間を止めて、衝撃の瞬間を強調する
+	screenImpact_->Update(kDeltaTime);
+	const float effectDeltaTime = screenImpact_->IsHitStopping()?0.0f:kDeltaTime;
+
+	// スタート台の出発ゲートの更新(ゲートへ流し込むインク・ランプ・遮断棒・足元の目印・出発の輪の動き)
+	startPlatform_->Update(effectDeltaTime);
+	// 遮断棒が跳ね上がった瞬間に、ゲートからインクを高く飛び散らせる(台に落ちたところにインクの跡が残る)
+	// 同時に一瞬だけ動きを止め、画面を揺らし、ゲートを中心に放射ブラーをかけて、ゲートが開く衝撃を見せる
+	if(startPlatform_->IsBarBurstTriggered()){
+		// 使う出発の演出は、ゲートが開いた瞬間に ImGui で選んでいるものに決める(インク溜まりを塗るなど、出発台の準備もここで行う)
+		// タイトルを飛ばしたときはゲートを開ける演出を挟まないため、出発の演出も使わない
+		if(startSequence_->IsOpeningGate()){
+			departureDirector_->Prepare(GetDepartureStyle(),MakeDepartureContext());
+		}
+		const Vector3 burstPosition = startPlatform_->GetGateBurstPosition();
+		inkEffect_->EmitLaunchBurst(burstPosition,kGateBurstCount);
+		screenImpact_->Trigger(kGateHitStopDuration,kGateShakeAmplitude,kGateShakeDuration);
+		if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
+			Application::GetInstance()->TriggerRadialBlur(CameraPoseMath::WorldToScreenUv(burstPosition,activeCamera->GetViewProjectionMatrix()),kGateRadialBlurWidth,kGateRadialBlurDuration);
+		}
+	}
 
 	// 太陽の光の向き・色・明るさを調整項目の最新値で更新する
 	sun_->Update();
@@ -290,6 +374,10 @@ void GameScene::Update(){
 	if(railEditor_){
 		UpdateGameplay();
 	}
+
+	// このフレームでスタート台に塗ったインクを塗りテクスチャに描き込む
+	// しぶきの着地(UpdateGameplay の中の演出の更新)で塗る分も同じフレームで反映するよう、その後に行う
+	startPlatform_->FlushInk();
 
 	// ImGuiが無い環境でもレールの制御点を確認できるよう、F1キーで俯瞰デバッグカメラを切り替える
 	debugTopCamera_->HandleToggleKey(input_,railEditor_.get());
@@ -372,6 +460,7 @@ void GameScene::UpdateGameplay(){
 		startSequence_->Start(skipTitle_);
 	} else if(!isPlayMode && wasPlayMode_){
 		startSequence_->Stop();
+		departureDirector_->Reset();
 	} else if(isPlayMode && input_ && input_->TriggerKey(DIK_R)){
 		// 確認用の一時的な処理:Play中にRキーでタイトルから最初からやり直す
 		ResetPlayState();
@@ -383,6 +472,19 @@ void GameScene::UpdateGameplay(){
 	// ゲートの前にいるかは、前フレームで動かしたプレイヤーの座標で判定する
 	if(isPlayMode){
 		startSequence_->Update(kDeltaTime,player_->GetPosition());
+
+		// ゲートのカウントダウンに合わせて飛び乗る演出は、ゲートを開け始めた瞬間に選んで始める
+		// ゲートを映すカメラの代わりに演出のカメラで映すため、始めた瞬間に映っているカメラの画から動かし始める
+		if(startSequence_->IsGateOpenTriggered() && departureDirector_->StartsWithGate(GetDepartureStyle())){
+			const DepartureContext context = MakeDepartureContext();
+			departureDirector_->Prepare(GetDepartureStyle(),context);
+			startSequence_->BeginDeparture();
+			CameraPose startCamera = {railCamera_->GetPosition(), railCamera_->GetRotation()};
+			if(Camera* mainCamera = CameraManager::GetInstance()->GetCamera(kDefaultCameraName)){
+				startCamera = {mainCamera->GetTranslate(), mainCamera->GetRotate()};
+			}
+			departureDirector_->Begin(context,startCamera);
+		}
 	}
 
 	// レール進行・操作・射撃・勝敗判定は、開始演出が終わってプレイ可能になってから動かす
@@ -391,6 +493,9 @@ void GameScene::UpdateGameplay(){
 	// 開始演出のうち、スタート台の上を自由に動ける段階か(出発ゲートの前で準備中と、ゲートが開いてレールへ乗り込むまで)
 	// 動き方(WASD・ジャンプ・台から落ちたときのリスタート)はプレイ中と同じで、敵・射撃・勝敗判定はまだ動かさない
 	const bool isPlayerMovable = isPlayMode && startSequence_->IsPlayerMovable() && !sceneManager_->IsTransitioning();
+
+	// 出発の演出を使うときは、ゲートが開いてから演出を始めるまでの間だけ、ゲートの先に出発台の目印を出す
+	startPlatform_->SetDeparturePadVisible(startSequence_->IsBoarding() && departureDirector_->UsesDeparturePad());
 
 	// マウスカーソルの表示/非表示切り替え
 	UpdateCursorVisibility(isPlayMode);
@@ -427,6 +532,20 @@ void GameScene::UpdateGameplay(){
 		return;
 	}
 
+	// 提出用: レールに乗ってプレイが始まってから一定時間たったら、暗転して覆っている間にタイトルからやり直す
+	// 暗転を始めると isGameplayActive が false になるため、暗転は1回だけ始まる
+	if constexpr(kReturnToTitleAfterBoarding){
+		if(isGameplayActive){
+			playTimeSinceBoarded_ += kDeltaTime;
+			if(playTimeSinceBoarded_ >= kReturnToTitleDelay){
+				sceneManager_->StartTransition([this](){
+					ResetPlayState();
+					startSequence_->Start(skipTitle_);
+				},SceneTransition::Style::Fade);
+			}
+		}
+	}
+
 #ifdef USE_IMGUI
 	// レールの状態確認用デバッグ表示(Playモード中も含めて常に表示する)
 	ShowStatusWindow();
@@ -443,9 +562,22 @@ void GameScene::UpdateGameplay(){
 		inkEffect_->EmitRailTrail(playerPos,-railEditor_->GetForwardOnRail(player_->GetRailT()));
 	}
 
+	// 出発の演出(スーパージャンプ・インクに潜る・発射台など)を進める
+	// プレイヤーの表示とカメラを演出側で動かすため、プレイヤーの行列更新の後・カメラの上書きの前に行う
+	// レールへ乗せ終えたら、歩いて乗り込んだときと同じく「GO!」と乗り込みの演出でプレイを始める
+	if(isPlayMode && departureDirector_->IsRunning()){
+		departureDirector_->Update(screenImpact_->IsHitStopping()?0.0f:kDeltaTime,{cameraPos, railCamera_->GetRotation()});
+		Vector3 boardedPos;
+		if(departureDirector_->ConsumeBoarded(boardedPos)){
+			startSequence_->NotifyBoarded();
+			PlayBoardedEffects(boardedPos);
+		}
+	}
+
 	// 開始演出中は、プレイ用カメラをプレイヤー中心に回転させた位置・向きでカメラを上書きする
 	// (カメラの行列はシーン更新の後にまとめて更新されるため、ここで上書きしてもこのフレームの描画に反映される)
 	// タイトルロゴも同じくプレイヤーの位置・向きを基準に配置する
+	CameraPose departureCamera;
 	if(isPlayMode && startSequence_->IsControllingCamera()){
 		startSequence_->UpdateLogo(playerPos,railCamera_->GetRotation());
 
@@ -455,6 +587,28 @@ void GameScene::UpdateGameplay(){
 		if(Camera* mainCamera = CameraManager::GetInstance()->GetCamera(kDefaultCameraName)){
 			mainCamera->SetTranslate(directedCameraPos);
 			mainCamera->SetRotate(directedCameraRot);
+		}
+	} else if(isPlayMode && departureDirector_->GetCameraPose(departureCamera)){
+		// 出発の演出中は、演出が決めた画にする(ゲートを映すカメラが戻りきる前に始めても、映っていた画から動かし始める)
+		if(Camera* mainCamera = CameraManager::GetInstance()->GetCamera(kDefaultCameraName)){
+			mainCamera->SetTranslate(departureCamera.position);
+			mainCamera->SetRotate(departureCamera.rotate);
+		}
+	} else if(isPlayMode && startSequence_->IsGateCameraActive()){
+		// 出発ゲートを開けている間は、ゲートの斜め前からの画へ寄せ、開ききったらプレイ用カメラへ戻す
+		const CameraPose directedCamera = startSequence_->CalculateGateCamera({cameraPos, railCamera_->GetRotation()});
+		if(Camera* mainCamera = CameraManager::GetInstance()->GetCamera(kDefaultCameraName)){
+			mainCamera->SetTranslate(directedCamera.position);
+			mainCamera->SetRotate(directedCamera.rotate);
+		}
+	}
+
+	// 画面の揺れを、このフレームのカメラの位置に足す
+	// 演出カメラで上書きした後に足すことで、どの画でも同じように揺れるようにする
+	// (カメラの位置はレール追従カメラか演出カメラが毎フレーム設定し直すため、揺れが積み重なることはない)
+	if(screenImpact_->IsShaking()){
+		if(Camera* mainCamera = CameraManager::GetInstance()->GetCamera(kDefaultCameraName)){
+			mainCamera->SetTranslate(mainCamera->GetTranslate() + screenImpact_->GetShakeOffset(railCamera_->GetRight(),kWorldUp));
 		}
 	}
 
@@ -499,23 +653,36 @@ void GameScene::UpdateGameplay(){
 			},GetTransitionStyle(kFallTransitionKey));
 		}
 
-		// 出発ゲートをくぐってレールに乗り込んだ瞬間に、足元から輪とインクのしぶきを広げて「GO!」でプレイを始める
+		// 出発の演出を使うときは、ゲートの先の出発台の手前の線を越えたら演出を始める
+		// (線は歩いてレールに乗れる範囲より手前にあるため、歩いて乗り込むより先に必ず越える)
+		// 始めた瞬間に映っているカメラの画から、演出のカメラへ動かし始める
+		if(startSequence_->IsBoarding() && departureDirector_->UsesDeparturePad() && startPlatform_->IsPastDepartureLine(player_->GetPosition())){
+			startSequence_->BeginDeparture();
+			CameraPose startCamera = {cameraPos, railCamera_->GetRotation()};
+			if(Camera* mainCamera = CameraManager::GetInstance()->GetCamera(kDefaultCameraName)){
+				startCamera = {mainCamera->GetTranslate(), mainCamera->GetRotate()};
+			}
+			departureDirector_->Begin(MakeDepartureContext(),startCamera);
+		}
+
+		// 出発ゲートをくぐってレールに乗り込んだ瞬間に、乗り込みの演出と「GO!」でプレイを始める
 		if(startSequence_->IsBoarding() && player_->IsOnRail()){
 			const Vector3 boardedPos = railEditor_->GetPositionOnRail(player_->GetRailT());
 			startSequence_->NotifyBoarded();
-			startPlatform_->EmitLaunchRing(boardedPos);
-			inkEffect_->EmitInkSplash(boardedPos,kWorldUp,kLaunchSplashCount);
+			PlayBoardedEffects(boardedPos);
 		}
 	}
 
 	// 弾の発射処理(左クリックした瞬間に1発だけ発射する)
-	bool shootTriggered = isGameplayActive && input_ && input_->TriggerMouseButton(kShootMouseButton);
+	// スタート台の上を動ける間も試し撃ちとして撃てるようにし、台に当たったところを塗れるようにする
+	// 試し撃ちの弾は的・敵には当たらないようにして、プレイが始まる前に的を壊したり敵を倒したりしないようにする
+	bool shootTriggered = (isGameplayActive || isPlayerMovable) && input_ && input_->TriggerMouseButton(kShootMouseButton);
 	if(shootTriggered){
 		// プレイヤーの手元から、レティクルの先の点へ向けて撃ち出す
 		Vector3 muzzlePos = player_->GetMuzzlePosition();
 		Vector3 aimPoint = cameraPos + cameraForward * kAimConvergeDistance;
 		Vector3 shootDirection = Normalize(aimPoint - muzzlePos);
-		bulletManager_->Fire(muzzlePos,shootDirection);
+		bulletManager_->Fire(muzzlePos,shootDirection,isGameplayActive);
 
 		// 手元から撃つ向きへインクを少し飛び散らせる
 		inkEffect_->EmitInkSplash(muzzlePos,shootDirection,kMuzzleSplashCount);
@@ -547,7 +714,8 @@ void GameScene::UpdateGameplay(){
 	reticle_->SetAiming(isAimingAtAnyTarget);
 
 	// 演出の更新(このフレームで出した分も含めて行列を求めるため、出す処理がすべて終わってから行う)
-	inkEffect_->Update(kDeltaTime);
+	// ヒットストップ中は、飛び散ったインクも空中で止める
+	inkEffect_->Update(screenImpact_->IsHitStopping()?0.0f:kDeltaTime);
 
 	// スピード線はレールを進んでいる間だけ出す
 	speedLines_->Update(isRidingRail,kDeltaTime);
@@ -621,6 +789,12 @@ void GameScene::ShowEditorPanels(){
 	}
 	if(ImGui::Button("Preview Clear Transition")){
 		sceneManager_->StartTransition(nullptr,clearTransitionStyle);
+	}
+
+	// スタート台からステージのレールへ移るときの出発の演出を切り替える(次に出発ゲートが開いたときから使われる)
+	int departureStyleIndex = static_cast<int>(GetDepartureStyle());
+	if(ImGui::Combo("Departure",&departureStyleIndex,DepartureDirector::kStyleNames,IM_ARRAYSIZE(DepartureDirector::kStyleNames))){
+		gv->SetValue(kGameSceneGroup,kDepartureStyleKey,static_cast<int32_t>(departureStyleIndex));
 	}
 
 	// カメラ設定のUI
@@ -725,14 +899,15 @@ void GameScene::Draw(){
 	}
 
 	// 画面中央固定のレティクルを描画
-	// タイトルからレールに乗り込むまでは撃てないため表示しない
+	// タイトル中・カメラの回り込み中・出発の演出でレールへ向かっている間は撃てないため表示しない
+	// スタート台の上では試し撃ちができるため表示する(ゲートが開く間も、出たり消えたりしないよう表示したままにする)
 	bool isTitleShowing = startSequence_ && startSequence_->IsControllingCamera();
-	bool isIntroRunning = startSequence_ && startSequence_->IsIntroRunning();
+	bool isDeparting = startSequence_ && startSequence_->IsDeparting();
 
 	// スピード線はレティクル・画面表示より奥に見えるよう先に描く
 	speedLines_->Draw();
 
-	if(!isIntroRunning){
+	if(!isTitleShowing && !isDeparting){
 		reticle_->Draw();
 	}
 

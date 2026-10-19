@@ -5,6 +5,7 @@
 #include "CameraManager.h"
 #include "Camera.h"
 #include <cmath>
+#include <numbers>
 
 namespace{
 	// しぶき・閃光に使うモデル
@@ -27,6 +28,8 @@ namespace{
 
 	// 上方向
 	constexpr Vector3 kWorldUp = {0.0f, 1.0f, 0.0f};
+	// 1周分の角度(ラジアン)
+	constexpr float kFullTurn = 2.0f * std::numbers::pi_v<float>;
 }
 
 InkEffectManager::InkEffectManager() = default;
@@ -149,6 +152,21 @@ void InkEffectManager::EmitRailTrail(const Vector3& position,const Vector3& back
 	droplet.maxLifeTime = RandomRange(kTrailLifeMin,kTrailLifeMax);
 }
 
+// 出発の合図に、足元から周り一面へ高く弧を描いて飛び散るインクのしぶき
+// 横へ飛ぶ向きは水平面の全方向からばらばらに選び、落ちる場所が足元の周りに散らばるようにする
+void InkEffectManager::EmitLaunchBurst(const Vector3& position,int count){
+	for(int i = 0; i < count; ++i){
+		Piece& droplet = Spawn(droplets_,nextDroplet_);
+		const float angle = RandomRange(0.0f,kFullTurn);
+		const float horizontalSpeed = RandomRange(kBurstHorizontalSpeedMin,kBurstHorizontalSpeedMax);
+		droplet.position = position;
+		droplet.velocity = {std::cos(angle) * horizontalSpeed, RandomRange(kBurstUpSpeedMin,kBurstUpSpeedMax), std::sin(angle) * horizontalSpeed};
+		droplet.color = kInkColor;
+		droplet.baseScale = RandomRange(kBurstScaleMin,kBurstScaleMax);
+		droplet.maxLifeTime = RandomRange(kBurstLifeMin,kBurstLifeMax);
+	}
+}
+
 // 移動・回転・縮小・寿命の更新
 void InkEffectManager::Update(float deltaTime){
 	for(std::vector<Piece>* pool : {&droplets_, &shards_, &flashes_}){
@@ -167,8 +185,15 @@ void InkEffectManager::Update(float deltaTime){
 			} else if(piece.kind == Kind::Shard){
 				piece.velocity.y -= kShardGravity * deltaTime;
 			}
+			const Vector3 previousPosition = piece.position;
 			piece.position += piece.velocity * deltaTime;
 			piece.rotate += piece.angularVelocity * deltaTime;
+
+			// しぶきがこのフレームの移動で面に着いたら、着いたところにインクを塗ってそこで消す
+			if(piece.kind == Kind::Droplet && landingHandler_ && landingHandler_(previousPosition,piece.position,piece.baseScale * kLandingInkRadiusRate)){
+				piece.isAlive = false;
+				continue;
+			}
 
 			UpdatePieceTransform(piece);
 		}

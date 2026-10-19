@@ -9,6 +9,7 @@
 #include "Sprite.h"
 #include "MyMath.h"
 #include "ModelManager.h"
+#include "PaintManager.h"
 #include <cassert>
 #include <algorithm>
 
@@ -115,6 +116,9 @@ void Obj3D::Draw(){
     commandList->SetGraphicsRootConstantBufferView(1,transformationMatrixResource->GetGPUVirtualAddress());
     commandList->SetGraphicsRootDescriptorTable(2,SrvManager::GetInstance()->GetGPUDescriptorHandle(model->GetModelData().material.textureIndex));
     commandList->SetGraphicsRootDescriptorTable(3,SrvManager::GetInstance()->GetGPUDescriptorHandle(skyboxSRVIndex));
+    // インクの塗りテクスチャ(塗りテクスチャを持たないものは、何も塗られていない透明なテクスチャで同じシェーダーを通す)
+    D3D12_GPU_DESCRIPTOR_HANDLE paintSrvHandle = paintCanvas_?paintCanvas_->GetSrvHandleGpu():PaintManager::GetInstance()->GetEmptyCanvasSrvHandleGpu();
+    commandList->SetGraphicsRootDescriptorTable(isSkinning_?Obj3dCommon::kSkinningPaintTextureRootIndex:Obj3dCommon::kPaintTextureRootIndex,paintSrvHandle);
     commandList->SetGraphicsRootConstantBufferView(4,lightRes->GetGPUVirtualAddress());
 
     if(activeCamera) commandList->SetGraphicsRootConstantBufferView(5,activeCamera->GetGPUVirtualAddress());

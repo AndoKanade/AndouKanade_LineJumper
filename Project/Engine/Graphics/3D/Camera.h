@@ -23,6 +23,7 @@ public:
 	const Matrix4x4& GetViewProjectionMatrix() const{ return viewProjectionMatrix; }
 	const Vector3& GetRotate() const{ return transform.rotate; }
 	const Vector3& GetTranslate() const{ return transform.translate; }
+	float GetFov() const{ return fov; }
 	D3D12_GPU_VIRTUAL_ADDRESS GetGPUVirtualAddress() const{
 		return resource->GetGPUVirtualAddress();
 	}

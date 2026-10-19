@@ -2,6 +2,7 @@
 # ゲームには文字を描く機能が無いため、操作方法と画面の流れを1枚の画像に描いておき、スプライトで表示する。
 # 使い方: python tools/generate_help_texture.py  (Projectフォルダで実行する。Pillowが必要)
 # 出力先: resource/UI/help.png(説明の本体) / resource/UI/helpHint.png(画面の隅に常に出す「H あそびかた」)
+#         resource/UI/quitHint.png(タイトル画面の右上に出す「ESC ゲーム終了」)
 # 操作やキーを変えたときは、下の CONTROLS / FLOWS を書き換えて実行し直す。
 
 from pathlib import Path
@@ -11,6 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 # 出力するファイルのパス(Projectフォルダからの相対パス)
 HELP_OUTPUT_PATH = Path("resource/UI/help.png")
 HINT_OUTPUT_PATH = Path("resource/UI/helpHint.png")
+QUIT_HINT_OUTPUT_PATH = Path("resource/UI/quitHint.png")
 # 文字に使うフォント(リポジトリに入っている日本語フォント)
 FONT_PATH = "resource/fonts/MochiyPopPOne-Regular.ttf"
 
@@ -18,6 +20,8 @@ FONT_PATH = "resource/fonts/MochiyPopPOne-Regular.ttf"
 HELP_SIZE = (1440, 800)
 # 画面の隅に出す案内の画像の大きさ(ピクセル)
 HINT_SIZE = (300, 64)
+# 「ESC ゲーム終了」の札の大きさ(高さは「H あそびかた」とそろえる)
+QUIT_HINT_SIZE = (340, 64)
 
 # 色(RGBA)
 PANEL_COLOR = (16, 22, 34, 230)         # 下地(暗い紺の半透明)
@@ -152,19 +156,29 @@ def generate_help():
     image.save(HELP_OUTPUT_PATH)
 
 
-def generate_hint():
-    image = Image.new("RGBA", HINT_SIZE, (0, 0, 0, 0))
+def generate_key_hint(size, key, text, output_path):
+    """角丸の札に、キーの枠と説明の文字を並べた画像を書き出す"""
+    image = Image.new("RGBA", size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
-    width, height = HINT_SIZE
+    width, height = size
 
     draw.rounded_rectangle((0, 0, width - 1, height - 1), radius=height // 2, fill=PANEL_COLOR, outline=PANEL_EDGE_COLOR, width=3)
-    key_right = draw_key(draw, 14, height / 2, "H", load_font(26))
-    draw.text((key_right + 16, height / 2), "あそびかた", font=load_font(28), fill=TEXT_COLOR, anchor="lm")
+    key_right = draw_key(draw, 14, height / 2, key, load_font(26))
+    draw.text((key_right + 16, height / 2), text, font=load_font(28), fill=TEXT_COLOR, anchor="lm")
 
-    HINT_OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    image.save(HINT_OUTPUT_PATH)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(output_path)
+
+
+def generate_hint():
+    generate_key_hint(HINT_SIZE, "H", "あそびかた", HINT_OUTPUT_PATH)
+
+
+def generate_quit_hint():
+    generate_key_hint(QUIT_HINT_SIZE, "ESC", "ゲーム終了", QUIT_HINT_OUTPUT_PATH)
 
 
 if __name__ == "__main__":
     generate_help()
     generate_hint()
+    generate_quit_hint()

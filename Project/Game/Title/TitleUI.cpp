@@ -11,6 +11,8 @@
 namespace{
 	// PRESS SPACE のテクスチャ
 	const std::string kPressTexture = "resource/Title/pressSpace.png";
+	// 「ESC ゲーム終了」の案内のテクスチャ(tools/generate_help_texture.py で生成)
+	const std::string kQuitHintTexture = "resource/UI/quitHint.png";
 	// フェード用の白一色のテクスチャ(色を掛けて黒にする)
 	// 読み込み時にミップマップを生成するため、1x1 では失敗する。縮小できる大きさにしている
 	const std::string kFadeTexture = "resource/white16x16.png";
@@ -20,6 +22,8 @@ namespace{
 	constexpr float kFadeColor = 0.0f;
 	// スプライトを中心基準で配置するためのアンカー
 	constexpr Vector2 kCenterAnchor = {0.5f, 0.5f};
+	// スプライトを右上基準で配置するためのアンカー
+	constexpr Vector2 kTopRightAnchor = {1.0f, 0.0f};
 	// 画面の横方向の中心(画面幅に対する割合)
 	constexpr float kScreenCenterRate = 0.5f;
 	// sin波(-1〜1)に1を足してから掛け、0〜1に変換する倍率
@@ -43,6 +47,14 @@ void TitleUI::Initialize(SpriteCommon* spriteCommon){
 	pressSprite_->SetSize(kPressSize);
 	pressSprite_->SetAnchorPoint(kCenterAnchor);
 	pressSprite_->SetPosition({screenWidth * kScreenCenterRate, screenHeight * kPressHeightRate});
+
+	// 「ESC ゲーム終了」の案内は、画面の右上の角から少し内側に置く
+	TextureManager::GetInstance()->LoadTexture(kQuitHintTexture);
+	quitHintSprite_ = std::make_unique<Sprite>();
+	quitHintSprite_->Initialize(spriteCommon_,kQuitHintTexture);
+	quitHintSprite_->SetSize(kQuitHintSize);
+	quitHintSprite_->SetAnchorPoint(kTopRightAnchor);
+	quitHintSprite_->SetPosition({screenWidth - kQuitHintMargin, kQuitHintMargin});
 
 	// 画面全体を覆う黒のスプライト(左上から画面サイズに引き伸ばす)
 	TextureManager::GetInstance()->LoadTexture(kFadeTexture);
@@ -73,6 +85,12 @@ void TitleUI::Update(float deltaTime,float visibility){
 		pressSprite_->Update();
 	}
 
+	// 「ESC ゲーム終了」の案内は点滅させず、フェードの濃さだけを掛ける
+	if(quitHintSprite_){
+		quitHintSprite_->SetColor({1.0f, 1.0f, 1.0f, kQuitHintAlpha * visibility_});
+		quitHintSprite_->Update();
+	}
+
 	// フェードインは真っ黒のまま少し止めてから、ゆっくり動き出してゆっくり止まるように黒を薄くしていく
 	// (終わった後は経過時間を止める)
 	fadeTimer_ = (std::min)(fadeTimer_ + deltaTime,kFadeHoldTime + kFadeInDuration);
@@ -93,6 +111,7 @@ void TitleUI::Draw(){
 
 	spriteCommon_->Draw(); // 描画前処理
 	if(pressSprite_) pressSprite_->Draw();
+	if(quitHintSprite_) quitHintSprite_->Draw();
 	// フェード中だけ、すべての表示の上から黒を重ねる
 	if(fadeSprite_ && fadeTimer_ < kFadeHoldTime + kFadeInDuration) fadeSprite_->Draw();
 }

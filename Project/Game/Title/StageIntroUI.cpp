@@ -14,6 +14,8 @@ namespace{
 	const std::string kPromptTexture = "resource/UI/startPrompt.png";
 	// GO!
 	const std::string kGoTexture = "resource/UI/go.png";
+	// カウントダウンの数字(1・2・3 の順)
+	const std::string kCountTextures[] = {"resource/UI/count1.png", "resource/UI/count2.png", "resource/UI/count3.png"};
 
 	// 白(画像の色をそのまま出す)。α値だけ変えて使う
 	constexpr Vector4 kWhite = {1.0f, 1.0f, 1.0f, 1.0f};
@@ -23,6 +25,32 @@ namespace{
 	// 白にα値を付けた色を返す
 	Vector4 WhiteWithAlpha(float alpha){
 		return {kWhite.x, kWhite.y, kWhite.z, alpha};
+	}
+
+	/// <summary>
+	/// 大きい状態から飛び出すように縮んで収まり、少し表示した後に大きさを変えながら消える表示の、大きさの倍率と濃さを求める
+	/// </summary>
+	/// <param name="timer">出してからの経過時間(秒)</param>
+	/// <param name="popDuration">飛び出してくる時間(秒)</param>
+	/// <param name="popStartScale">飛び出し始めの大きさの倍率</param>
+	/// <param name="holdTime">飛び出してから消え始めるまでの時間(秒)</param>
+	/// <param name="fadeDuration">消える時間(秒)</param>
+	/// <param name="fadeEndScale">消え終わりの大きさの倍率</param>
+	/// <param name="outScale">大きさの倍率</param>
+	/// <param name="outAlpha">濃さ</param>
+	void CalculatePopScaleAlpha(float timer,float popDuration,float popStartScale,float holdTime,float fadeDuration,float fadeEndScale,float& outScale,float& outAlpha){
+		outScale = 1.0f;
+		outAlpha = 1.0f;
+		const float fadeStartTime = popDuration + holdTime;
+		if(timer < popDuration){
+			float popProgress = timer / popDuration;
+			outScale = Lerp(popStartScale,1.0f,Easing::EaseOutBack(popProgress));
+			outAlpha = popProgress;
+		} else if(timer >= fadeStartTime){
+			float fadeProgress = std::clamp((timer - fadeStartTime) / fadeDuration,0.0f,1.0f);
+			outScale = Lerp(1.0f,fadeEndScale,Easing::EaseOutCubic(fadeProgress));
+			outAlpha = 1.0f - fadeProgress;
+		}
 	}
 }
 
@@ -45,6 +73,10 @@ void StageIntroUI::Initialize(SpriteCommon* spriteCommon){
 
 	promptSprite_ = createSprite(kPromptTexture,kPromptSize);
 	goSprite_ = createSprite(kGoTexture,kGoSize);
+	static_assert(std::size(kCountTextures) == kCountdownMaxNumber,"カウントダウンの数字の画像と数が合っていない");
+	for(size_t i = 0; i < countSprites_.size(); ++i){
+		countSprites_[i] = createSprite(kCountTextures[i],kCountSize);
+	}
 }
 
 // 何も表示していない状態に戻す
@@ -54,12 +86,29 @@ void StageIntroUI::Reset(){
 	promptTime_ = 0.0f;
 	goTimer_ = 0.0f;
 	isGoActive_ = false;
+	countdownNumber_ = 0;
+	countTimer_ = 0.0f;
+	isCountActive_ = false;
 }
 
 // 「GO!」を出す
 void StageIntroUI::BeginGo(){
 	goTimer_ = 0.0f;
 	isGoActive_ = true;
+}
+
+// カウントダウンの数を伝える(数が変わった瞬間に、その数字を最初から飛び出させる)
+void StageIntroUI::SetCountdown(int number){
+	if(number == countdownNumber_){
+		return;
+	}
+	countdownNumber_ = number;
+	if(number < 1 || number > kCountdownMaxNumber){
+		return;
+	}
+	shownCountIndex_ = number - 1;
+	countTimer_ = 0.0f;
+	isCountActive_ = true;
 }
 
 // 表示の動きを進める
@@ -76,6 +125,22 @@ void StageIntroUI::Update(float deltaTime){
 	promptSprite_->SetColor(WhiteWithAlpha(promptAlpha_));
 	promptSprite_->Update();
 
+	// カウントダウンの数字は大きい状態から飛び出すように縮んで収まり、少し表示した後に縮みながら消える
+	if(isCountActive_){
+		countTimer_ += deltaTime;
+		float countScale = 1.0f;
+		float countAlpha = 1.0f;
+		CalculatePopScaleAlpha(countTimer_,kCountPopDuration,kCountPopStartScale,kCountHoldTime,kCountFadeDuration,kCountFadeEndScale,countScale,countAlpha);
+		Sprite& countSprite = *countSprites_[shownCountIndex_];
+		countSprite.SetPosition({centerX, screenHeight * kCountHeightRate});
+		countSprite.SetSize({kCountSize.x * countScale, kCountSize.y * countScale});
+		countSprite.SetColor(WhiteWithAlpha(countAlpha));
+		countSprite.Update();
+		if(countTimer_ >= kCountPopDuration + kCountHoldTime + kCountFadeDuration){
+			isCountActive_ = false;
+		}
+	}
+
 	if(!isGoActive_){
 		return;
 	}
@@ -85,15 +150,7 @@ void StageIntroUI::Update(float deltaTime){
 	float goScale = 1.0f;
 	float goAlpha = 1.0f;
 	const float goFadeStartTime = kGoPopDuration + kGoHoldTime;
-	if(goTimer_ < kGoPopDuration){
-		float popProgress = goTimer_ / kGoPopDuration;
-		goScale = Lerp(kGoPopStartScale,1.0f,Easing::EaseOutBack(popProgress));
-		goAlpha = popProgress;
-	} else if(goTimer_ >= goFadeStartTime){
-		float fadeProgress = std::clamp((goTimer_ - goFadeStartTime) / kGoFadeDuration,0.0f,1.0f);
-		goScale = Lerp(1.0f,kGoFadeEndScale,Easing::EaseOutCubic(fadeProgress));
-		goAlpha = 1.0f - fadeProgress;
-	}
+	CalculatePopScaleAlpha(goTimer_,kGoPopDuration,kGoPopStartScale,kGoHoldTime,kGoFadeDuration,kGoFadeEndScale,goScale,goAlpha);
 	goSprite_->SetPosition({centerX, screenHeight * kGoHeightRate});
 	goSprite_->SetSize({kGoSize.x * goScale, kGoSize.y * goScale});
 	goSprite_->SetColor(WhiteWithAlpha(goAlpha));
@@ -115,6 +172,9 @@ void StageIntroUI::Draw(){
 
 	if(promptAlpha_ > kPromptMinVisibleAlpha){
 		promptSprite_->Draw();
+	}
+	if(isCountActive_){
+		countSprites_[shownCountIndex_]->Draw();
 	}
 	if(isGoActive_){
 		goSprite_->Draw();

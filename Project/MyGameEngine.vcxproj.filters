@@ -91,6 +91,9 @@
     <Filter Include="Resources\shader\Particle">
       <UniqueIdentifier>{341918e5-a2ed-4928-bcf9-eafbad4ba961}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Resources\shader\Paint">
+      <UniqueIdentifier>{70883a44-22ba-47a1-9fe4-fbb9cbed1fe7}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Resources\shader\Sprite">
       <UniqueIdentifier>{0f730ad9-0d7c-4c39-94bf-f2579bf5973c}</UniqueIdentifier>
     </Filter>
@@ -213,6 +216,12 @@
     <ClCompile Include="Engine\Graphics\Effect\ParticleManager.cpp">
       <Filter>ソース ファイル\Engine\Graphics\Effect</Filter>
     </ClCompile>
+    <ClCompile Include="Engine\Graphics\Effect\PaintCanvas.cpp">
+      <Filter>ソース ファイル\Engine\Graphics\Effect</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Graphics\Effect\PaintManager.cpp">
+      <Filter>ソース ファイル\Engine\Graphics\Effect</Filter>
+    </ClCompile>
     <ClCompile Include="Engine\Graphics\Effect\RenderTexture.cpp">
       <Filter>ソース ファイル\Engine\Graphics\Effect</Filter>
     </ClCompile>
@@ -282,6 +291,9 @@
     <ClCompile Include="Game\objects\EnemyManager.cpp">
       <Filter>ソース ファイル\Game\objects</Filter>
     </ClCompile>
+    <ClCompile Include="Game\Camera\ScreenImpact.cpp">
+      <Filter>ソース ファイル\Game\Camera</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Camera\RailCamera.cpp">
       <Filter>ソース ファイル\Game\Camera</Filter>
     </ClCompile>
@@ -313,6 +325,24 @@
       <Filter>ソース ファイル\Game\Title</Filter>
     </ClCompile>
     <ClCompile Include="Game\Title\StartSequence.cpp">
+      <Filter>ソース ファイル\Game\Title</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Title\Departure\SuperJumpDeparture.cpp">
+      <Filter>ソース ファイル\Game\Title</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Title\Departure\InkDiveDeparture.cpp">
+      <Filter>ソース ファイル\Game\Title</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Title\Departure\CatapultDeparture.cpp">
+      <Filter>ソース ファイル\Game\Title</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Title\Departure\CountdownFlipDeparture.cpp">
+      <Filter>ソース ファイル\Game\Title</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Title\Departure\DepartureDirector.cpp">
+      <Filter>ソース ファイル\Game\Title</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Title\GateCameraDirector.cpp">
       <Filter>ソース ファイル\Game\Title</Filter>
     </ClCompile>
     <ClCompile Include="Game\Title\TitleCameraDirector.cpp">
@@ -413,6 +443,12 @@
     <ClInclude Include="Engine\Graphics\Effect\PostProcess.h">
       <Filter>ヘッダー ファイル\Engine\Graphics\Effect</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Graphics\Effect\PaintCanvas.h">
+      <Filter>ヘッダー ファイル\Engine\Graphics\Effect</Filter>
+    </ClInclude>
+    <ClInclude Include="Engine\Graphics\Effect\PaintManager.h">
+      <Filter>ヘッダー ファイル\Engine\Graphics\Effect</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Graphics\Effect\RenderTexture.h">
       <Filter>ヘッダー ファイル\Engine\Graphics\Effect</Filter>
     </ClInclude>
@@ -491,6 +527,9 @@
     <ClInclude Include="Game\objects\EnemyManager.h">
       <Filter>ヘッダー ファイル\Game\objects</Filter>
     </ClInclude>
+    <ClInclude Include="Game\Camera\ScreenImpact.h">
+      <Filter>ヘッダー ファイル\Game\Camera</Filter>
+    </ClInclude>
     <ClInclude Include="Game\Camera\RailCamera.h">
       <Filter>ヘッダー ファイル\Game\Camera</Filter>
     </ClInclude>
@@ -530,6 +569,33 @@
     <ClInclude Include="Game\Title\StartSequence.h">
       <Filter>ヘッダー ファイル\Game\Title</Filter>
     </ClInclude>
+    <ClInclude Include="Game\Title\Departure\DepartureContext.h">
+      <Filter>ヘッダー ファイル\Game\Title</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Title\Departure\BaseDeparture.h">
+      <Filter>ヘッダー ファイル\Game\Title</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Title\Departure\SuperJumpDeparture.h">
+      <Filter>ヘッダー ファイル\Game\Title</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Title\Departure\InkDiveDeparture.h">
+      <Filter>ヘッダー ファイル\Game\Title</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Title\Departure\CatapultDeparture.h">
+      <Filter>ヘッダー ファイル\Game\Title</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Title\Departure\CountdownFlipDeparture.h">
+      <Filter>ヘッダー ファイル\Game\Title</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Title\Departure\DepartureDirector.h">
+      <Filter>ヘッダー ファイル\Game\Title</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Camera\CameraPose.h">
+      <Filter>ヘッダー ファイル\Game\Camera</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Title\GateCameraDirector.h">
+      <Filter>ヘッダー ファイル\Game\Title</Filter>
+    </ClInclude>
     <ClInclude Include="Game\Title\TitleCameraDirector.h">
       <Filter>ヘッダー ファイル\Game\Title</Filter>
     </ClInclude>
@@ -562,9 +628,18 @@
     <None Include="Engine\Graphics\Shaders\PostProcess\PostProcess.hlsli">
       <Filter>Resources\shader\PostEffect</Filter>
     </None>
+    <None Include="Engine\Graphics\Shaders\Paint\InkPaint.hlsli">
+      <Filter>Resources\shader\Paint</Filter>
+    </None>
     <None Include="Engine\Graphics\Shaders\Sprite\Sprite.hlsli">
       <Filter>Resources\shader\Sprite</Filter>
     </None>
+    <FxCompile Include="Engine\Graphics\Shaders\Paint\InkPaint.PS.hlsl">
+      <Filter>Resources\shader\Paint</Filter>
+    </FxCompile>
+    <FxCompile Include="Engine\Graphics\Shaders\Paint\InkPaint.VS.hlsl">
+      <Filter>Resources\shader\Paint</Filter>
+    </FxCompile>
     <FxCompile Include="Engine\Graphics\Shaders\Sprite\Sprite.PS.hlsl">
       <Filter>Resources\shader\Sprite</Filter>
     </FxCompile>

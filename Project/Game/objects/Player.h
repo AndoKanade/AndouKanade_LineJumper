@@ -42,6 +42,24 @@ public:
 	/// <param name="startRotation">カメラ・プレイヤーの基準向き(レールの始点の向きにそろえる)</param>
 	void StartOnPlatform(const Vector3& startPosition,const Vector3& startRotation);
 
+	// レールの始点にオンレールの状態で乗せる(出発の演出でレールへ乗せるときに使う。体力はそのまま)
+	void BoardRailStart();
+
+	/// <summary>
+	/// 出発の演出中に、プレイヤーの表示を演出側で決めた位置・向き・大きさにする(UpdateTransform() の後に呼んで上書きする)
+	/// </summary>
+	/// <param name="position">表示する位置(足元)</param>
+	/// <param name="rotate">モデルの向き</param>
+	/// <param name="scaleRate">通常の大きさに掛ける倍率(軸ごと)</param>
+	void SetDirectedPose(const Vector3& position,const Vector3& rotate,const Vector3& scaleRate);
+
+	/// <summary>
+	/// レールを進む速さを一時的に上げ、時間とともに元の速さへ戻す(発射台から飛び出した直後に使う)
+	/// </summary>
+	/// <param name="rate">かけ始めの速さの倍率</param>
+	/// <param name="duration">元の速さへ戻りきるまでの時間(秒)</param>
+	void StartRailBoost(float rate,float duration);
+
 	/// <summary>
 	/// レールの進行(プレイ可能かつオンレール中、かつ終端未到達のときだけ進める)
 	/// </summary>
@@ -179,6 +197,11 @@ private:
 	int hp_ = kMaxHp;
 	// 被弾後の無敵時間の残り(秒)。0より大きい間は敵弾が当たっても体力が減らない
 	float invincibleTimer_ = 0.0f;
+
+	// レールを進む速さを一時的に上げる倍率(かけ始め)と、元の速さへ戻りきるまでの時間・経過時間(秒)
+	float railBoostRate_ = 1.0f;
+	float railBoostDuration_ = 0.0f;
+	float railBoostTimer_ = 0.0f;
 
 	// レール全体の進行速度の初期値(1秒あたりに進むワールド座標の距離。保存済みJSONがあればそちらが優先される)
 	static constexpr float kDefaultRailSpeed = 6.0f;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MyMath.h"
+#include <array>
 #include <memory>
 
 // 前方宣言
@@ -9,7 +10,7 @@ class SpriteCommon;
 
 /// <summary>
 /// 出発までの画面表示
-/// 出発台のゲートの前に立ったときの操作案内と、
+/// 出発台のゲートの前に立ったときの操作案内と、ゲートが開くまでのカウントダウン(3・2・1)、
 /// レールに乗り込んだ瞬間の「GO!」を表示する。
 /// ImGui を使わずスプライトで描くため、Release 構成でも表示される。
 /// </summary>
@@ -30,6 +31,12 @@ public:
 	// 「GO!」を出す
 	void BeginGo();
 
+	/// <summary>
+	/// ゲートのカウントダウンの数を伝える(毎フレーム呼ぶ。数が変わった瞬間に、その数を飛び出させる)
+	/// </summary>
+	/// <param name="number">今の数(1〜3。0 なら新しく出さず、出ている数はそのまま消えていくのに任せる)</param>
+	void SetCountdown(int number);
+
 	// 表示の動きを進める
 	void Update(float deltaTime);
 
@@ -43,6 +50,9 @@ private:
 	std::unique_ptr<Sprite> promptSprite_;
 	// GO!
 	std::unique_ptr<Sprite> goSprite_;
+	// カウントダウンの数字(1・2・3 の順)
+	static constexpr int kCountdownMaxNumber = 3;
+	std::array<std::unique_ptr<Sprite>,kCountdownMaxNumber> countSprites_;
 
 	// 操作案内を出すかどうかと、今の濃さ・揺れの経過時間
 	bool isPromptVisible_ = false;
@@ -51,13 +61,21 @@ private:
 	// GO! を出してからの経過時間(秒)と、表示中かどうか
 	float goTimer_ = 0.0f;
 	bool isGoActive_ = false;
+	// 最後に伝えられたカウントダウンの数と、表示中の数字の番号(countSprites_ の添え字)
+	int countdownNumber_ = 0;
+	int shownCountIndex_ = 0;
+	// 数字を出してからの経過時間(秒)と、表示中かどうか
+	float countTimer_ = 0.0f;
+	bool isCountActive_ = false;
 
 	// 画像の大きさ(ピクセル)。生成した画像を縮めて表示する
 	static constexpr Vector2 kPromptSize = {384.0f, 96.0f};
 	static constexpr Vector2 kGoSize = {480.0f, 240.0f};
+	static constexpr Vector2 kCountSize = {240.0f, 240.0f};
 	// 画面上の位置(画面の幅・高さに対する割合)
 	static constexpr float kPromptHeightRate = 0.78f;
 	static constexpr float kGoHeightRate = 0.42f;
+	static constexpr float kCountHeightRate = 0.42f;
 
 	// 操作案内が出たり消えたりする速さ(1秒あたりに残りの差を縮める割合の指数)
 	static constexpr float kPromptFadeSharpness = 12.0f;
@@ -75,6 +93,15 @@ private:
 	// GO! が広がりながら消える時間(秒)と、消え終わりの大きさの倍率
 	static constexpr float kGoFadeDuration = 0.3f;
 	static constexpr float kGoFadeEndScale = 1.3f;
+
+	// カウントダウンの数字が飛び出してくる時間・表示し続ける時間・消える時間(秒)
+	// 合計を合図の間隔(StartPlatform の kCountdownInterval)より短くし、次の数字と重ならないようにする
+	static constexpr float kCountPopDuration = 0.15f;
+	static constexpr float kCountHoldTime = 0.25f;
+	static constexpr float kCountFadeDuration = 0.15f;
+	// 飛び出し始めの大きさの倍率と、消え終わりの大きさの倍率
+	static constexpr float kCountPopStartScale = 2.0f;
+	static constexpr float kCountFadeEndScale = 0.7f;
 
 	// 中心を基準点にするためのアンカー
 	static constexpr Vector2 kCenterAnchor = {0.5f, 0.5f};

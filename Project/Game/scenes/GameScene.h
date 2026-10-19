@@ -18,6 +18,7 @@ class Sun;
 class StartPlatform;
 class Player;
 class RailCamera;
+class ScreenImpact;
 class DebugTopCamera;
 class PlayerBulletManager;
 class TargetManager;
@@ -28,6 +29,8 @@ class ComboCounter;
 class StageHUD;
 class SpeedLines;
 class HelpOverlay;
+class DepartureDirector;
+struct DepartureContext;
 
 /// <summary>
 /// ゲームシーン
@@ -53,6 +56,16 @@ private:
 	// ゲームを初期状態(レール先頭)から始め直す
 	// Playに入った瞬間と、レールから落ちたときのリスタートで共通して使う
 	void ResetPlayState();
+
+	// 出発の演出が動かす・参照するもの(GameScene が持つもの)をまとめる
+	DepartureContext MakeDepartureContext() const;
+
+	/// <summary>
+	/// レールに乗り込んで「GO!」でプレイを始める瞬間の演出(足元の輪・インクの跡・しぶき)
+	/// 歩いて乗り込んだときと、出発の演出がレールへ乗せ終えたときで共通して使う
+	/// </summary>
+	/// <param name="boardedPos">乗り込んだ位置</param>
+	void PlayBoardedEffects(const Vector3& boardedPos);
 
 	// マウスカーソルの表示/非表示を切り替える
 	void UpdateCursorVisibility(bool isPlayMode);
@@ -93,6 +106,8 @@ private:
 
 	// レール追従カメラ(プレイ用カメラ)
 	std::unique_ptr<RailCamera> railCamera_;
+	// 衝撃の瞬間の画面演出(ヒットストップと画面の揺れ)
+	std::unique_ptr<ScreenImpact> screenImpact_;
 
 	// 俯瞰デバッグカメラ
 	std::unique_ptr<DebugTopCamera> debugTopCamera_;
@@ -108,6 +123,8 @@ private:
 
 	// ステージ開始演出(タイトル → カメラの回り込み → スタート台で準備 → 出発ゲートを開ける → レールへ乗り込む → プレイ)
 	std::unique_ptr<StartSequence> startSequence_;
+	// 出発の演出(スタート台からステージのレールへ移るときの演出。ImGui で切り替える)
+	std::unique_ptr<DepartureDirector> departureDirector_;
 
 	// 画面中央固定のレティクル(照準)
 	std::unique_ptr<Reticle> reticle_;
@@ -138,6 +155,9 @@ private:
 	// Playに入ったときにタイトル演出を飛ばしてすぐプレイを始めるか(デバッグ用。ImGuiのチェックボックスで切り替える)
 	bool skipTitle_ = false;
 
+	// レールに乗ってプレイが始まってからの経過時間(秒。提出用にタイトルへ戻すまでの時間を数える)
+	float playTimeSinceBoarded_ = 0.0f;
+
 	// 1フレームの経過時間(エンジンが固定60fps前提(TimeManagerで60fps固定)なので、そのまま合わせる)
 	static constexpr float kDeltaTime = 1.0f / 60.0f;
 	// 射撃に使うマウスボタン(左ボタン)
@@ -146,4 +166,18 @@ private:
 	static constexpr int kMuzzleSplashCount = 3;
 	// レールに乗り込んで出発した瞬間に、足元から飛び散らせるインクのしぶきの数
 	static constexpr int kLaunchSplashCount = 10;
+	// レールに乗り込んで出発した瞬間に、足元に残すインクの跡の半径と、高く飛び散らせて台に落とすしぶきの数
+	static constexpr float kLaunchInkRadius = 1.1f;
+	static constexpr int kLaunchBurstCount = 24;
+	// 弾がスタート台に当たったときに跳ねさせるインクのしぶきの数
+	static constexpr int kBulletLandSplashCount = 4;
+	// 出発ゲートの遮断棒が跳ね上がった瞬間に、ゲートから飛び散らせるインクのしぶきの数
+	static constexpr int kGateBurstCount = 20;
+	// 遮断棒が跳ね上がった瞬間の衝撃(ゲートとインクの動きを止める時間、画面の揺れの幅・収まるまでの時間)
+	static constexpr float kGateHitStopDuration = 0.1f;
+	static constexpr float kGateShakeAmplitude = 0.12f;
+	static constexpr float kGateShakeDuration = 0.4f;
+	// 遮断棒が跳ね上がった瞬間に、ゲートを中心にかける放射ブラーの強さと消えるまでの時間
+	static constexpr float kGateRadialBlurWidth = 0.02f;
+	static constexpr float kGateRadialBlurDuration = 0.35f;
 };
