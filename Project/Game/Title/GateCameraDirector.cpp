@@ -1,14 +1,6 @@
 #include "GateCameraDirector.h"
 #include "Easing.h"
 #include <algorithm>
-#include <cmath>
-
-namespace{
-	// 角度を、遠回りしない向きで補間する(差を -π〜π に収めてから補間し、1周回ってしまわないようにする)
-	float LerpAngle(float from,float to,float t,float fullTurn){
-		return from + std::remainder(to - from,fullTurn) * t;
-	}
-}
 
 // 何もしていない状態に戻す
 void GateCameraDirector::Reset(){
@@ -66,18 +58,7 @@ float GateCameraDirector::GetShotWeight() const{
 }
 
 // 演出中のカメラ座標・向きを求める
-void GateCameraDirector::Calculate(const Vector3& shotPosition,const Vector3& shotTarget,const Vector3& gameplayPosition,const Vector3& gameplayRotate,Vector3& outPosition,Vector3& outRotate) const{
-	// ゲートを映す画の向きを、注目する座標への向きから求める(X回転は下向きが正、Y回転は +Z から +X へ回る向きが正)
-	Vector3 direction = Normalize(shotTarget - shotPosition);
-	float horizontalLength = std::sqrt(direction.x * direction.x + direction.z * direction.z);
-	Vector3 shotRotate = {std::atan2(-direction.y,horizontalLength), std::atan2(direction.x,direction.z), 0.0f};
-
-	// プレイ用カメラとゲートを映す画を、割合で混ぜる
-	float weight = GetShotWeight();
-	outPosition = Lerp(gameplayPosition,shotPosition,weight);
-	outRotate = {
-		LerpAngle(gameplayRotate.x,shotRotate.x,weight,kFullTurn),
-		LerpAngle(gameplayRotate.y,shotRotate.y,weight,kFullTurn),
-		LerpAngle(gameplayRotate.z,shotRotate.z,weight,kFullTurn)
-	};
+// ゲートを映す画(注目する座標を向いた画)とプレイ用カメラを、割合で混ぜる
+CameraPose GateCameraDirector::Calculate(const Vector3& shotPosition,const Vector3& shotTarget,const CameraPose& gameplayCamera) const{
+	return CameraPoseMath::Lerp(gameplayCamera,CameraPoseMath::LookAt(shotPosition,shotTarget),GetShotWeight());
 }

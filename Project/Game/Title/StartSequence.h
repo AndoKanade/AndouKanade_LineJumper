@@ -19,6 +19,8 @@ class StartPlatform;
 /// GameScene からは Update() を呼び、IsPlayable() でプレイ可能か、IsPlayerMovable() で台の上を動けるかを受け取る。
 /// 準備中はスタート台の上を自由に動け、ゲートの前の目印で SPACE を押すとゲートが開く。
 /// 開いたゲートをくぐってレールに乗ると、GameScene から NotifyBoarded() で知らされ、「GO!」でプレイが始まる。
+/// 出発の演出(スーパージャンプなど)を使うときは、ゲートの先の出発台で BeginDeparture() が呼ばれ、演出がレールへ乗せ終えたら NotifyBoarded() が呼ばれる。
+/// ゲートのカウントダウンに合わせて飛び乗る演出では、ゲートを開け始めた瞬間に BeginDeparture() が呼ばれる。
 /// </summary>
 class StartSequence{
 public:
@@ -29,7 +31,8 @@ public:
 		CameraTurn, // カメラがプレイヤーの背後へ回り込み中
 		Standby,    // スタート台の上を自由に動ける(出発ゲートは閉じている。ゲートの前で SPACE を押すと開く)
 		GateOpen,   // 出発ゲートを開けている最中(プレイヤーは動けない)
-		Boarding,   // 出発ゲートが開き、自分で歩いてレールへ乗り込むのを待っている
+		Boarding,   // 出発ゲートが開き、自分で歩いてレールへ乗り込む(または出発台へ向かう)のを待っている
+		Departure,  // 出発の演出でレールへ向かっている最中(プレイヤーは動けない)
 		Playing,    // プレイ中
 	};
 
@@ -61,8 +64,20 @@ public:
 	/// <param name="playerPosition">プレイヤーの座標(出発ゲートの前にいるかの判定に使う)</param>
 	void Update(float deltaTime,const Vector3& playerPosition);
 
-	// プレイヤーがレールに乗り込んだことを伝える(Boarding 中なら「GO!」を出してプレイを始める)
+	// プレイヤーがレールに乗り込んだことを伝える(Boarding・Departure 中なら「GO!」を出してプレイを始める)
 	void NotifyBoarded();
+
+	// 出発の演出を始めたことを伝える(Boarding・GateOpen 中なら Departure へ進め、プレイヤーを動けなくする)
+	void BeginDeparture();
+
+	// このフレームで、ゲートの前の目印で SPACE を押して出発ゲートを開け始めたか
+	bool IsGateOpenTriggered() const{ return isGateOpenTriggered_; }
+
+	// 出発ゲートを開けている最中か
+	bool IsOpeningGate() const{ return phase_ == Phase::GateOpen; }
+
+	// 出発の演出でレールへ向かっている最中か(撃てないため照準を出さないのに使う)
+	bool IsDeparting() const{ return phase_ == Phase::Departure; }
 
 	/// <summary>
 	/// タイトルロゴをプレイヤーの位置・向きに合わせて配置する(IsControllingCamera() が true の間に使う)
@@ -112,11 +127,9 @@ public:
 	/// 出発ゲートを開ける様子を映すカメラの座標・向きを求める(IsGateCameraActive() が true の間に使う)
 	/// ゲートを映す画の位置は、調整項目(Title グループの gateCameraPosition / gateCameraTarget)で変えられる
 	/// </summary>
-	/// <param name="gameplayPosition">プレイ用カメラの座標</param>
-	/// <param name="gameplayRotate">プレイ用カメラの向き</param>
-	/// <param name="outPosition">演出中のカメラ座標</param>
-	/// <param name="outRotate">演出中のカメラの向き</param>
-	void CalculateGateCamera(const Vector3& gameplayPosition,const Vector3& gameplayRotate,Vector3& outPosition,Vector3& outRotate) const;
+	/// <param name="gameplayCamera">プレイ用カメラの位置と向き</param>
+	/// <returns>演出中のカメラの位置と向き</returns>
+	CameraPose CalculateGateCamera(const CameraPose& gameplayCamera) const;
 
 private:
 	Input* input_ = nullptr;
@@ -139,6 +152,8 @@ private:
 
 	// プレイヤーが跳ねる周期を数えるための経過時間(秒)
 	float playerHopTimer_ = 0.0f;
+	// このフレームで出発ゲートを開け始めたか
+	bool isGateOpenTriggered_ = false;
 
 	// タイトル表示の濃さ(表示中)
 	static constexpr float kTitleVisible = 1.0f;

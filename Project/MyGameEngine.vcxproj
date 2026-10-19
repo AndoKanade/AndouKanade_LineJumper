@@ -441,6 +441,14 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClInclude Include="Game\Title\StartSequence.h" />
     <ClInclude Include="Game\Title\TitleCameraDirector.h" />
     <ClInclude Include="Game\Title\GateCameraDirector.h" />
+    <ClInclude Include="Game\Title\Departure\DepartureContext.h" />
+    <ClInclude Include="Game\Title\Departure\BaseDeparture.h" />
+    <ClInclude Include="Game\Title\Departure\SuperJumpDeparture.h" />
+    <ClInclude Include="Game\Title\Departure\InkDiveDeparture.h" />
+    <ClInclude Include="Game\Title\Departure\CatapultDeparture.h" />
+    <ClInclude Include="Game\Title\Departure\CountdownFlipDeparture.h" />
+    <ClInclude Include="Game\Title\Departure\DepartureDirector.h" />
+    <ClInclude Include="Game\Camera\CameraPose.h" />
     <ClInclude Include="Game\Title\TitleLogo.h" />
     <ClInclude Include="Game\Title\TitleUI.h" />
     <ClInclude Include="Game\systems\AbstractSceneFactory.h" />
@@ -515,6 +523,11 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClCompile Include="Game\Title\StartSequence.cpp" />
     <ClCompile Include="Game\Title\TitleCameraDirector.cpp" />
     <ClCompile Include="Game\Title\GateCameraDirector.cpp" />
+    <ClCompile Include="Game\Title\Departure\SuperJumpDeparture.cpp" />
+    <ClCompile Include="Game\Title\Departure\InkDiveDeparture.cpp" />
+    <ClCompile Include="Game\Title\Departure\CatapultDeparture.cpp" />
+    <ClCompile Include="Game\Title\Departure\CountdownFlipDeparture.cpp" />
+    <ClCompile Include="Game\Title\Departure\DepartureDirector.cpp" />
     <ClCompile Include="Game\Title\TitleLogo.cpp" />
     <ClCompile Include="Game\Title\TitleUI.cpp" />
     <ClCompile Include="Game\scenes\GameScene.cpp" />

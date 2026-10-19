@@ -327,6 +327,21 @@
     <ClCompile Include="Game\Title\StartSequence.cpp">
       <Filter>ソース ファイル\Game\Title</Filter>
     </ClCompile>
+    <ClCompile Include="Game\Title\Departure\SuperJumpDeparture.cpp">
+      <Filter>ソース ファイル\Game\Title</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Title\Departure\InkDiveDeparture.cpp">
+      <Filter>ソース ファイル\Game\Title</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Title\Departure\CatapultDeparture.cpp">
+      <Filter>ソース ファイル\Game\Title</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Title\Departure\CountdownFlipDeparture.cpp">
+      <Filter>ソース ファイル\Game\Title</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Title\Departure\DepartureDirector.cpp">
+      <Filter>ソース ファイル\Game\Title</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Title\GateCameraDirector.cpp">
       <Filter>ソース ファイル\Game\Title</Filter>
     </ClCompile>
@@ -553,6 +568,30 @@
     </ClInclude>
     <ClInclude Include="Game\Title\StartSequence.h">
       <Filter>ヘッダー ファイル\Game\Title</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Title\Departure\DepartureContext.h">
+      <Filter>ヘッダー ファイル\Game\Title</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Title\Departure\BaseDeparture.h">
+      <Filter>ヘッダー ファイル\Game\Title</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Title\Departure\SuperJumpDeparture.h">
+      <Filter>ヘッダー ファイル\Game\Title</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Title\Departure\InkDiveDeparture.h">
+      <Filter>ヘッダー ファイル\Game\Title</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Title\Departure\CatapultDeparture.h">
+      <Filter>ヘッダー ファイル\Game\Title</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Title\Departure\CountdownFlipDeparture.h">
+      <Filter>ヘッダー ファイル\Game\Title</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Title\Departure\DepartureDirector.h">
+      <Filter>ヘッダー ファイル\Game\Title</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Camera\CameraPose.h">
+      <Filter>ヘッダー ファイル\Game\Camera</Filter>
     </ClInclude>
     <ClInclude Include="Game\Title\GateCameraDirector.h">
       <Filter>ヘッダー ファイル\Game\Title</Filter>

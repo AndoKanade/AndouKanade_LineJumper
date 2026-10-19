@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MyMath.h"
+#include "Camera/CameraPose.h"
 
 /// <summary>
 /// 出発ゲートを開けるときのカメラワーク
@@ -30,11 +31,9 @@ public:
 	/// </summary>
 	/// <param name="shotPosition">ゲートを映す画のカメラ座標</param>
 	/// <param name="shotTarget">ゲートを映す画で注目する座標</param>
-	/// <param name="gameplayPosition">プレイ用カメラの座標</param>
-	/// <param name="gameplayRotate">プレイ用カメラの向き</param>
-	/// <param name="outPosition">演出中のカメラ座標</param>
-	/// <param name="outRotate">演出中のカメラの向き</param>
-	void Calculate(const Vector3& shotPosition,const Vector3& shotTarget,const Vector3& gameplayPosition,const Vector3& gameplayRotate,Vector3& outPosition,Vector3& outRotate) const;
+	/// <param name="gameplayCamera">プレイ用カメラの位置と向き</param>
+	/// <returns>演出中のカメラの位置と向き</returns>
+	CameraPose Calculate(const Vector3& shotPosition,const Vector3& shotTarget,const CameraPose& gameplayCamera) const;
 
 private:
 	// カメラの動きの段階
@@ -53,8 +52,6 @@ private:
 	static constexpr float kReturnHoldDuration = 0.3f;
 	// 戻りきるまでの時間(秒)
 	static constexpr float kReturnDuration = 0.6f;
-	// 1周分の角度(ラジアン)
-	static constexpr float kFullTurn = 6.28318530718f;
 
 	State state_ = State::None;
 	// 今の段階に入ってからの経過時間(秒。戻すときは止めておく時間の分だけマイナスから始める)

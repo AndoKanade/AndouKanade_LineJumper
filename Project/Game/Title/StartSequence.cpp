@@ -115,8 +115,15 @@ void StartSequence::Stop(){
 
 // 更新処理
 void StartSequence::Update(float deltaTime,const Vector3& playerPosition){
-	// 出発までの表示(操作案内・GO!)は、どの段階でも出し入れの動きを進める
+	// このフレームで出発ゲートを開け始めたかは、毎フレーム調べ直す
+	isGateOpenTriggered_ = false;
+
+	// 出発までの表示(操作案内・カウントダウン・GO!)は、どの段階でも出し入れの動きを進める
+	// カウントダウンの数は、ゲートのランプが点くのに合わせてスタート台から受け取る
 	if(introUI_ && phase_ != Phase::None){
+		if(startPlatform_){
+			introUI_->SetCountdown(startPlatform_->GetCountdownNumber());
+		}
 		introUI_->Update(deltaTime);
 	}
 	// ゲートを映すカメラは、レールに乗り込んだ後も戻りきるまで動かす
@@ -191,6 +198,7 @@ void StartSequence::Update(float deltaTime,const Vector3& playerPosition){
 			// カメラをゲートの斜め前へ寄せ、インクが塗り上がる様子を大きく見せる
 			gateCameraDirector_.BeginShot();
 			phase_ = Phase::GateOpen;
+			isGateOpenTriggered_ = true;
 		}
 		break;
 	}
@@ -207,6 +215,10 @@ void StartSequence::Update(float deltaTime,const Vector3& playerPosition){
 		// プレイヤーがレールに乗ったら、GameScene から NotifyBoarded() で知らせてもらう
 		break;
 
+	case Phase::Departure:
+		// 出発の演出がレールへ乗せ終えたら、GameScene から NotifyBoarded() で知らせてもらう
+		break;
+
 	case Phase::Playing:
 	case Phase::None:
 	default:
@@ -216,13 +228,25 @@ void StartSequence::Update(float deltaTime,const Vector3& playerPosition){
 
 // プレイヤーがレールに乗り込んだことを伝える
 void StartSequence::NotifyBoarded(){
-	if(phase_ != Phase::Boarding){
+	if(phase_ != Phase::Boarding && phase_ != Phase::Departure){
 		return;
 	}
 	if(introUI_){
 		introUI_->BeginGo();
 	}
 	phase_ = Phase::Playing;
+}
+
+// 出発の演出を始めたことを伝える
+// ゲートを開けている最中に始めたときは、演出のカメラに任せるため、ゲートを映すカメラを止める
+void StartSequence::BeginDeparture(){
+	if(phase_ != Phase::Boarding && phase_ != Phase::GateOpen){
+		return;
+	}
+	if(phase_ == Phase::GateOpen){
+		gateCameraDirector_.Reset();
+	}
+	phase_ = Phase::Departure;
 }
 
 // タイトルロゴを配置する
@@ -274,14 +298,12 @@ void StartSequence::CalculateCamera(const Vector3& pivot,const Vector3& gameplay
 
 // 出発ゲートを開ける様子を映すカメラの座標・向きを求める
 // 調整項目のゲートから見た座標を、台の置き方に合わせてワールド座標に直してから使う
-void StartSequence::CalculateGateCamera(const Vector3& gameplayPosition,const Vector3& gameplayRotate,Vector3& outPosition,Vector3& outRotate) const{
+CameraPose StartSequence::CalculateGateCamera(const CameraPose& gameplayCamera) const{
 	if(!startPlatform_){
-		outPosition = gameplayPosition;
-		outRotate = gameplayRotate;
-		return;
+		return gameplayCamera;
 	}
 	GlobalVariables* gv = GlobalVariables::GetInstance();
 	Vector3 shotPosition = startPlatform_->GateLocalToWorld(gv->GetVector3Value(kTitleGroup,kGateCameraPositionKey));
 	Vector3 shotTarget = startPlatform_->GateLocalToWorld(gv->GetVector3Value(kTitleGroup,kGateCameraTargetKey));
-	gateCameraDirector_.Calculate(shotPosition,shotTarget,gameplayPosition,gameplayRotate,outPosition,outRotate);
+	return gateCameraDirector_.Calculate(shotPosition,shotTarget,gameplayCamera);
 }

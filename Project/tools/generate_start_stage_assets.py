@@ -3,7 +3,7 @@
 # 出力先:
 #   resource/StartPlatform/  ゲートの前の目印・出発時に広がる輪(ring)
 #                            (台とゲートの柱・ランプ・遮断棒は、既存の立方体 startPlatform.obj を使う)
-#   resource/UI/             出発の操作案内(startPrompt)、GO!(go)
+#   resource/UI/             出発の操作案内(startPrompt)、GO!(go)、ゲートのカウントダウンの数字(count1〜count3)
 # 文言・色は、下の定数を書き換えてから実行し直せば変えられる。
 
 from pathlib import Path
@@ -21,6 +21,8 @@ FONT_PATH = Path("resource/fonts/MochiyPopPOne-Regular.ttf")
 PROMPT_KEY = "SPACE"
 PROMPT_TEXT = "出発する"
 GO_TEXT = "GO!"
+# カウントダウンで出す数(count1.png〜count3.png に書き出す)
+COUNT_NUMBERS = (1, 2, 3)
 
 # 色(0〜255)。自分のインクの黄色(Player の kPlayerColor と同じ色)を基調にする
 INK_YELLOW = (255, 217, 38)
@@ -118,18 +120,17 @@ def generate_prompt():
 
 
 
-def generate_go():
-    """GO!: インクの黄色の太い文字に、濃い縁取りと斜体の傾き、外側の淡い光を付ける"""
-    width, height = 640, 320
+def generate_pop_text(text, width, height, file_name):
+    """GO!・カウントダウンの数字: インクの黄色の太い文字に、濃い縁取りと斜体の傾き、外側の淡い光を付ける"""
     font = load_font(220)
     text_layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(text_layer)
-    box = draw.textbbox((0, 0), GO_TEXT, font=font, stroke_width=14)
+    box = draw.textbbox((0, 0), text, font=font, stroke_width=14)
     origin = ((width - (box[2] - box[0])) / 2 - box[0], (height - (box[3] - box[1])) / 2 - box[1])
-    draw.text(origin, GO_TEXT, font=font, fill=INK_YELLOW, stroke_width=14, stroke_fill=DARK_NAVY)
+    draw.text(origin, text, font=font, fill=INK_YELLOW, stroke_width=14, stroke_fill=DARK_NAVY)
     # 文字の上半分に白っぽいハイライトを重ねて、つやのあるインクに見せる
     highlight = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    ImageDraw.Draw(highlight).text((origin[0], origin[1]), GO_TEXT, font=font, fill=(255, 245, 190, 255))
+    ImageDraw.Draw(highlight).text((origin[0], origin[1]), text, font=font, fill=(255, 245, 190, 255))
     mask = Image.new("L", (width, height), 0)
     ImageDraw.Draw(mask).rectangle([0, 0, width, int(origin[1] + box[1] + (box[3] - box[1]) * 0.42)], fill=150)
     highlight.putalpha(Image.composite(highlight.getchannel("A"), Image.new("L", (width, height), 0), mask))
@@ -141,7 +142,18 @@ def generate_go():
     glow = Image.new("RGBA", (width, height), INK_YELLOW + (0,))
     glow.putalpha(text_layer.getchannel("A").filter(ImageFilter.GaussianBlur(18)).point(lambda a: int(a * 0.6)))
     image = Image.alpha_composite(glow, text_layer)
-    image.save(UI_DIR / "go.png")
+    image.save(UI_DIR / file_name)
+
+
+def generate_go():
+    """GO!"""
+    generate_pop_text(GO_TEXT, 640, 320, "go.png")
+
+
+def generate_counts():
+    """ゲートのカウントダウンの数字(1文字なので正方形にする)"""
+    for number in COUNT_NUMBERS:
+        generate_pop_text(str(number), 320, 320, f"count{number}.png")
 
 
 
@@ -152,6 +164,7 @@ def main():
     generate_ring_texture()
     generate_prompt()
     generate_go()
+    generate_counts()
     print(f"生成しました: {MODEL_DIR}/, {UI_DIR}/")
 
 

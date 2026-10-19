@@ -168,16 +168,16 @@ private:
 	static constexpr float kSplashSpeedMin = 3.0f;
 	static constexpr float kSplashSpeedMax = 6.0f;
 	static constexpr float kSplashSpread = 1.5f;
-	static constexpr float kSplashScaleMin = 0.03f;
-	static constexpr float kSplashScaleMax = 0.06f;
+	static constexpr float kSplashScaleMin = 0.02f;
+	static constexpr float kSplashScaleMax = 0.04f;
 	static constexpr float kSplashLifeMin = 0.2f;
 	static constexpr float kSplashLifeMax = 0.35f;
 	// レール走行中のしぶきの後ろ・上への速さ・ばらつき・大きさ・寿命
 	static constexpr float kTrailBackSpeed = 3.0f;
 	static constexpr float kTrailUpSpeed = 1.5f;
 	static constexpr float kTrailSpread = 1.5f;
-	static constexpr float kTrailScaleMin = 0.04f;
-	static constexpr float kTrailScaleMax = 0.08f;
+	static constexpr float kTrailScaleMin = 0.025f;
+	static constexpr float kTrailScaleMax = 0.05f;
 	static constexpr float kTrailLifeMin = 0.25f;
 	static constexpr float kTrailLifeMax = 0.4f;
 	// 出発の合図のしぶきの横・上への速さ・大きさ・寿命
@@ -186,10 +186,11 @@ private:
 	static constexpr float kBurstHorizontalSpeedMax = 3.0f;
 	static constexpr float kBurstUpSpeedMin = 4.0f;
 	static constexpr float kBurstUpSpeedMax = 6.5f;
-	static constexpr float kBurstScaleMin = 0.06f;
-	static constexpr float kBurstScaleMax = 0.11f;
+	static constexpr float kBurstScaleMin = 0.035f;
+	static constexpr float kBurstScaleMax = 0.065f;
 	static constexpr float kBurstLifeMin = 1.8f;
 	static constexpr float kBurstLifeMax = 2.2f;
 	// しぶきが面に着いたときに塗るインクの半径(しぶきの大きさに対する倍率)
-	static constexpr float kLandingInkRadiusRate = 3.5f;
+	// しぶきは画面の邪魔にならないよう小さめにし、その分倍率を上げて、台に残る跡は見える大きさにする
+	static constexpr float kLandingInkRadiusRate = 6.0f;
 };

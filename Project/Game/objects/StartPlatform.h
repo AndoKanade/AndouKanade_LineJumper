@@ -15,8 +15,10 @@ class PaintCanvas;
 /// 台の前側をレールの始点と少し重ねて置き、歩いて前へ進むだけでレールに乗れるようにする。
 /// 台の上には出発ゲートを立て、閉じている間はゲートより先へ進めないようにする。
 /// ゲートの前の目印で出発の操作をすると、目印から床の上をインクが走って左右の柱へ向かい、柱を下から塗り上がる。
-/// 塗られた高さに来たランプから順に点き、梁まで塗り終わると遮断棒がインクを散らしながら跳ね上がって、レールへ歩いて乗れるようになる。
+/// 塗り上がりは 3・2・1 のカウントダウンに合わせ、合図のたびに一段ずつ一気に塗り上がってランプを下から1段ずつ点ける。
+/// 1 の後に梁まで塗り終わり、0 の合図で遮断棒がインクを散らしながら跳ね上がって、レールへ歩いて乗れるようになる。
 /// 乗り込んだ瞬間には、足元から輪を広げて出発の合図にする。
+/// 出発の演出(スーパージャンプなど)を使うときは、ゲートの先に出発台の目印を出し、その手前の線を越えたら演出を始める。
 /// 台の上面にはインクを塗れ(PaintCanvas)、出発のときに飛び散ったインクが落ちたところに跡が残る。
 /// </summary>
 class StartPlatform{
@@ -46,6 +48,18 @@ public:
 	// このフレームで遮断棒が跳ね上がり始めたか(GameScene がゲートからインクを飛び散らせるのに使う)
 	bool IsBarBurstTriggered() const{ return isBarBurstTriggered_; }
 
+	// カウントダウンで数える数(最初に出す数。ランプの段の数と同じ)
+	static constexpr int GetCountdownCount(){ return kCountdownCount; }
+
+	// 遮断棒が跳ね上がり始めたか(カウントダウンが 0 になったか。開ききった後も true のまま)
+	bool HasBarStarted() const{ return isGateOpening_ && gateOpenTimer_ >= kBarStartTime; }
+
+	/// <summary>
+	/// ゲートのカウントダウンで今出している数(3・2・1。合図のたびにランプが1段点き、数が1つ減る)
+	/// </summary>
+	/// <returns>数を出していないとき(最初の合図の前・0 の合図の後・ゲートを開けていないとき)は 0</returns>
+	int GetCountdownNumber() const;
+
 	// 遮断棒が跳ね上がるときにインクを飛び散らせる位置(閉じた遮断棒の中央)
 	Vector3 GetGateBurstPosition() const;
 
@@ -54,6 +68,19 @@ public:
 	/// </summary>
 	/// <param name="local">x: 右、y: 上、z: 前(レールの方向)</param>
 	Vector3 GateLocalToWorld(const Vector3& local) const;
+
+	// 出発台の目印を出すかどうか(出発の演出を使い、ゲートが開いてから演出を始めるまでの間だけ出す)
+	void SetDeparturePadVisible(bool isVisible){ isDeparturePadVisible_ = isVisible; }
+
+	// 出発台の中央の座標(台の上面の高さ)
+	Vector3 GetDeparturePadPosition() const;
+
+	/// <summary>
+	/// 台の上で、出発台の手前の線を越えたか(出発の演出を始める判定に使う)
+	/// 線は台の幅いっぱいに引くため、出発台の横を回り込んでもレールへ乗る前に必ず越える
+	/// </summary>
+	/// <param name="position">プレイヤーの座標</param>
+	bool IsPastDepartureLine(const Vector3& position) const;
 
 	/// <summary>
 	/// 出発の合図として、足元から輪を広げる
@@ -143,8 +170,14 @@ private:
 	/// <param name="previousTimer">前のフレームでのゲートを開け始めてからの経過時間(秒)</param>
 	void PaintGateInk(float previousTimer);
 
-	// 柱を塗り上がったインクの高さ(台の上面から)
-	float GetInkClimbHeight() const;
+	/// <summary>
+	/// 柱を塗り上がったインクの高さ(台の上面から)
+	/// </summary>
+	/// <param name="timer">ゲートを開け始めてからの経過時間(秒)</param>
+	static float GetInkClimbHeight(float timer);
+
+	// カウントダウンの index 回目(0 始まり)の合図の時刻(ゲートを開け始めてからの秒数。この合図で下から index 段目のランプが点く)
+	static constexpr float GetCountTime(int index){ return kFirstCountTime + kCountdownInterval * static_cast<float>(index); }
 
 	// 描画用の3Dオブジェクト
 	std::unique_ptr<Obj3D> obj_;
@@ -160,6 +193,8 @@ private:
 	std::unique_ptr<Obj3D> marker_;
 	// 出発の合図に広げる輪
 	std::unique_ptr<Obj3D> launchRing_;
+	// 出発台の目印(出発の演出を始める場所)
+	std::unique_ptr<Obj3D> departurePad_;
 	// 台に塗ったインクの塗りテクスチャ(持ち主は PaintManager)
 	PaintCanvas* inkCanvas_ = nullptr;
 
@@ -179,6 +214,8 @@ private:
 	bool isGateOpening_ = false;
 	// このフレームで遮断棒が跳ね上がり始めたか
 	bool isBarBurstTriggered_ = false;
+	// 出発台の目印を出すか
+	bool isDeparturePadVisible_ = false;
 	// 目印を点滅させるための経過時間(秒)
 	float markerTimer_ = 0.0f;
 	// 出発の輪を広げ始めてからの経過時間(秒)
@@ -223,14 +260,20 @@ private:
 	static constexpr float kBarClosedHeight = 0.45f;
 	static constexpr float kBarOpenedHeight = 1.25f;
 	// ゲートを開けるときの各段階の時間(秒)
-	// 目印から柱の根元まで床を走る → 柱を下から上まで塗り上がる → 柱の上から梁の中央まで塗る → 遮断棒が跳ね上がる
+	// 目印から柱の根元まで床を走る → 3・2・1 の合図ごとに柱を一段ずつ塗り上がる → 柱の上まで塗り上がって梁の中央まで塗る → 0 の合図で遮断棒が跳ね上がる
 	static constexpr float kInkRunDuration = 0.45f;
-	static constexpr float kInkClimbDuration = 1.0f;
 	static constexpr float kBeamFillDuration = 0.3f;
 	static constexpr float kBarOpenDuration = 0.45f;
-	// 遮断棒が跳ね上がり始める時刻と、ゲートが開ききる時刻(ゲートを開け始めてからの秒数)
-	static constexpr float kBarStartTime = kInkRunDuration + kInkClimbDuration + kBeamFillDuration;
+	// カウントダウンで数える数(ランプの段の数と同じ)と、合図の間隔(秒)
+	static constexpr int kCountdownCount = kLampCountPerPillar;
+	static constexpr float kCountdownInterval = 0.6f;
+	// 柱のインクが次の高さまで一気に塗り上がる時間(秒。合図の瞬間に届くよう、合図の少し前から塗り上がり始める)
+	static constexpr float kInkSurgeDuration = 0.25f;
+	// 最初の合図(3)の時刻、遮断棒が跳ね上がり始める時刻(0 の合図)と、ゲートが開ききる時刻(ゲートを開け始めてからの秒数)
+	static constexpr float kFirstCountTime = kInkRunDuration + kInkSurgeDuration;
+	static constexpr float kBarStartTime = kFirstCountTime + kCountdownInterval * static_cast<float>(kCountdownCount);
 	static constexpr float kGateOpenedTime = kBarStartTime + kBarOpenDuration;
+	static_assert(kCountdownInterval >= kInkSurgeDuration + kBeamFillDuration,"最後の合図(1)から 0 の合図までの間に、柱の上まで塗り上がって梁を塗り終えられない");
 	// 出発の操作をした瞬間に、目印の上に塗るインクの半径
 	static constexpr float kGateStampRadius = 0.55f;
 	// 床を走るインクの粒の間隔・半径と、横に揺らす幅・細かさ(1m 進むあたりの位相の進み、ラジアン)
@@ -252,6 +295,10 @@ private:
 	static constexpr float kMarkerRadius = 0.5f;
 	// 出発の操作を受け付ける、目印の中心からの距離
 	static constexpr float kGateAreaRadius = 0.6f;
+	// 出発台の中央の、ゲートから前への距離と、出発台の目印の半径
+	// 出発台の手前の端(中央から半径だけ手前)に、出発の演出を始める線を引く
+	static constexpr float kDeparturePadDistance = 1.6f;
+	static constexpr float kDeparturePadRadius = 0.7f;
 	// 出発の操作を受け付ける、台の上面との高さの差(ジャンプ中は受け付けない)
 	static constexpr float kGateAreaHeightRange = 0.1f;
 	// 目印・輪を上面から浮かせる高さ(上面と重なってちらつかないようにする)
