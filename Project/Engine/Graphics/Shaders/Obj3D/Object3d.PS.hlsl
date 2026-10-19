@@ -60,7 +60,30 @@ ConstantBuffer<PointLight> gPointLight : register(b4);
 ConstantBuffer<SpotLight> gSpotLight : register(b5);
 Texture2D<float32_t4> gTexture : register(t0);
 TextureCube<float32_t4> gEnvironmentTexture : register(t1);
+// インクの塗りテクスチャ(PaintCanvas)。塗れないオブジェクトには何も塗られていない透明なテクスチャが渡される
+Texture2D<float32_t4> gPaintTexture : register(t2);
 SamplerState gSampler : register(s0);
+
+// --- インクの塗りの見た目 ---
+// 塗りテクスチャのαは、インクの輪郭でちょうどこの値になるなめらかな値で塗られている
+static const float32_t kInkEdgeValue = 0.5f;
+// 輪郭をぼかす幅の最小値(画面上でαがほとんど変わらないほど拡大したときも、輪郭がギザギザにならないようにする)
+static const float32_t kInkMinEdgeWidth = 0.01f;
+// インクの盛り上がり: 輪郭から内側へαがこの割合だけ増えるまでの間を斜面にし、内側は平らにする
+static const float32_t kInkBevelScale = 2.5f;
+// 盛り上がりの斜面で法線を傾ける強さ
+static const float32_t kInkBumpStrength = 0.6f;
+// UV の変化が無い(UV が1点に集まった)モデルで、接線の長さが0になって割り算が壊れないようにする最小値
+static const float32_t kTangentEpsilon = 1e-12f;
+// インクの表面はつやがあるので、鏡面反射の鋭さと強さを上げる
+static const float32_t kInkShininess = 64.0f;
+static const float32_t kInkSpecularScale = 1.6f;
+
+// インクの盛り上がりの高さ(輪郭の外は0、輪郭から少し内側で1になり、そこから内側は平ら)
+float32_t InkHeight(float32_t field)
+{
+    return saturate((field - kInkEdgeValue) * kInkBevelScale);
+}
 
 // --- メイン関数 ---
 PixelShaderOutput main(VertexShaderOutput input)
@@ -71,13 +94,47 @@ PixelShaderOutput main(VertexShaderOutput input)
     float32_t4 transformedUV = mul(float32_t4(input.texcoord, 0.0f, 1.0f), gMaterial.uvTransform);
     float32_t4 textureColor = gTexture.Sample(gSampler, transformedUV.xy);
 
+    // --- インクの塗り ---
+    // 塗りテクスチャはモデルの UV そのままの位置に塗られているため、UV Transform は掛けずに読む
+    // 補間して読んだαを輪郭の値でしきい値処理し、画面上の1ピクセル分の幅でぼかして、テクスチャの解像度より細かくなめらかな輪郭にする
+    float32_t4 paint = gPaintTexture.Sample(gSampler, input.texcoord);
+    float32_t inkEdgeWidth = max(fwidth(paint.a), kInkMinEdgeWidth);
+    float32_t inkMask = smoothstep(kInkEdgeValue - inkEdgeWidth, kInkEdgeValue + inkEdgeWidth, paint.a);
+
+    // インクの輪郭が盛り上がって見えるよう、隣のピクセルとの高さの差で法線を傾ける
+    // 接線は、画面上で隣のピクセルとのワールド座標・UV の差から求める(頂点に接線を持たないモデルでも使える)
+    float32_t3 surfaceNormal = normalize(input.normal);
+    {
+        float32_t3 dpdx = ddx(input.worldPosition);
+        float32_t3 dpdy = ddy(input.worldPosition);
+        float32_t2 duvdx = ddx(input.texcoord);
+        float32_t2 duvdy = ddy(input.texcoord);
+        float32_t3 dpdyPerp = cross(dpdy, surfaceNormal);
+        float32_t3 dpdxPerp = cross(surfaceNormal, dpdx);
+        float32_t3 tangent = dpdyPerp * duvdx.x + dpdxPerp * duvdy.x;
+        float32_t3 bitangent = dpdyPerp * duvdx.y + dpdxPerp * duvdy.y;
+        float32_t tangentScale = rsqrt(max(max(dot(tangent, tangent), dot(bitangent, bitangent)), kTangentEpsilon));
+
+        // 塗りテクスチャの左右・上下の1ピクセル隣の高さの差(U・V 方向の傾き)
+        float32_t2 paintSize;
+        gPaintTexture.GetDimensions(paintSize.x, paintSize.y);
+        float32_t2 texel = 1.0f / paintSize;
+        float32_t slopeU = InkHeight(gPaintTexture.Sample(gSampler, input.texcoord + float32_t2(texel.x, 0.0f)).a) -
+                           InkHeight(gPaintTexture.Sample(gSampler, input.texcoord - float32_t2(texel.x, 0.0f)).a);
+        float32_t slopeV = InkHeight(gPaintTexture.Sample(gSampler, input.texcoord + float32_t2(0.0f, texel.y)).a) -
+                           InkHeight(gPaintTexture.Sample(gSampler, input.texcoord - float32_t2(0.0f, texel.y)).a);
+        surfaceNormal = normalize(surfaceNormal - (tangent * slopeU + bitangent * slopeV) * (tangentScale * kInkBumpStrength));
+    }
+    float32_t shininess = lerp(gMaterial.shininess, kInkShininess, inkMask);
+    float32_t specularScale = lerp(1.0f, kInkSpecularScale, inkMask);
+
     // 基本色の決定
     float32_t3 finalColor = float32_t3(0.0f, 0.0f, 0.0f);
-    float32_t3 baseColor = gMaterial.color.rgb * textureColor.rgb;
+    float32_t3 baseColor = lerp(gMaterial.color.rgb * textureColor.rgb, paint.rgb, inkMask);
 
     if (gMaterial.enableLighting != 0)
     {
-        float32_t3 normal = normalize(input.normal);
+        float32_t3 normal = surfaceNormal;
         float32_t3 toEye = normalize(gCamera.worldPosition - input.worldPosition);
 
         // --- 1. Directional Light ---
@@ -90,11 +147,11 @@ PixelShaderOutput main(VertexShaderOutput input)
         if (gMaterial.useBlinnPhong != 0)
         {
             float32_t3 halfVector = normalize(dirFactor + toEye);
-            dirSpecularPow = pow(saturate(dot(normal, halfVector)), gMaterial.shininess);
+            dirSpecularPow = pow(saturate(dot(normal, halfVector)), shininess);
         }
         else
         {
-            dirSpecularPow = pow(saturate(dot(reflect(-dirFactor, normal), toEye)), gMaterial.shininess);
+            dirSpecularPow = pow(saturate(dot(reflect(-dirFactor, normal), toEye)), shininess);
         }
         float32_t3 dirSpecular = gDirectionalLight.color.rgb * gDirectionalLight.intensity * dirSpecularPow;
 
@@ -112,11 +169,11 @@ PixelShaderOutput main(VertexShaderOutput input)
         if (gMaterial.useBlinnPhong != 0)
         {
             float32_t3 halfVector = normalize(pFactor + toEye);
-            pSpecularPow = pow(saturate(dot(normal, halfVector)), gMaterial.shininess);
+            pSpecularPow = pow(saturate(dot(normal, halfVector)), shininess);
         }
         else
         {
-            pSpecularPow = pow(saturate(dot(reflect(-pFactor, normal), toEye)), gMaterial.shininess);
+            pSpecularPow = pow(saturate(dot(reflect(-pFactor, normal), toEye)), shininess);
         }
         float32_t3 pSpecular = gPointLight.color.rgb * gPointLight.intensity * pSpecularPow * pAttenuation;
 
@@ -138,11 +195,11 @@ PixelShaderOutput main(VertexShaderOutput input)
         if (gMaterial.useBlinnPhong != 0)
         {
             float32_t3 halfVector = normalize(sFactor + toEye);
-            sSpecularPow = pow(saturate(dot(normal, halfVector)), gMaterial.shininess);
+            sSpecularPow = pow(saturate(dot(normal, halfVector)), shininess);
         }
         else
         {
-            sSpecularPow = pow(saturate(dot(reflect(-sFactor, normal), toEye)), gMaterial.shininess);
+            sSpecularPow = pow(saturate(dot(reflect(-sFactor, normal), toEye)), shininess);
         }
         float32_t3 sSpecular = gSpotLight.color.rgb * gSpotLight.intensity * sSpecularPow * sAttenuation * sFalloff;
 
@@ -151,7 +208,8 @@ PixelShaderOutput main(VertexShaderOutput input)
         float32_t3 environmentColor = gEnvironmentTexture.Sample(gSampler, reflectedVector).rgb;
 
         // 全てのライティングを合計
-        finalColor = dirDiffuse + dirSpecular + pDiffuse + pSpecular + sDiffuse + sSpecular;
+        // インクの上はつやを強くするため、鏡面反射だけ倍率を掛けて足す
+        finalColor = dirDiffuse + pDiffuse + sDiffuse + (dirSpecular + pSpecular + sSpecular) * specularScale;
         finalColor += environmentColor * gMaterial.environmentCoefficient;
     }
     else

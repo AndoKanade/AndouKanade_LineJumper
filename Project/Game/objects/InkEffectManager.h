@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MyMath.h"
+#include <functional>
 #include <memory>
 #include <random>
 #include <vector>
@@ -13,9 +14,16 @@ class Obj3dCommon;
 /// インクのしぶき・的の破片・撃破時の閃光の演出
 /// 毎回生成するとメモリ確保が重くなるため、起動時に決まった数だけ生成して使い回す。
 /// 空きが無いときは一番古いものを上書きする。
+/// インクのしぶきは、着地を調べる処理(SetLandingHandler)を渡すと、面に着いたところにインクを塗って消える。
 /// </summary>
 class InkEffectManager{
 public:
+	/// <summary>
+	/// しぶきの着地を調べる処理の型
+	/// 移動前の座標・移動後の座標・塗るインクの半径を受け取り、面に着いてインクを塗ったら true を返す
+	/// </summary>
+	using LandingHandler = std::function<bool(const Vector3& from,const Vector3& to,float inkRadius)>;
+
 	InkEffectManager();
 	~InkEffectManager();
 
@@ -24,6 +32,9 @@ public:
 
 	// 出ている演出をすべて消す
 	void Reset();
+
+	// しぶきの着地を調べる処理を設定する(設定しなければ、しぶきは何にも着かずに寿命まで飛ぶ)
+	void SetLandingHandler(LandingHandler handler){ landingHandler_ = std::move(handler); }
 
 	/// <summary>
 	/// 的を壊したときの演出(破片・インクのしぶき・閃光)
@@ -45,6 +56,14 @@ public:
 	/// <param name="position">足元の座標</param>
 	/// <param name="backward">進行方向の逆向き(正規化済み)</param>
 	void EmitRailTrail(const Vector3& position,const Vector3& backward);
+
+	/// <summary>
+	/// 出発の合図(足元やゲート)から、周り一面へ高く弧を描いて飛び散るインクのしぶき
+	/// 長く飛ばして落ちてくるようにし、着地を調べる処理を設定していれば落ちたところにインクを塗る
+	/// </summary>
+	/// <param name="position">しぶきが出る座標(足元)</param>
+	/// <param name="count">しぶきの数</param>
+	void EmitLaunchBurst(const Vector3& position,int count);
 
 	// 移動・回転・縮小・寿命の更新
 	void Update(float deltaTime);
@@ -102,6 +121,9 @@ private:
 	// 飛び散り方のばらつきに使う乱数
 	std::mt19937 randomEngine_;
 
+	// しぶきの着地を調べる処理
+	LandingHandler landingHandler_;
+
 	// 使い回す個数
 	static constexpr size_t kDropletCount = 160;
 	static constexpr size_t kShardCount = 48;
@@ -158,4 +180,16 @@ private:
 	static constexpr float kTrailScaleMax = 0.08f;
 	static constexpr float kTrailLifeMin = 0.25f;
 	static constexpr float kTrailLifeMax = 0.4f;
+	// 出発の合図のしぶきの横・上への速さ・大きさ・寿命
+	// 上への速さと重力で決まる滞空時間(およそ 0.7〜1.1 秒)より寿命を長くし、落ちて着地するまで消えないようにする
+	static constexpr float kBurstHorizontalSpeedMin = 1.0f;
+	static constexpr float kBurstHorizontalSpeedMax = 3.0f;
+	static constexpr float kBurstUpSpeedMin = 4.0f;
+	static constexpr float kBurstUpSpeedMax = 6.5f;
+	static constexpr float kBurstScaleMin = 0.06f;
+	static constexpr float kBurstScaleMax = 0.11f;
+	static constexpr float kBurstLifeMin = 1.8f;
+	static constexpr float kBurstLifeMax = 2.2f;
+	// しぶきが面に着いたときに塗るインクの半径(しぶきの大きさに対する倍率)
+	static constexpr float kLandingInkRadiusRate = 3.5f;
 };

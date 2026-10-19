@@ -182,6 +182,11 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </None>
+    <None Include="Engine\Graphics\Shaders\Paint\InkPaint.hlsli">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Development|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </None>
     <None Include="Engine\Graphics\Shaders\Sprite\Sprite.hlsli">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Development|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
@@ -345,6 +350,19 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </FxCompile>
+    <FxCompile Include="Engine\Graphics\Shaders\Paint\InkPaint.PS.hlsl">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Development|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </FxCompile>
+    <FxCompile Include="Engine\Graphics\Shaders\Paint\InkPaint.VS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Development|x64'">Vertex</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Vertex</ShaderType>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Development|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </FxCompile>
     <FxCompile Include="Engine\Graphics\Shaders\Sprite\Sprite.PS.hlsl">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Development|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
@@ -383,6 +401,8 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClInclude Include="Engine\Graphics\Effect\ParticleEmitter.h" />
     <ClInclude Include="Engine\Graphics\Effect\ParticleManager.h" />
     <ClInclude Include="Engine\Graphics\Effect\PostProcess.h" />
+    <ClInclude Include="Engine\Graphics\Effect\PaintCanvas.h" />
+    <ClInclude Include="Engine\Graphics\Effect\PaintManager.h" />
     <ClInclude Include="Engine\Graphics\Effect\RenderTexture.h" />
     <ClInclude Include="Engine\Manager\ImGuiManager.h" />
     <ClInclude Include="Engine\Manager\Input.h" />
@@ -407,6 +427,7 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClInclude Include="Game\objects\EnemyManager.h" />
     <ClInclude Include="Game\Camera\RailCamera.h" />
     <ClInclude Include="Game\Camera\DebugTopCamera.h" />
+    <ClInclude Include="Game\Camera\ScreenImpact.h" />
     <ClInclude Include="Game\UI\Reticle.h" />
     <ClInclude Include="Game\objects\InkEffectManager.h" />
     <ClInclude Include="Game\objects\ComboCounter.h" />
@@ -419,6 +440,7 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClInclude Include="Game\Title\StageIntroUI.h" />
     <ClInclude Include="Game\Title\StartSequence.h" />
     <ClInclude Include="Game\Title\TitleCameraDirector.h" />
+    <ClInclude Include="Game\Title\GateCameraDirector.h" />
     <ClInclude Include="Game\Title\TitleLogo.h" />
     <ClInclude Include="Game\Title\TitleUI.h" />
     <ClInclude Include="Game\systems\AbstractSceneFactory.h" />
@@ -457,6 +479,8 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClCompile Include="Engine\Graphics\Effect\ParticleEmitter.cpp" />
     <ClCompile Include="Engine\Graphics\Effect\ParticleManager.cpp" />
     <ClCompile Include="Engine\Graphics\Effect\PostProcess.cpp" />
+    <ClCompile Include="Engine\Graphics\Effect\PaintCanvas.cpp" />
+    <ClCompile Include="Engine\Graphics\Effect\PaintManager.cpp" />
     <ClCompile Include="Engine\Graphics\Effect\RenderTexture.cpp" />
     <ClCompile Include="Engine\Manager\ImGuiManager.cpp" />
     <ClCompile Include="Engine\Manager\Input.cpp" />
@@ -479,6 +503,7 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClCompile Include="Game\objects\EnemyManager.cpp" />
     <ClCompile Include="Game\Camera\RailCamera.cpp" />
     <ClCompile Include="Game\Camera\DebugTopCamera.cpp" />
+    <ClCompile Include="Game\Camera\ScreenImpact.cpp" />
     <ClCompile Include="Game\UI\Reticle.cpp" />
     <ClCompile Include="Game\objects\InkEffectManager.cpp" />
     <ClCompile Include="Game\objects\ComboCounter.cpp" />
@@ -489,6 +514,7 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClCompile Include="Game\Title\StageIntroUI.cpp" />
     <ClCompile Include="Game\Title\StartSequence.cpp" />
     <ClCompile Include="Game\Title\TitleCameraDirector.cpp" />
+    <ClCompile Include="Game\Title\GateCameraDirector.cpp" />
     <ClCompile Include="Game\Title\TitleLogo.cpp" />
     <ClCompile Include="Game\Title\TitleUI.cpp" />
     <ClCompile Include="Game\scenes\GameScene.cpp" />

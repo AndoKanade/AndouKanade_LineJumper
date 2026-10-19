@@ -62,6 +62,14 @@ public:
 	void StartDissolveAnimation(){ isDissolving_ = true; dissolveTimer_ = 0.0f; }
 	void TriggerGlitch();
 
+	/// <summary>
+	/// 放射ブラーを一瞬かけ、時間とともに弱めて通常の表示に戻す(衝撃の瞬間の演出用)
+	/// </summary>
+	/// <param name="center">ブラーの中心(画面の UV 座標。左上が 0,0、右下が 1,1)</param>
+	/// <param name="width">かけ始めのブラーの強さ(1サンプルごとに中心からずらす割合)</param>
+	/// <param name="duration">ブラーが消えるまでの時間(秒)</param>
+	void TriggerRadialBlur(const Vector2& center,float width,float duration);
+
 private:
 	// --- 静的メンバ変数 ---
 	static Application* instance_;
@@ -81,4 +89,10 @@ private:
 	bool isGlitchActive_ = false;         // グリッチ演出中フラグ
 	float glitchTimer_ = 0.0f;            // 残り時間タイマー
 	const float kGlitchDuration = 0.15f;  // 演出時間（秒）
+
+	// --- 放射ブラー演出用管理 ---
+	bool isRadialBlurActive_ = false;     // 演出中フラグ
+	float radialBlurTimer_ = 0.0f;        // 経過時間
+	float radialBlurDuration_ = 0.0f;     // ブラーが消えるまでの時間（秒）
+	float radialBlurStartWidth_ = 0.0f;   // かけ始めのブラーの強さ
 };

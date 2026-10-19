@@ -13,6 +13,7 @@
 class Obj3dCommon;
 class Model;
 class Camera;
+class PaintCanvas;
 
 class Obj3D{
 public:
@@ -32,6 +33,9 @@ public:
 	void SetModel(const std::string& filePath);
 	void SetCamera(Camera* camera){ this->camera = camera; }
 	void SetIsSkinning(bool isSkinning){ isSkinning_ = isSkinning; }
+	// インクの塗りテクスチャを設定する(nullptr なら塗られていない見た目で描く)
+	// モデルの UV が面どうしで重ならないように展開されていること
+	void SetPaintCanvas(const PaintCanvas* paintCanvas){ paintCanvas_ = paintCanvas; }
 	void SetTexture(const std::string& filePath){
 		if(model){
 			model->SetTexture(filePath);
@@ -50,6 +54,7 @@ public:
 	const Vector3& GetRotate() const{ return transform.rotate; }
 	const Vector3& GetTranslate() const{ return transform.translate; }
 	const Matrix4x4& GetWorldMatrix() const{ return transformationMatrixData->World; }
+	Model* GetModel() const{ return model; }
 	Model::Material* GetMaterial() const{ return materialData; }
 	Skeleton& GetSkeleton(){ return skeleton_; }
 
@@ -84,4 +89,7 @@ private:
 	Animation animation_;
 	float animationTime_ = 0.0f;
 	bool isSkinning_ = false;
+
+	// インクの塗りテクスチャ(持ち主は PaintManager)
+	const PaintCanvas* paintCanvas_ = nullptr;
 };

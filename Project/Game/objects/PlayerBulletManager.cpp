@@ -28,7 +28,7 @@ void PlayerBulletManager::Initialize(Obj3dCommon* objCommon){
 }
 
 // 弾を1発発射する
-void PlayerBulletManager::Fire(const Vector3& position,const Vector3& direction){
+void PlayerBulletManager::Fire(const Vector3& position,const Vector3& direction,bool canHit){
 	Bullet bullet;
 	bullet.obj = std::make_unique<Obj3D>();
 	bullet.obj->Initialize(objCommon_);
@@ -43,6 +43,7 @@ void PlayerBulletManager::Fire(const Vector3& position,const Vector3& direction)
 
 	bullet.position = position;
 	bullet.velocity = direction * kSpeed;
+	bullet.canHit = canHit;
 	bullets_.push_back(std::move(bullet));
 }
 
@@ -54,9 +55,17 @@ void PlayerBulletManager::Move(float deltaTime){
 		// 重力による速度変化(下方向)を先に適用してから位置を更新する(半陰的オイラー法)
 		bullet.velocity.y -= kGravity * deltaTime;
 
+		const Vector3 previousPosition = bullet.position;
 		bullet.position += bullet.velocity * deltaTime;
 		bullet.lifeTime += deltaTime;
 		if(bullet.lifeTime >= kLifeTime){
+			bullet.isAlive = false;
+			continue;
+		}
+
+		// このフレームの移動の線分で面に着いたかを調べる(速い弾でも面をすり抜けない)
+		// 着いたらそこにインクを塗って消滅させる
+		if(landingHandler_ && landingHandler_(previousPosition,bullet.position,kLandingInkRadius)){
 			bullet.isAlive = false;
 		}
 	}
@@ -70,7 +79,7 @@ bool PlayerBulletManager::CheckHit(const Model::BoundingSphere& sphere){
 	}
 
 	for(auto& bullet : bullets_){
-		if(!bullet.isAlive) continue;
+		if(!bullet.isAlive || !bullet.canHit) continue;
 
 		Model::BoundingSphere bulletSphere = model_->GetBoundingSphere(bullet.position,kScale);
 		if(sphere.IsHit(bulletSphere)){

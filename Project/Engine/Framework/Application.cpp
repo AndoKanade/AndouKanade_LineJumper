@@ -8,6 +8,7 @@
 #include "ModelManager.h"
 #include "CameraManager.h"
 #include "ParticleManager.h"
+#include "PaintManager.h"
 #include "TimeManager.h"
 #include "TextureManager.h"
 #include "PostProcess.h"
@@ -17,6 +18,11 @@
 #include "WinAPI.h"
 
 Application* Application::instance_ = nullptr;
+
+namespace{
+	// 演出の経過時間を進める1フレームの時間(エンジンは60fps固定)
+	constexpr float kFrameDeltaTime = 1.0f / 60.0f;
+}
 
 // -------------------------------------------------
 // コンストラクタ・デストラクタ
@@ -88,6 +94,8 @@ void Application::InitializeGameSystems(){
 	ModelManager::GetInstance()->Initialize(dxCommon_.get());
 	CameraManager::GetInstance()->Update();
 	ParticleManager::GetInstance()->Initialize(dxCommon_.get(),SrvManager::GetInstance());
+	// インクの塗り(Obj3D の描画で塗りテクスチャを読むため、Obj3D を描くより前に初期化する)
+	PaintManager::GetInstance()->Initialize(dxCommon_.get());
 	TimeManager::GetInstance()->Initialize();
 }
 
@@ -130,6 +138,20 @@ void Application::Update(){
 	static float time = 0.0f;
 	time += 1.0f / 60.0f;
 	postProcess_->SetRandomTime(time);
+
+	// 5. 放射ブラー演出の更新
+	// 残り時間の割合の2乗で強さを下げ、かけた瞬間に強く、素早く消えるようにする
+	if(isRadialBlurActive_){
+		radialBlurTimer_ += kFrameDeltaTime;
+		float progress = radialBlurTimer_ / radialBlurDuration_;
+		if(progress >= 1.0f){
+			isRadialBlurActive_ = false;
+			currentPPType_ = PostProcess::Type::PostProcess;
+		} else{
+			float remainRate = 1.0f - progress;
+			postProcess_->SetRadialBlurWidth(radialBlurStartWidth_ * remainRate * remainRate);
+		}
+	}
 }
 
 // -------------------------------------------------
@@ -280,4 +302,14 @@ void Application::TriggerGlitch(){
 	currentPPType_ = PostProcess::Type::Glitch;
 	isGlitchActive_ = true;
 	glitchTimer_ = kGlitchDuration;
+}
+
+void Application::TriggerRadialBlur(const Vector2& center,float width,float duration){
+	currentPPType_ = PostProcess::Type::RadialBlur;
+	isRadialBlurActive_ = true;
+	radialBlurTimer_ = 0.0f;
+	radialBlurDuration_ = duration;
+	radialBlurStartWidth_ = width;
+	postProcess_->SetRadialBlurCenter(center);
+	postProcess_->SetRadialBlurWidth(width);
 }

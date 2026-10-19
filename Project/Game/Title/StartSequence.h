@@ -2,6 +2,7 @@
 
 #include "MyMath.h"
 #include "Title/TitleCameraDirector.h"
+#include "Title/GateCameraDirector.h"
 #include <memory>
 
 // 前方宣言
@@ -104,6 +105,19 @@ public:
 	/// <param name="outRotate">演出中のカメラの向き</param>
 	void CalculateCamera(const Vector3& pivot,const Vector3& gameplayPosition,const Vector3& gameplayRotate,Vector3& outPosition,Vector3& outRotate) const;
 
+	// 出発ゲートを開ける様子を映すカメラで、プレイ用カメラを上書きしている最中か
+	bool IsGateCameraActive() const{ return gateCameraDirector_.IsActive(); }
+
+	/// <summary>
+	/// 出発ゲートを開ける様子を映すカメラの座標・向きを求める(IsGateCameraActive() が true の間に使う)
+	/// ゲートを映す画の位置は、調整項目(Title グループの gateCameraPosition / gateCameraTarget)で変えられる
+	/// </summary>
+	/// <param name="gameplayPosition">プレイ用カメラの座標</param>
+	/// <param name="gameplayRotate">プレイ用カメラの向き</param>
+	/// <param name="outPosition">演出中のカメラ座標</param>
+	/// <param name="outRotate">演出中のカメラの向き</param>
+	void CalculateGateCamera(const Vector3& gameplayPosition,const Vector3& gameplayRotate,Vector3& outPosition,Vector3& outRotate) const;
+
 private:
 	Input* input_ = nullptr;
 
@@ -112,6 +126,8 @@ private:
 
 	// タイトル中・回り込み中のカメラワーク
 	TitleCameraDirector cameraDirector_;
+	// 出発ゲートを開けるときのカメラワーク
+	GateCameraDirector gateCameraDirector_;
 	// タイトルロゴ(3Dモデル)
 	std::unique_ptr<TitleLogo> titleLogo_;
 	// タイトル表示(PRESS SPACE)
@@ -138,4 +154,9 @@ private:
 	static constexpr float kDefaultBgmVolume = 0.5f;
 	// 決定音の音量の初期値(0〜1)
 	static constexpr float kDefaultSeVolume = 1.0f;
+	// ゲートを映す画のカメラ座標と注目する座標の初期値
+	// (ゲートの中央の根元を原点にした、台の向きでの座標。x: 右、y: 上、z: 前(レールの方向))
+	// プレイヤーの右斜め後ろの低めの位置から、床を走るインク・柱・遮断棒がすべて入るようにゲートを見上げる
+	static constexpr Vector3 kDefaultGateCameraPosition = {2.2f, 1.0f, -2.8f};
+	static constexpr Vector3 kDefaultGateCameraTarget = {-0.2f, 0.75f, 0.0f};
 };

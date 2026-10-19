@@ -5,6 +5,7 @@
 #include "CameraManager.h"
 #include "Camera.h"
 #include "Easing.h"
+#include "PaintManager.h"
 #include "objects/Player.h"
 #include <algorithm>
 #include <cmath>
@@ -14,6 +15,17 @@ namespace{
 	// 台に使うモデル(-1〜1の立方体。スケールに台の大きさの半分を掛けて使う)
 	// ゲートの柱・梁・ランプ・遮断棒も同じ立方体で作る
 	const std::string kPlatformModelPath = "StartPlatform/startPlatform.obj";
+	// 台の本体に使う、インクで塗れるよう面ごとに UV を展開した立方体(-1〜1。tools/generate_paint_box_model.py で生成する)
+	const std::string kPaintablePlatformModelPath = "StartPlatform/startPlatformPaint.obj";
+	// ゲートの柱・梁に使う、インクで塗れるよう面ごとに UV を展開した立方体(同じスクリプトで生成する)
+	const std::string kGatePillarModelPath = "StartPlatform/gatePillarPaint.obj";
+	const std::string kGateBeamModelPath = "StartPlatform/gateBeamPaint.obj";
+	// 台・柱・梁の塗りテクスチャの名前(シーンを作り直しても同じ塗りテクスチャを使い回す)
+	const std::string kInkCanvasName = "StartPlatform";
+	const std::string kGatePillarCanvasNames[] = {"StartGatePillarLeft", "StartGatePillarRight"};
+	const std::string kGateBeamCanvasName = "StartGateBeam";
+	// 台の上面に塗るインクの向き(上向きの面)
+	constexpr Vector3 kTopNormal = {0.0f, 1.0f, 0.0f};
 	// 目印・出発の輪に使う、輪の画像を貼った板(-1〜1で上向き。tools/generate_start_stage_assets.py で生成する)
 	const std::string kRingModelPath = "StartPlatform/ring.obj";
 
@@ -23,6 +35,7 @@ namespace{
 	// 左右の柱を並べる向き(左が -1、右が +1)
 	constexpr float kPillarSides[] = {-1.0f, 1.0f};
 	constexpr int kPillarCount = static_cast<int>(std::size(kPillarSides));
+	static_assert(std::size(kGatePillarCanvasNames) == kPillarCount,"柱の塗りテクスチャの名前と柱の数が合っていない");
 	// 大きさから、中心から面までの距離や立方体(-1〜1)に掛けるスケールを求める倍率(半分)
 	constexpr float kHalf = 0.5f;
 	// 輪の板の半径(板は -1〜1 なので1)
@@ -36,6 +49,22 @@ namespace{
 	void SetUnlit(Obj3D& obj){
 		if(Model::Material* material = obj.GetMaterial()){
 			material->enableLighting = 0;
+		}
+	}
+
+	// 2つの色を補間する
+	Vector4 LerpColor(const Vector4& from,const Vector4& to,float t){
+		return {Lerp(from.x,to.x,t), Lerp(from.y,to.y,t), Lerp(from.z,to.z,t), Lerp(from.w,to.w,t)};
+	}
+
+	// 間隔 spacing ごとに並べた点(spacing, 2×spacing, ...)のうち、from より先で to までにある点の距離を順に渡す
+	// 前のフレームから今のフレームまでに進んだ区間の点だけを渡すため、同じ点に二度インクを塗らない
+	template<class Function>
+	void ForEachPointInRange(float from,float to,float spacing,Function function){
+		const int first = static_cast<int>(std::floor(from / spacing)) + 1;
+		const int last = static_cast<int>(std::floor(to / spacing));
+		for(int i = first; i <= last; ++i){
+			function(static_cast<float>(i) * spacing);
 		}
 	}
 
@@ -61,6 +90,9 @@ StartPlatform::~StartPlatform() = default;
 // 初期化処理
 void StartPlatform::Initialize(Obj3dCommon* objCommon){
 	ModelManager::GetInstance()->LoadModel(kPlatformModelPath);
+	ModelManager::GetInstance()->LoadModel(kPaintablePlatformModelPath);
+	ModelManager::GetInstance()->LoadModel(kGatePillarModelPath);
+	ModelManager::GetInstance()->LoadModel(kGateBeamModelPath);
 	ModelManager::GetInstance()->LoadModel(kRingModelPath);
 
 	// 色は変わらないものが多いため、生成時に一度設定しておく
@@ -72,13 +104,24 @@ void StartPlatform::Initialize(Obj3dCommon* objCommon){
 		return obj;
 	};
 
-	obj_ = createObj(kPlatformModelPath,kPlatformColor);
+	// 台の本体はインクで塗れるようにする(前のシーンで塗ったインクが残っているため消しておく)
+	obj_ = createObj(kPaintablePlatformModelPath,kPlatformColor);
+	inkCanvas_ = PaintManager::GetInstance()->GetCanvas(kInkCanvasName,kInkCanvasSize);
+	inkCanvas_->Clear();
+	obj_->SetPaintCanvas(inkCanvas_);
 
-	// 左右の柱と上の梁
+	// 左右の柱と上の梁(ゲートを開けるときにインクで塗り上げるため、塗れるようにする)
+	PaintManager* paintManager = PaintManager::GetInstance();
 	for(int i = 0; i < kPillarCount; ++i){
-		gateFrames_.push_back(createObj(kPlatformModelPath,kFrameColor));
+		gateFrames_.push_back(createObj(kGatePillarModelPath,kFrameColor));
+		gateFrameCanvases_.push_back(paintManager->GetCanvas(kGatePillarCanvasNames[i],kGatePillarCanvasSize));
 	}
-	gateFrames_.push_back(createObj(kPlatformModelPath,kFrameColor));
+	gateFrames_.push_back(createObj(kGateBeamModelPath,kFrameColor));
+	gateFrameCanvases_.push_back(paintManager->GetCanvas(kGateBeamCanvasName,kGateBeamCanvasSize));
+	for(size_t i = 0; i < gateFrames_.size(); ++i){
+		gateFrameCanvases_[i]->Clear();
+		gateFrames_[i]->SetPaintCanvas(gateFrameCanvases_[i]);
+	}
 
 	// ランプは光って見えるよう、光源の影響を受けないようにする
 	for(int i = 0; i < kPillarCount * kLampCountPerPillar; ++i){
@@ -140,6 +183,7 @@ void StartPlatform::Place(const Vector3& railStartPosition,const Vector3& railSt
 void StartPlatform::ResetGate(){
 	gateOpenTimer_ = 0.0f;
 	isGateOpening_ = false;
+	isBarBurstTriggered_ = false;
 	markerTimer_ = 0.0f;
 	launchRingTimer_ = 0.0f;
 	isLaunchRingActive_ = false;
@@ -149,11 +193,23 @@ void StartPlatform::ResetGate(){
 void StartPlatform::BeginOpenGate(){
 	gateOpenTimer_ = 0.0f;
 	isGateOpening_ = true;
+	// 出発の操作をした目印の上にインクを塗り、そこから柱へインクが走り出すようにする
+	PaintInk(ToWorld({0.0f, 0.0f, kGateDistance - kMarkerDistanceFromGate}),kGateStampRadius);
 }
 
 // ゲートが開ききったか
 bool StartPlatform::IsGateOpened() const{
-	return isGateOpening_ && gateOpenTimer_ >= kLampInterval * static_cast<float>(kLampCountPerPillar) + kBarOpenDuration;
+	return isGateOpening_ && gateOpenTimer_ >= kGateOpenedTime;
+}
+
+// 遮断棒が跳ね上がるときにインクを飛び散らせる位置
+Vector3 StartPlatform::GetGateBurstPosition() const{
+	return ToWorld({0.0f, kBarClosedHeight, kGateDistance});
+}
+
+// ゲートの中央の根元を原点にした座標をワールド座標に変換する
+Vector3 StartPlatform::GateLocalToWorld(const Vector3& local) const{
+	return ToWorld({local.x, local.y, local.z + kGateDistance});
 }
 
 // 出発の合図として、足元から輪を広げる
@@ -163,33 +219,151 @@ void StartPlatform::EmitLaunchRing(const Vector3& position){
 	isLaunchRingActive_ = true;
 }
 
+// 台の上面にインクを1滴塗る
+void StartPlatform::PaintInk(const Vector3& position,float radius){
+	if(inkCanvas_){
+		inkCanvas_->AddSplat(position,radius,kTopNormal,kInkColor);
+	}
+}
+
+// 落ちてくるインクの粒が台の上面に着いたら、着いた位置にインクを塗る
+// 移動前は上面より上、移動後は上面以下にいるときだけ、移動の線分と上面の高さの平面が交わる点を求める
+bool StartPlatform::TryLandInk(const Vector3& from,const Vector3& to,float radius,Vector3* landedPosition){
+	const float topHeight = topCenter_.y;
+	if(from.y < topHeight || to.y >= topHeight){
+		return false;
+	}
+	// 移動前から上面までの高さの差が、移動全体の高さの差のどれだけの割合か
+	float rate = (from.y - topHeight) / (from.y - to.y);
+	Vector3 landPosition = Lerp(from,to,rate);
+	if(!IsInsideTop(landPosition)){
+		return false;
+	}
+	landPosition.y = topHeight;
+	PaintInk(landPosition,radius);
+	if(landedPosition){
+		*landedPosition = landPosition;
+	}
+	return true;
+}
+
+// 台・柱・梁に塗ったインクをすべて消す
+void StartPlatform::ClearInk(){
+	if(inkCanvas_){
+		inkCanvas_->Clear();
+	}
+	for(PaintCanvas* canvas : gateFrameCanvases_){
+		canvas->Clear();
+	}
+}
+
+// 予約したインクを台・柱・梁の塗りテクスチャに描き込む
+void StartPlatform::FlushInk(){
+	if(inkCanvas_ && obj_){
+		inkCanvas_->Flush(*obj_);
+	}
+	for(size_t i = 0; i < gateFrames_.size(); ++i){
+		gateFrameCanvases_[i]->Flush(*gateFrames_[i]);
+	}
+}
+
+// ゲートを開けている間に、インクが進んだ分だけ床・柱・梁にインクを塗る
+// 各段階の進み具合を前のフレームと今のフレームで求め、その間に進んだ区間にだけ一定の間隔でインクの粒を置く
+// (フレームの長さが変わっても、粒の間隔は変わらない)
+void StartPlatform::PaintGateInk(float previousTimer){
+	// 経過時間を、指定した段階の進み具合(0〜1)に直す
+	auto stageProgress = [](float timer,float startTime,float duration){
+		return std::clamp((timer - startTime) / duration,0.0f,1.0f);
+	};
+	const float beamStartTime = kInkRunDuration + kInkClimbDuration;
+
+	// 柱・梁は手前側(プレイヤーが近づいてくる側)の面を塗る
+	const Vector3 frontNormal = -forwardXZ_;
+	const float pillarOffsetX = kHalfWidth - kPillarSize.x * kHalf;
+	const float pillarFrontZ = kGateDistance - kPillarSize.z * kHalf;
+	const float beamCenterHeight = kPillarSize.y + kBeamHeight * kHalf;
+	const float beamFrontZ = kGateDistance - kBeamDepth * kHalf;
+	const Vector3 markerLocal = {0.0f, 0.0f, kGateDistance - kMarkerDistanceFromGate};
+	PaintCanvas* beamCanvas = gateFrameCanvases_.back();
+
+	for(int i = 0; i < kPillarCount; ++i){
+		const float side = kPillarSides[i];
+
+		// 1. 目印から柱の根元へ、床の上を走る
+		// 進む向きと垂直な向きに少しずつ揺らし、液体が流れたような筋にする
+		const Vector3 runVector = Vector3{pillarOffsetX * side, 0.0f, pillarFrontZ} - markerLocal;
+		const float runLength = Length(runVector);
+		const Vector3 runDirection = runVector / runLength;
+		const Vector3 runSide = {runDirection.z, 0.0f, -runDirection.x};
+		ForEachPointInRange(stageProgress(previousTimer,0.0f,kInkRunDuration) * runLength,stageProgress(gateOpenTimer_,0.0f,kInkRunDuration) * runLength,kFloorInkSpacing,
+			[&](float distance){
+				const float wobble = std::sin(distance * kFloorInkWobbleFrequency) * kFloorInkWobbleAmplitude;
+				PaintInk(ToWorld(markerLocal + runDirection * distance + runSide * wobble),kFloorInkRadius);
+			});
+
+		// 2. 柱の手前の面を、下から上へ塗り上がる
+		PaintCanvas* pillarCanvas = gateFrameCanvases_[i];
+		ForEachPointInRange(stageProgress(previousTimer,kInkRunDuration,kInkClimbDuration) * kPillarSize.y,stageProgress(gateOpenTimer_,kInkRunDuration,kInkClimbDuration) * kPillarSize.y,kClimbInkSpacing,
+			[&](float height){
+				pillarCanvas->AddSplat(ToWorld({pillarOffsetX * side, height, pillarFrontZ}),kClimbInkRadius,frontNormal,kInkColor);
+			});
+
+		// 3. 柱の上から梁の中央へ向かって、梁の手前の面を塗る(左右から塗り進めて中央で合わせる)
+		ForEachPointInRange(stageProgress(previousTimer,beamStartTime,kBeamFillDuration) * pillarOffsetX,stageProgress(gateOpenTimer_,beamStartTime,kBeamFillDuration) * pillarOffsetX,kBeamInkSpacing,
+			[&](float distance){
+				beamCanvas->AddSplat(ToWorld({(pillarOffsetX - distance) * side, beamCenterHeight, beamFrontZ}),kBeamInkRadius,frontNormal,kInkColor);
+			});
+	}
+}
+
+// 柱を塗り上がったインクの高さ
+float StartPlatform::GetInkClimbHeight() const{
+	if(!isGateOpening_){
+		return 0.0f;
+	}
+	return std::clamp((gateOpenTimer_ - kInkRunDuration) / kInkClimbDuration,0.0f,1.0f) * kPillarSize.y;
+}
+
 // ランプ・遮断棒・目印・輪の動きを進め、行列を更新する
 void StartPlatform::Update(float deltaTime){
-	const float lampSequenceDuration = kLampInterval * static_cast<float>(kLampCountPerPillar);
+	// このフレームで遮断棒が跳ね上がり始めたかは、毎フレーム調べ直す
+	isBarBurstTriggered_ = false;
 	if(isGateOpening_){
-		gateOpenTimer_ = (std::min)(gateOpenTimer_ + deltaTime,lampSequenceDuration + kBarOpenDuration);
+		const float previousTimer = gateOpenTimer_;
+		gateOpenTimer_ = (std::min)(gateOpenTimer_ + deltaTime,kGateOpenedTime);
+		PaintGateInk(previousTimer);
+		isBarBurstTriggered_ = previousTimer < kBarStartTime && gateOpenTimer_ >= kBarStartTime;
 	}
 	markerTimer_ += deltaTime;
 
-	// ランプは柱の手前側(プレイヤーが近づいてくる側)の面に貼り付け、開け始めてから下の段から順に点ける
+	// ランプは柱の手前側(プレイヤーが近づいてくる側)の面に貼り付け、柱を塗り上がるインクがランプの高さに来たものから点ける
+	// 点いた瞬間は明るく光らせ、少しずつ点いたときの色に落ち着かせる
 	const float pillarOffsetX = kHalfWidth - kPillarSize.x * kHalf;
 	const float lampDistance = kGateDistance - (kPillarSize.z + kLampSize.z) * kHalf;
-	int litLampRowCount = isGateOpening_?static_cast<int>(gateOpenTimer_ / kLampInterval):0;
+	const float inkClimbHeight = GetInkClimbHeight();
+	const float inkClimbSpeed = kPillarSize.y / kInkClimbDuration;
 	for(int side = 0; side < kPillarCount; ++side){
 		for(int row = 0; row < kLampCountPerPillar; ++row){
 			Obj3D& lamp = *lamps_[side * kLampCountPerPillar + row];
-			SetColor(lamp,row < litLampRowCount?kLampOnColor:kLampOffColor);
-			UpdatePart(lamp,{pillarOffsetX * kPillarSides[side], kLampBottomHeight + kLampSpacing * static_cast<float>(row), lampDistance},kLampSize);
+			const float lampHeight = kLampBottomHeight + kLampSpacing * static_cast<float>(row);
+			Vector4 lampColor = kLampOffColor;
+			if(isGateOpening_ && inkClimbHeight >= lampHeight){
+				// インクがランプの高さを過ぎてからの時間で、光った色から点いたときの色へ戻していく
+				const float timeSinceLit = (inkClimbHeight - lampHeight) / inkClimbSpeed;
+				lampColor = LerpColor(kLampFlashColor,kLampOnColor,std::clamp(timeSinceLit / kLampFlashDuration,0.0f,1.0f));
+			}
+			SetColor(lamp,lampColor);
+			UpdatePart(lamp,{pillarOffsetX * kPillarSides[side], lampHeight, lampDistance},kLampSize);
 		}
 	}
 
-	// 遮断棒は左右の柱の内側の面の間をふさぐ長さにし、ランプが点き終わってから勢いよく上がってゆっくり止まるように上げる
+	// 遮断棒は左右の柱の内側の面の間をふさぐ長さにし、梁まで塗り終わってから跳ね上がり、少し行き過ぎてから戻って止まるように上げる
 	float barProgress = 0.0f;
 	if(isGateOpening_){
-		barProgress = std::clamp((gateOpenTimer_ - lampSequenceDuration) / kBarOpenDuration,0.0f,1.0f);
+		barProgress = std::clamp((gateOpenTimer_ - kBarStartTime) / kBarOpenDuration,0.0f,1.0f);
 	}
 	const float barHalfLength = pillarOffsetX - kPillarSize.x * kHalf;
-	float barHeight = Lerp(kBarClosedHeight,kBarOpenedHeight,Easing::EaseOutCubic(barProgress));
+	float barHeight = Lerp(kBarClosedHeight,kBarOpenedHeight,Easing::EaseOutBack(barProgress));
 	UpdatePart(*bar_,{0.0f, barHeight, kGateDistance},{barHalfLength + barHalfLength, kBarThickness, kBarThickness});
 
 	// 目印はゆっくり点滅させて、ここに立てばよいことを伝える

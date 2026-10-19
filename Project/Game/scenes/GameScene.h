@@ -18,6 +18,7 @@ class Sun;
 class StartPlatform;
 class Player;
 class RailCamera;
+class ScreenImpact;
 class DebugTopCamera;
 class PlayerBulletManager;
 class TargetManager;
@@ -93,6 +94,8 @@ private:
 
 	// レール追従カメラ(プレイ用カメラ)
 	std::unique_ptr<RailCamera> railCamera_;
+	// 衝撃の瞬間の画面演出(ヒットストップと画面の揺れ)
+	std::unique_ptr<ScreenImpact> screenImpact_;
 
 	// 俯瞰デバッグカメラ
 	std::unique_ptr<DebugTopCamera> debugTopCamera_;
@@ -146,4 +149,18 @@ private:
 	static constexpr int kMuzzleSplashCount = 3;
 	// レールに乗り込んで出発した瞬間に、足元から飛び散らせるインクのしぶきの数
 	static constexpr int kLaunchSplashCount = 10;
+	// レールに乗り込んで出発した瞬間に、足元に残すインクの跡の半径と、高く飛び散らせて台に落とすしぶきの数
+	static constexpr float kLaunchInkRadius = 1.1f;
+	static constexpr int kLaunchBurstCount = 24;
+	// 弾がスタート台に当たったときに跳ねさせるインクのしぶきの数
+	static constexpr int kBulletLandSplashCount = 4;
+	// 出発ゲートの遮断棒が跳ね上がった瞬間に、ゲートから飛び散らせるインクのしぶきの数
+	static constexpr int kGateBurstCount = 20;
+	// 遮断棒が跳ね上がった瞬間の衝撃(ゲートとインクの動きを止める時間、画面の揺れの幅・収まるまでの時間)
+	static constexpr float kGateHitStopDuration = 0.1f;
+	static constexpr float kGateShakeAmplitude = 0.12f;
+	static constexpr float kGateShakeDuration = 0.4f;
+	// 遮断棒が跳ね上がった瞬間に、ゲートを中心にかける放射ブラーの強さと消えるまでの時間
+	static constexpr float kGateRadialBlurWidth = 0.02f;
+	static constexpr float kGateRadialBlurDuration = 0.35f;
 };

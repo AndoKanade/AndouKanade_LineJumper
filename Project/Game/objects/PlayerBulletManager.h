@@ -2,6 +2,7 @@
 
 #include "MyMath.h"
 #include "Model.h"
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -12,9 +13,16 @@ class Obj3dCommon;
 /// <summary>
 /// プレイヤーの弾の管理
 /// 発射・移動(重力あり)・寿命切れの処理と、的や敵との当たり判定に使う境界球の判定を行う。
+/// 着地を調べる処理(SetLandingHandler)を渡すと、弾が面に着いたところにインクを塗って消える。
 /// </summary>
 class PlayerBulletManager{
 public:
+	/// <summary>
+	/// 弾の着地を調べる処理の型
+	/// 移動前の座標・移動後の座標・塗るインクの半径を受け取り、面に着いてインクを塗ったら true を返す
+	/// </summary>
+	using LandingHandler = std::function<bool(const Vector3& from,const Vector3& to,float inkRadius)>;
+
 	PlayerBulletManager();
 	~PlayerBulletManager();
 
@@ -26,13 +34,18 @@ public:
 	/// </summary>
 	/// <param name="position">発射位置</param>
 	/// <param name="direction">発射方向(正規化済み)</param>
-	void Fire(const Vector3& position,const Vector3& direction);
+	/// <param name="canHit">的・敵に当たるか(スタート台での試し撃ちの弾は false にして、塗るだけにする)</param>
+	void Fire(const Vector3& position,const Vector3& direction,bool canHit);
 
-	// 弾の移動と生存時間の更新(的に当たらなくても一定時間で消滅させる)
+	// 弾の着地を調べる処理を設定する(設定しなければ、弾は何にも着かずに寿命まで飛ぶ)
+	void SetLandingHandler(LandingHandler handler){ landingHandler_ = std::move(handler); }
+
+	// 弾の移動と生存時間の更新(的に当たらなくても一定時間で消滅させる。面に着いた弾はインクを塗って消滅させる)
 	void Move(float deltaTime);
 
 	/// <summary>
 	/// 指定した境界球に重なる生存中の弾を1発探し、見つかればその弾を消滅させる
+	/// 的・敵に当たらない弾(試し撃ちの弾)は判定しない
 	/// </summary>
 	/// <param name="sphere">判定相手の境界球</param>
 	/// <returns>弾が当たったときtrue</returns>
@@ -61,6 +74,8 @@ private:
 		Vector3 velocity;
 		float lifeTime = 0.0f;
 		bool isAlive = true;
+		// 的・敵に当たるか
+		bool canHit = true;
 	};
 
 	Obj3dCommon* objCommon_ = nullptr;
@@ -70,6 +85,9 @@ private:
 
 	// 発射済みの弾
 	std::vector<Bullet> bullets_;
+
+	// 弾の着地を調べる処理
+	LandingHandler landingHandler_;
 
 	// 弾の移動速度(1秒あたりの移動量)
 	static constexpr float kSpeed = 40.0f;
@@ -84,4 +102,6 @@ private:
 	static constexpr float kGravity = 9.8f;
 	// 弾1発が敵に与えるダメージ量
 	static constexpr int kDamage = 1;
+	// 弾が面に着いたときに塗るインクの半径
+	static constexpr float kLandingInkRadius = 0.5f;
 };

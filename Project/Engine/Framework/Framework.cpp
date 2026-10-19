@@ -6,6 +6,7 @@
 #include "SoundManager.h"
 #include "CameraManager.h"
 #include "ParticleManager.h"
+#include "PaintManager.h"
 #include "TextureManager.h"
 #include "ModelManager.h"
 #include "TimeManager.h"
@@ -134,6 +135,7 @@ void Framework::Finalize(){
 
 	SoundManager::GetInstance()->Finalize();
 	ParticleManager::GetInstance()->Finalize();
+	PaintManager::GetInstance()->Finalize();
 	ModelManager::GetInstance()->Finalize();
 	TextureManager::GetInstance()->Finalize();
 	CameraManager::GetInstance()->Finalize();

@@ -30,6 +30,12 @@ struct SpotLight{
 // --- Obj3dCommonクラス ---
 
 class Obj3dCommon{
+public: // 定数
+
+	// インクの塗りテクスチャ(t2)を渡すルートパラメータの番号(通常用・スキニング用)
+	static constexpr UINT kPaintTextureRootIndex = 8;
+	static constexpr UINT kSkinningPaintTextureRootIndex = 9;
+
 public: // 外部から呼び出すもの
 
 	// 初期化

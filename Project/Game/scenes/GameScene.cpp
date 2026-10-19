@@ -34,6 +34,7 @@
 // カメラ
 #include "Camera/RailCamera.h"
 #include "Camera/DebugTopCamera.h"
+#include "Camera/ScreenImpact.h"
 // UI
 #include "UI/Reticle.h"
 #include "UI/StageHUD.h"
@@ -76,6 +77,28 @@ namespace{
 	// 調整項目に保存した番号から演出の種類を取得する
 	SceneTransition::Style GetTransitionStyle(const char* key){
 		return static_cast<SceneTransition::Style>(GlobalVariables::GetInstance()->GetIntValue(kGameSceneGroup,key));
+	}
+
+	// 画面の中央の UV 座標(カメラの後ろにある点を変換しようとしたときに代わりに使う)
+	constexpr Vector2 kScreenCenterUv = {0.5f, 0.5f};
+	// 描画先の座標(-1〜1、上向きが+Y)を、画面の UV 座標(0〜1、左上が原点で下向きが+V)に直す倍率
+	constexpr float kClipToUvScale = 0.5f;
+
+	/// <summary>
+	/// ワールド座標を、画面の UV 座標に変換する(放射ブラーの中心を決めるのに使う)
+	/// </summary>
+	/// <param name="position">ワールド座標</param>
+	/// <param name="viewProjection">カメラのビュー・プロジェクション行列</param>
+	Vector2 WorldToScreenUv(const Vector3& position,const Matrix4x4& viewProjection){
+		// 行ベクトル × 行列の順で掛け、同次座標(x, y, w)を求める
+		const Matrix4x4& m = viewProjection;
+		float clipX = position.x * m.m[0][0] + position.y * m.m[1][0] + position.z * m.m[2][0] + m.m[3][0];
+		float clipY = position.x * m.m[0][1] + position.y * m.m[1][1] + position.z * m.m[2][1] + m.m[3][1];
+		float clipW = position.x * m.m[0][3] + position.y * m.m[1][3] + position.z * m.m[2][3] + m.m[3][3];
+		if(clipW <= 0.0f){
+			return kScreenCenterUv;
+		}
+		return {kClipToUvScale + clipX / clipW * kClipToUvScale, kClipToUvScale - clipY / clipW * kClipToUvScale};
 	}
 
 #ifdef USE_IMGUI
@@ -156,6 +179,8 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// レール追従カメラの生成
 	railCamera_ = std::make_unique<RailCamera>();
 	railCamera_->Initialize(kGameSceneGroup);
+	// 衝撃の瞬間の画面演出(出発ゲートが開く瞬間のヒットストップ・画面の揺れ)
+	screenImpact_ = std::make_unique<ScreenImpact>();
 
 	// 俯瞰用のデバッグカメラを生成
 	debugTopCamera_ = std::make_unique<DebugTopCamera>();
@@ -180,6 +205,19 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// インクのしぶき・的の破片・閃光の演出(使い回す3Dオブジェクトをここでまとめて生成する)
 	inkEffect_ = std::make_unique<InkEffectManager>();
 	inkEffect_->Initialize(object3dCommon_);
+	// インクのしぶきがスタート台の上面に落ちたら、落ちたところにインクを塗る
+	inkEffect_->SetLandingHandler([this](const Vector3& from,const Vector3& to,float inkRadius){
+		return startPlatform_->TryLandInk(from,to,inkRadius);
+	});
+	// 弾がスタート台の上面に当たったら、当たったところにインクを塗り、しぶきを跳ねさせる
+	bulletManager_->SetLandingHandler([this](const Vector3& from,const Vector3& to,float inkRadius){
+		Vector3 landedPosition;
+		if(!startPlatform_->TryLandInk(from,to,inkRadius,&landedPosition)){
+			return false;
+		}
+		inkEffect_->EmitInkSplash(landedPosition,kWorldUp,kBulletLandSplashCount);
+		return true;
+	});
 
 	// 的を続けて壊したときの連鎖数
 	comboCounter_ = std::make_unique<ComboCounter>();
@@ -243,8 +281,9 @@ void GameScene::ResetPlayState(){
 		player_->StartOnPlatform(startPlatform_->GetSpawnPosition(),railEditor_->GetRotationOnRail(0.0f));
 	}
 
-	// 出ている演出・連鎖数・スピード線も消す
+	// 出ている演出・連鎖数・スピード線・画面の揺れも消す
 	inkEffect_->Reset();
+	screenImpact_->Reset();
 	comboCounter_->Reset();
 	speedLines_->Reset();
 
@@ -268,8 +307,23 @@ void GameScene::Update(){
 	// 地面タイルの更新(霧のUVスクロールも行う)
 	ground_->Update(kDeltaTime);
 
-	// スタート台の出発ゲートの更新(ランプ・遮断棒・足元の目印・出発の輪の動き)
-	startPlatform_->Update(kDeltaTime);
+	// 衝撃の瞬間の画面演出を進める
+	// ヒットストップ中は、出発ゲートとインクの演出の時間を止めて、衝撃の瞬間を強調する
+	screenImpact_->Update(kDeltaTime);
+	const float effectDeltaTime = screenImpact_->IsHitStopping()?0.0f:kDeltaTime;
+
+	// スタート台の出発ゲートの更新(ゲートへ流し込むインク・ランプ・遮断棒・足元の目印・出発の輪の動き)
+	startPlatform_->Update(effectDeltaTime);
+	// 遮断棒が跳ね上がった瞬間に、ゲートからインクを高く飛び散らせる(台に落ちたところにインクの跡が残る)
+	// 同時に一瞬だけ動きを止め、画面を揺らし、ゲートを中心に放射ブラーをかけて、ゲートが開く衝撃を見せる
+	if(startPlatform_->IsBarBurstTriggered()){
+		const Vector3 burstPosition = startPlatform_->GetGateBurstPosition();
+		inkEffect_->EmitLaunchBurst(burstPosition,kGateBurstCount);
+		screenImpact_->Trigger(kGateHitStopDuration,kGateShakeAmplitude,kGateShakeDuration);
+		if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
+			Application::GetInstance()->TriggerRadialBlur(WorldToScreenUv(burstPosition,activeCamera->GetViewProjectionMatrix()),kGateRadialBlurWidth,kGateRadialBlurDuration);
+		}
+	}
 
 	// 太陽の光の向き・色・明るさを調整項目の最新値で更新する
 	sun_->Update();
@@ -290,6 +344,10 @@ void GameScene::Update(){
 	if(railEditor_){
 		UpdateGameplay();
 	}
+
+	// このフレームでスタート台に塗ったインクを塗りテクスチャに描き込む
+	// しぶきの着地(UpdateGameplay の中の演出の更新)で塗る分も同じフレームで反映するよう、その後に行う
+	startPlatform_->FlushInk();
 
 	// ImGuiが無い環境でもレールの制御点を確認できるよう、F1キーで俯瞰デバッグカメラを切り替える
 	debugTopCamera_->HandleToggleKey(input_,railEditor_.get());
@@ -456,6 +514,24 @@ void GameScene::UpdateGameplay(){
 			mainCamera->SetTranslate(directedCameraPos);
 			mainCamera->SetRotate(directedCameraRot);
 		}
+	} else if(isPlayMode && startSequence_->IsGateCameraActive()){
+		// 出発ゲートを開けている間は、ゲートの斜め前からの画へ寄せ、開ききったらプレイ用カメラへ戻す
+		Vector3 directedCameraPos;
+		Vector3 directedCameraRot;
+		startSequence_->CalculateGateCamera(cameraPos,railCamera_->GetRotation(),directedCameraPos,directedCameraRot);
+		if(Camera* mainCamera = CameraManager::GetInstance()->GetCamera(kDefaultCameraName)){
+			mainCamera->SetTranslate(directedCameraPos);
+			mainCamera->SetRotate(directedCameraRot);
+		}
+	}
+
+	// 画面の揺れを、このフレームのカメラの位置に足す
+	// 演出カメラで上書きした後に足すことで、どの画でも同じように揺れるようにする
+	// (カメラの位置はレール追従カメラか演出カメラが毎フレーム設定し直すため、揺れが積み重なることはない)
+	if(screenImpact_->IsShaking()){
+		if(Camera* mainCamera = CameraManager::GetInstance()->GetCamera(kDefaultCameraName)){
+			mainCamera->SetTranslate(mainCamera->GetTranslate() + screenImpact_->GetShakeOffset(railCamera_->GetRight(),kWorldUp));
+		}
 	}
 
 	// 雑魚敵の更新
@@ -500,22 +576,27 @@ void GameScene::UpdateGameplay(){
 		}
 
 		// 出発ゲートをくぐってレールに乗り込んだ瞬間に、足元から輪とインクのしぶきを広げて「GO!」でプレイを始める
+		// 足元には大きなインクの跡を残し、高く飛び散ったしぶきは台に落ちたところに跡を残す
 		if(startSequence_->IsBoarding() && player_->IsOnRail()){
 			const Vector3 boardedPos = railEditor_->GetPositionOnRail(player_->GetRailT());
 			startSequence_->NotifyBoarded();
 			startPlatform_->EmitLaunchRing(boardedPos);
+			startPlatform_->PaintInk(boardedPos,kLaunchInkRadius);
 			inkEffect_->EmitInkSplash(boardedPos,kWorldUp,kLaunchSplashCount);
+			inkEffect_->EmitLaunchBurst(boardedPos,kLaunchBurstCount);
 		}
 	}
 
 	// 弾の発射処理(左クリックした瞬間に1発だけ発射する)
-	bool shootTriggered = isGameplayActive && input_ && input_->TriggerMouseButton(kShootMouseButton);
+	// スタート台の上を動ける間も試し撃ちとして撃てるようにし、台に当たったところを塗れるようにする
+	// 試し撃ちの弾は的・敵には当たらないようにして、プレイが始まる前に的を壊したり敵を倒したりしないようにする
+	bool shootTriggered = (isGameplayActive || isPlayerMovable) && input_ && input_->TriggerMouseButton(kShootMouseButton);
 	if(shootTriggered){
 		// プレイヤーの手元から、レティクルの先の点へ向けて撃ち出す
 		Vector3 muzzlePos = player_->GetMuzzlePosition();
 		Vector3 aimPoint = cameraPos + cameraForward * kAimConvergeDistance;
 		Vector3 shootDirection = Normalize(aimPoint - muzzlePos);
-		bulletManager_->Fire(muzzlePos,shootDirection);
+		bulletManager_->Fire(muzzlePos,shootDirection,isGameplayActive);
 
 		// 手元から撃つ向きへインクを少し飛び散らせる
 		inkEffect_->EmitInkSplash(muzzlePos,shootDirection,kMuzzleSplashCount);
@@ -547,7 +628,8 @@ void GameScene::UpdateGameplay(){
 	reticle_->SetAiming(isAimingAtAnyTarget);
 
 	// 演出の更新(このフレームで出した分も含めて行列を求めるため、出す処理がすべて終わってから行う)
-	inkEffect_->Update(kDeltaTime);
+	// ヒットストップ中は、飛び散ったインクも空中で止める
+	inkEffect_->Update(screenImpact_->IsHitStopping()?0.0f:kDeltaTime);
 
 	// スピード線はレールを進んでいる間だけ出す
 	speedLines_->Update(isRidingRail,kDeltaTime);
@@ -725,14 +807,14 @@ void GameScene::Draw(){
 	}
 
 	// 画面中央固定のレティクルを描画
-	// タイトルからレールに乗り込むまでは撃てないため表示しない
+	// タイトル中・カメラの回り込み中は撃てないため表示しない
+	// スタート台の上では試し撃ちができるため表示する(ゲートが開く間も、出たり消えたりしないよう表示したままにする)
 	bool isTitleShowing = startSequence_ && startSequence_->IsControllingCamera();
-	bool isIntroRunning = startSequence_ && startSequence_->IsIntroRunning();
 
 	// スピード線はレティクル・画面表示より奥に見えるよう先に描く
 	speedLines_->Draw();
 
-	if(!isIntroRunning){
+	if(!isTitleShowing){
 		reticle_->Draw();
 	}
 

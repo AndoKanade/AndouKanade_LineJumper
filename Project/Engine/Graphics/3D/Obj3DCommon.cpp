@@ -99,8 +99,15 @@ void Obj3dCommon::CreateRootSignature(){
 	descriptorRangeEnv[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 	descriptorRangeEnv[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
+	// インクの塗りテクスチャ用デスクリプタレンジ
+	D3D12_DESCRIPTOR_RANGE descriptorRangePaint[1] = {};
+	descriptorRangePaint[0].BaseShaderRegister = 2;
+	descriptorRangePaint[0].NumDescriptors = 1;
+	descriptorRangePaint[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	descriptorRangePaint[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
 	// ルートパラメータの設定
-	D3D12_ROOT_PARAMETER rootParameters[8] = {};
+	D3D12_ROOT_PARAMETER rootParameters[9] = {};
 
 	rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 	rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
@@ -135,6 +142,11 @@ void Obj3dCommon::CreateRootSignature(){
 	rootParameters[7].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 	rootParameters[7].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 	rootParameters[7].Descriptor.ShaderRegister = 5;
+
+	rootParameters[kPaintTextureRootIndex].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	rootParameters[kPaintTextureRootIndex].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	rootParameters[kPaintTextureRootIndex].DescriptorTable.pDescriptorRanges = descriptorRangePaint;
+	rootParameters[kPaintTextureRootIndex].DescriptorTable.NumDescriptorRanges = _countof(descriptorRangePaint);
 
 	// サンプラーの設定
 	D3D12_STATIC_SAMPLER_DESC staticSamplers[1] = {};
@@ -182,7 +194,13 @@ void Obj3dCommon::CreateSkinningRootSignature(){
 	descriptorRangeEnv[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 	descriptorRangeEnv[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-	D3D12_ROOT_PARAMETER rootParameters[9] = {};
+	D3D12_DESCRIPTOR_RANGE descriptorRangePaint[1] = {};
+	descriptorRangePaint[0].BaseShaderRegister = 2;
+	descriptorRangePaint[0].NumDescriptors = 1;
+	descriptorRangePaint[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	descriptorRangePaint[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+	D3D12_ROOT_PARAMETER rootParameters[10] = {};
 
 	rootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 	rootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
@@ -222,6 +240,11 @@ void Obj3dCommon::CreateSkinningRootSignature(){
 	rootParameters[8].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
 	rootParameters[8].Descriptor.ShaderRegister = 0;
 	rootParameters[8].Descriptor.RegisterSpace = 0;
+
+	rootParameters[kSkinningPaintTextureRootIndex].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	rootParameters[kSkinningPaintTextureRootIndex].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	rootParameters[kSkinningPaintTextureRootIndex].DescriptorTable.pDescriptorRanges = descriptorRangePaint;
+	rootParameters[kSkinningPaintTextureRootIndex].DescriptorTable.NumDescriptorRanges = _countof(descriptorRangePaint);
 
 	D3D12_STATIC_SAMPLER_DESC staticSamplers[1] = {};
 	staticSamplers[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
