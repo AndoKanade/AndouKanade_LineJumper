@@ -14,7 +14,11 @@ namespace{
 	// タイトル中に流すBGM
 	const std::string kTitleBgmPath = "resource/music/bgm/nemui.mp3";
 	// SPACE を押してスタートしたとき・出発ゲートを開けたときの決定音
-	const std::string kDecideSePath = "resource/music/se/decide.mp3";	// GlobalVariablesのグループ名(タイトル演出の調整項目)
+	const std::string kDecideSePath = "resource/music/se/decide.mp3";
+	// ゲートのカウントダウンの 3・2・1 で鳴らす音と、「GO!」を出すときに鳴らす音
+	const std::string kCountdownBeepSePath = "resource/music/se/countdown_beep.mp3";
+	const std::string kCountdownGoSePath = "resource/music/se/countdown_go.mp3";
+	// GlobalVariablesのグループ名(タイトル演出の調整項目)
 	const char* kTitleGroup = "Title";
 	// BGM・SEの音量の調整項目名
 	const char* kBgmVolumeKey = "bgmVolume";
@@ -52,6 +56,8 @@ void StartSequence::Initialize(Obj3dCommon* object3dCommon,SpriteCommon* spriteC
 	// BGM・SEの読み込み
 	SoundManager::GetInstance()->SoundLoadFile(kTitleBgmPath);
 	SoundManager::GetInstance()->SoundLoadFile(kDecideSePath);
+	SoundManager::GetInstance()->SoundLoadFile(kCountdownBeepSePath);
+	SoundManager::GetInstance()->SoundLoadFile(kCountdownGoSePath);
 
 	// 実際に聞きながら音量を詰められるよう、調整項目として登録する
 	// (ImGuiの "Global Variables" パネル、または resource/GlobalVariables/Title.json の書き換えで変更できる)
@@ -67,6 +73,7 @@ void StartSequence::Initialize(Obj3dCommon* object3dCommon,SpriteCommon* spriteC
 // タイトルから始める
 void StartSequence::Start(bool skipTitle){
 	playerHopTimer_ = 0.0f;
+	lastCountdownNumber_ = 0;
 	cameraDirector_.Reset();
 	gateCameraDirector_.Reset();
 	if(introUI_){
@@ -122,7 +129,13 @@ void StartSequence::Update(float deltaTime,const Vector3& playerPosition){
 	// カウントダウンの数は、ゲートのランプが点くのに合わせてスタート台から受け取る
 	if(introUI_ && phase_ != Phase::None){
 		if(startPlatform_){
-			introUI_->SetCountdown(startPlatform_->GetCountdownNumber());
+			const int countdownNumber = startPlatform_->GetCountdownNumber();
+			// 数が 3・2・1 に変わった瞬間に、数字の表示と合わせて合図の音を鳴らす(0 になったときは鳴らさない)
+			if(countdownNumber != lastCountdownNumber_ && countdownNumber > 0){
+				SoundManager::GetInstance()->PlayAudio(kCountdownBeepSePath,GetVolume(kSeVolumeKey));
+			}
+			lastCountdownNumber_ = countdownNumber;
+			introUI_->SetCountdown(countdownNumber);
 		}
 		introUI_->Update(deltaTime);
 	}
@@ -234,7 +247,14 @@ void StartSequence::NotifyBoarded(){
 	if(introUI_){
 		introUI_->BeginGo();
 	}
+	// 「GO!」の表示と合わせて鳴らす
+	SoundManager::GetInstance()->PlayAudio(kCountdownGoSePath,GetVolume(kSeVolumeKey));
 	phase_ = Phase::Playing;
+}
+
+// 効果音の音量(調整項目の Title グループの seVolume)
+float StartSequence::GetSeVolume(){
+	return GetVolume(kSeVolumeKey);
 }
 
 // 出発の演出を始めたことを伝える

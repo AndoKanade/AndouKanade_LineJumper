@@ -10,6 +10,9 @@
 /// </summary>
 class CatapultDeparture : public BaseDeparture{
 public:
+	// 溜め・飛び出すときの効果音を読み込む
+	CatapultDeparture();
+
 	void Begin(const DepartureContext& context,const CameraPose& startCamera) override;
 	void Update(float deltaTime,const CameraPose& gameplayCamera) override;
 	bool IsFinished() const override{ return state_ == State::Finished; }
