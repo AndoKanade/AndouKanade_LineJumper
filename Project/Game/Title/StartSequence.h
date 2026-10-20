@@ -131,6 +131,9 @@ public:
 	/// <returns>演出中のカメラの位置と向き</returns>
 	CameraPose CalculateGateCamera(const CameraPose& gameplayCamera) const;
 
+	// 効果音の音量(0〜1。調整項目の Title グループの seVolume。出発の演出の効果音でも同じ音量を使う)
+	static float GetSeVolume();
+
 private:
 	Input* input_ = nullptr;
 
@@ -154,6 +157,8 @@ private:
 	float playerHopTimer_ = 0.0f;
 	// このフレームで出発ゲートを開け始めたか
 	bool isGateOpenTriggered_ = false;
+	// 前のフレームのカウントダウンの数(数が変わった瞬間に合図の音を鳴らすのに使う)
+	int lastCountdownNumber_ = 0;
 
 	// タイトル表示の濃さ(表示中)
 	static constexpr float kTitleVisible = 1.0f;

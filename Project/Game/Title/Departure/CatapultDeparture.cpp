@@ -6,14 +6,35 @@
 #include "Editor/RailEditor.h"
 #include "objects/InkEffectManager.h"
 #include "objects/Player.h"
+#include "Title/StartSequence.h"
+#include "SoundManager.h"
 #include <algorithm>
 #include <cmath>
+#include <iterator>
+#include <string>
 
 namespace{
 	// 上方向
 	constexpr Vector3 kWorldUp = {0.0f, 1.0f, 0.0f};
 	// レールの始点の進行度
 	constexpr float kRailStartT = 0.0f;
+	// 溜めの合図の1回目・2回目・3回目に鳴らす音(回数を重ねるほど高くなる)
+	const std::string kChargeSePaths[] = {
+		"resource/music/se/catapult_charge1.mp3",
+		"resource/music/se/catapult_charge2.mp3",
+		"resource/music/se/catapult_charge3.mp3",
+	};
+	// 飛び出す瞬間に鳴らす音
+	const std::string kLaunchSePath = "resource/music/se/catapult_launch.mp3";
+}
+
+// 溜め・飛び出すときの効果音を読み込む
+CatapultDeparture::CatapultDeparture(){
+	static_assert(std::size(kChargeSePaths) == kChargeBeatCount,"溜めの合図の音と合図の回数が合っていない");
+	for(const std::string& path : kChargeSePaths){
+		SoundManager::GetInstance()->SoundLoadFile(path);
+	}
+	SoundManager::GetInstance()->SoundLoadFile(kLaunchSePath);
 }
 
 // 出発の演出を始める
@@ -79,6 +100,8 @@ void CatapultDeparture::Update(float deltaTime,const CameraPose& gameplayCamera)
 			chargeBeatCount_ = beatIndex + 1;
 			context_.screenImpact->Trigger(0.0f,kBeatShakeAmplitude * static_cast<float>(chargeBeatCount_),kBeatShakeDuration);
 			context_.inkEffect->EmitInkSplash(launchPosition_,kWorldUp,kBeatSplashCount);
+			// 合図の回数に応じた音を鳴らす
+			SoundManager::GetInstance()->PlayAudio(kChargeSePaths[chargeBeatCount_ - 1],StartSequence::GetSeVolume());
 		}
 		// 合図の直後は一瞬だけ余分に縮め、次の合図までに戻して、ばねを引き絞っているように見せる
 		const float beatProgress = StageRate(timer_ - kChargeBeatInterval * static_cast<float>(beatIndex),0.0f,kChargeBeatInterval);
@@ -94,6 +117,7 @@ void CatapultDeparture::Update(float deltaTime,const CameraPose& gameplayCamera)
 			context_.player->StartRailBoost(kBoostRate,kBoostDuration);
 			context_.screenImpact->Trigger(kLaunchHitStopDuration,kLaunchShakeAmplitude,kLaunchShakeDuration);
 			Application::GetInstance()->TriggerRadialBlur(CameraPoseMath::kScreenCenterUv,kLaunchRadialBlurWidth,kLaunchRadialBlurDuration);
+			SoundManager::GetInstance()->PlayAudio(kLaunchSePath,StartSequence::GetSeVolume());
 			isFovChanged_ = context_.camera != nullptr;
 			state_ = State::Launch;
 			timer_ = 0.0f;
