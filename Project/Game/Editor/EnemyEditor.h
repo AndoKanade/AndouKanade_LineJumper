@@ -1,5 +1,7 @@
 #pragma once
 #include "MyMath.h"
+#include "EditHistory.h"
+#include "EditorDocumentManager.h"
 #include <vector>
 
 /// <summary>
@@ -9,13 +11,16 @@
 /// 敵ごとに往復移動の方向と体力の最大値も設定でき、配置内容はJSONファイルへの保存・再読込に対応している。
 /// シーン側は本クラスのデータを参照して敵を生成する。
 /// </summary>
-class EnemyEditor{
+class EnemyEditor : public IEditorDocument{
 public:
 	// 配置された敵1体分のデータ
 	struct EnemyPoint{
 		Vector3 position;        // 敵のワールド座標(往復移動の中心)
 		Vector3 patrolDirection; // 往復移動を行う方向
 		int maxHp;               // 体力の最大値
+
+		// 編集履歴で、変更があったかを比べるのに使う
+		bool operator==(const EnemyPoint&) const = default;
 	};
 
 	// 体力の最大値の初期値(Add Enemyで追加したときに設定される値)
@@ -24,7 +29,7 @@ public:
 	static constexpr int kMinMaxHp = 1;
 
 	EnemyEditor();
-	~EnemyEditor();
+	~EnemyEditor() override;
 
 	// 初期化処理(保存済みJSONがあれば読み込む)
 	void Initialize();
@@ -45,9 +50,18 @@ public:
 	void SetSelectedIndex(int index);
 
 	// 配置内容をJSONファイルに保存する
-	void SaveToJson();
+	void SaveToJson() override;
 	// 配置内容をJSONファイルから読み込む
 	void LoadFromJson();
+
+	// 未保存の一覧に出す名前
+	const char* GetDocumentName() const override{ return "Enemy"; }
+	// 1つ前の状態に戻す(Ctrl+Z)
+	bool UndoEdit() override;
+	// Undoで戻した状態をやり直す(Ctrl+Y)
+	bool RedoEdit() override;
+	// 保存していない変更があるか
+	bool IsModified() const override{ return history_.IsModified(); }
 
 private:
 	// マウス位置から画面奥へ伸びるレイ
@@ -68,8 +82,15 @@ private:
 	int PickEnemyIndex(const PickRay& ray) const;
 	// マウスドラッグによる敵の移動処理
 	void UpdateMouseDrag();
+	// 配置内容をJSONファイルから読み込む(編集履歴には触れない。起動時とLoadFromJsonで使う。ファイルが無ければfalse)
+	bool LoadEnemiesFromFile();
+	// 配置内容が、最後に確定した状態から変わっていれば確定して履歴に積む
+	void CommitEditIfChanged();
 
 	std::vector<EnemyPoint> enemies_; // 配置されている敵の配列
+
+	// 編集履歴(Undo/Redo)と、保存していない変更があるかの管理
+	EditHistory<std::vector<EnemyPoint>> history_;
 
 	int selectedIndex_ = -1;      // 選択中の敵のインデックス(-1: 未選択)
 	bool isPlacementMode_ = true; // 配置モード(ONの間だけマウスドラッグでの移動を受け付ける)

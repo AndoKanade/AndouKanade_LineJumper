@@ -42,6 +42,9 @@ public:
 	// 俯瞰デバッグカメラをOFFにして、プレイ用カメラに戻す(Playを押したときに呼ぶ)
 	void Disable();
 
+	// 俯瞰デバッグカメラをONにして、今の向きのままtargetPositionの手前へ寄せる(レールエディターの「Focus」用)
+	void FocusOnPoint(const Vector3& targetPosition);
+
 private:
 	// 制御点全体を囲むように、カメラの位置と向きを合わせる
 	void FitToRail(const RailEditor* railEditor);
@@ -74,6 +77,8 @@ private:
 	static constexpr float kMinHeight = 10.0f;
 	// 画角に対する余白の目安(仮値)
 	static constexpr float kMarginFactor = 2.2f;
+	// FocusOnPoint()で寄せたときの、対象からカメラまでの距離(制御点の目印と周りのレールが見える程度)
+	static constexpr float kFocusDistance = 8.0f;
 	// 1秒あたりの移動量
 	static constexpr float kMoveSpeed = 10.0f;
 	// 右ドラッグ時のマウス1移動量あたりの回転量(ラジアン)

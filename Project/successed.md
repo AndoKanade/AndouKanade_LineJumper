@@ -967,3 +967,21 @@ Development 構成（x64）でビルドが通ることを確認した。画面�
 ### ビルド確認（4.）
 
 Visual Studio でのビルドはしていない。DirectX まわりのヘッダーを仮のものに差し替えて g++ で構文チェックだけ通した。画面では確認していない。
+
+### 5. Edit モードの作業をしやすくした
+
+対象ファイル: `Game/Editor/RailEditor.h/.cpp`、`Game/Editor/TargetEditor.h/.cpp`、`Game/Editor/EnemyEditor.h/.cpp`、`Game/Editor/EditHistory.h`（新規）、`Game/Editor/EditorDocumentManager.h`（新規）、`Game/Editor/EditorPicking.h`（新規）、`Game/scenes/GameScene.h/.cpp`、`Game/objects/Player.h/.cpp`、`Game/Camera/DebugTopCamera.h/.cpp`、`Engine/Manager/EditorWidgets.h`、`Engine/Base/MyMath.h`、`MyGameEngine.vcxproj(.filters)`
+
+- **途中から Play**：GameScene Debug に「Start From Selected Point」を追加した。ON で Rail Editor の制御点を選んでいれば、Play でタイトル・スタート台を飛ばし、その制御点の位置から始める。落ちたとき・R キーでやり直したときも同じ位置から始める。`Player::BoardRailStart()` に開始位置の進行度を渡せるようにした。
+- **Play から戻ったときの選択**：今までは Play に入るとレールが 0 番に戻り、制御点の選択も消えていた。Play 前に編集していたレールと制御点を、Edit に戻ったときに選び直すようにした。
+- **Scene ビューで制御点をドラッグ**：Rail Editor に「Drag Points In Scene」（初期 OFF）と「Keep Height」（初期 ON）を追加した。マウスで選ぶ処理は `EditorPicking.h` にまとめた（的・敵のエディターの同じ処理は今回は触っていない）。
+- **選んだ制御点にカメラを寄せる**：Rail Editor の「Focus」ボタンと、一覧のダブルクリックで、俯瞰デバッグカメラを今の向きのまま制御点の手前 8.0 へ寄せる（`DebugTopCamera::FocusOnPoint()`）。
+- **Undo / Redo**：レール・的・敵の編集を Ctrl+Z / Ctrl+Y（Ctrl+Shift+Z）と GameScene Debug のボタンで戻せるようにした。エディターをまたいで編集した順に戻る。
+- **未保存の表示とまとめて保存**：各エディターの Save の下に「未保存」を出し、GameScene Debug に未保存のエディター名と「Save All」（Ctrl+S）を追加した。GlobalVariables（調整項目）は対象外。
+- **全長と秒数**：Rail Editor にアクティブなレールの全長と走り切るまでの秒数の目安、選択中の制御点までの長さと秒数を出すようにした。
+- **Speed とロールの効く位置を直した**：`GetSpeedOnRail()` とロールの補間が位置と違う区間分け（制御点数 − 1）をしていて、制御点に設定した値が別の場所で効いていた。位置と同じ区間分けにし、制御点を通る位置でその値になるようにした。今のレールは Speed がすべて 1.0、ロールがすべて 0 のため見た目は変わらない。
+- 編集の比較用に `Vector3` に `operator==` を追加した。
+
+### ビルド確認（5.）
+
+Visual Studio でのビルドはしていない。DirectX まわりのヘッダーを仮のものに差し替え、RailEditor・TargetEditor・EnemyEditor・DebugTopCamera を g++ で構文チェックした（USE_IMGUI あり・なし）。RailEditor はさらに仮のヘッダーでリンクして、制御点の進行度・Speed の効く位置・Undo / Redo・未保存の判定・延長位置が正しいことを確かめた。GameScene と Player は依存が多いため確認できていない。画面では確認していない。

@@ -1,5 +1,7 @@
 #pragma once
 #include "MyMath.h"
+#include "EditHistory.h"
+#include "EditorDocumentManager.h"
 #include <vector>
 
 /// <summary>
@@ -8,15 +10,18 @@
 /// 配置モード(Placement Mode)をONにすると、Sceneビュー上でマウスドラッグにより的を移動できる。
 /// 配置内容はJSONファイルへの保存・再読込に対応しており、シーン側は本クラスの座標を参照して的を生成する。
 /// </summary>
-class TargetEditor{
+class TargetEditor : public IEditorDocument{
 public:
 	// 配置された的1個分のデータ
 	struct TargetPoint{
 		Vector3 position; // 的のワールド座標
+
+		// 編集履歴で、変更があったかを比べるのに使う
+		bool operator==(const TargetPoint&) const = default;
 	};
 
 	TargetEditor();
-	~TargetEditor();
+	~TargetEditor() override;
 
 	// 初期化処理(保存済みJSONがあれば読み込む)
 	void Initialize();
@@ -39,9 +44,18 @@ public:
 	void SetSelectedIndex(int index);
 
 	// 配置内容をJSONファイルに保存する
-	void SaveToJson();
+	void SaveToJson() override;
 	// 配置内容をJSONファイルから読み込む
 	void LoadFromJson();
+
+	// 未保存の一覧に出す名前
+	const char* GetDocumentName() const override{ return "Target"; }
+	// 1つ前の状態に戻す(Ctrl+Z)
+	bool UndoEdit() override;
+	// Undoで戻した状態をやり直す(Ctrl+Y)
+	bool RedoEdit() override;
+	// 保存していない変更があるか
+	bool IsModified() const override{ return history_.IsModified(); }
 
 private:
 	// マウス位置から画面奥へ伸びるレイ
@@ -60,8 +74,15 @@ private:
 	int PickTargetIndex(const PickRay& ray) const;
 	// マウスドラッグによる的の移動処理
 	void UpdateMouseDrag();
+	// 配置内容をJSONファイルから読み込む(編集履歴には触れない。起動時とLoadFromJsonで使う。ファイルが無ければfalse)
+	bool LoadTargetsFromFile();
+	// 配置内容が、最後に確定した状態から変わっていれば確定して履歴に積む
+	void CommitEditIfChanged();
 
 	std::vector<TargetPoint> targets_; // 配置されている的の配列
+
+	// 編集履歴(Undo/Redo)と、保存していない変更があるかの管理
+	EditHistory<std::vector<TargetPoint>> history_;
 
 	int selectedIndex_ = -1;      // 選択中の的のインデックス(-1: 未選択)
 	bool isPlacementMode_ = true; // 配置モード(ONの間だけマウスドラッグでの移動を受け付ける)

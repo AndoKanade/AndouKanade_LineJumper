@@ -53,11 +53,18 @@ namespace{
 }
 
 EnemyEditor::EnemyEditor() = default;
-EnemyEditor::~EnemyEditor() = default;
+// 破棄したエディターをCtrl+Zや保存の対象に残さないよう、登録を外す
+EnemyEditor::~EnemyEditor(){
+	EditorDocumentManager::GetInstance()->Unregister(this);
+}
 
 // 初期化処理(保存済みJSONがあれば読み込む)
 void EnemyEditor::Initialize(){
-	LoadFromJson();
+	LoadEnemiesFromFile();
+
+	// 読み込んだ状態を編集の基準(保存済み)にし、Ctrl+Z・すべて保存の対象に登録する
+	history_.Reset(enemies_);
+	EditorDocumentManager::GetInstance()->Register(this);
 }
 
 // 更新処理(ImGuiでの編集UIとマウスドラッグによる移動)
@@ -111,6 +118,7 @@ void EnemyEditor::Update(){
 	}
 	ImGui::SameLine();
 	ImGui::Text("(%s)",kEnemySaveFilePath.c_str());
+	EditorWidgets::ShowUnsavedMark(history_.IsModified());
 
 	ImGui::Separator();
 
@@ -141,6 +149,12 @@ void EnemyEditor::Update(){
 
 	// パネルの外(Sceneビュー上)でのマウスドラッグによる移動処理
 	UpdateMouseDrag();
+
+	// ImGuiの操作中・ドラッグ中は値が動いている途中のため、操作を終えてから1回の編集として履歴に積む
+	// Inspectorなど他の場所からの編集もまとめて拾えるよう、変更があったかは状態を比べて判定する
+	if(!ImGui::IsAnyItemActive() && !isDragging_){
+		CommitEditIfChanged();
+	}
 #endif
 }
 
@@ -387,6 +401,9 @@ void EnemyEditor::SetSelectedIndex(int index){
 
 // 配置内容をJSONファイルに保存する
 void EnemyEditor::SaveToJson(){
+	// まだ履歴に積んでいない編集があれば先に確定し、保存した状態を保存済みとして記録できるようにする
+	CommitEditIfChanged();
+
 	// ルート要素。enemiesは読み込み時の簡易フォーマットチェックにも使う
 	nlohmann::json root;
 
@@ -412,14 +429,25 @@ void EnemyEditor::SaveToJson(){
 		return;
 	}
 	file << std::setw(4) << root << std::endl;
+	history_.MarkSaved();
 }
 
-// 配置内容をJSONファイルから読み込む(ファイルが無ければ何もしない)
+// 配置内容をJSONファイルから読み込む(Loadボタン用。ファイルが無ければ何もしない)
+// 読み込みも1回の編集として履歴に積み、Ctrl+Zで読み込む前に戻せるようにする
 void EnemyEditor::LoadFromJson(){
+	if(!LoadEnemiesFromFile()){
+		return;
+	}
+	CommitEditIfChanged();
+	history_.MarkSaved();
+}
+
+// 配置内容をJSONファイルから読み込む(ファイルが無い・形式が違うときは現状維持でfalse)
+bool EnemyEditor::LoadEnemiesFromFile(){
 	std::ifstream file(kEnemySaveFilePath);
 	if(!file.is_open()){
 		// ファイルがまだ無い(初回起動など)ときは現状維持
-		return;
+		return false;
 	}
 
 	nlohmann::json root;
@@ -427,7 +455,7 @@ void EnemyEditor::LoadFromJson(){
 
 	// 最低限のフォーマットチェック。想定外なら読み込みを中止して現状維持
 	if(!root.is_object() || !root.contains("enemies") || !root["enemies"].is_array()){
-		return;
+		return false;
 	}
 
 	// 読み込んだ内容で配置を置き換える
@@ -461,4 +489,40 @@ void EnemyEditor::LoadFromJson(){
 	// 読み込みで敵の体数が変わるため、選択とドラッグ状態は解除する
 	selectedIndex_ = -1;
 	isDragging_ = false;
+	return true;
+}
+
+// 配置内容が、最後に確定した状態から変わっていれば確定して履歴に積む
+void EnemyEditor::CommitEditIfChanged(){
+	if(enemies_ == history_.GetCommitted()){
+		return;
+	}
+	history_.Commit(enemies_);
+	EditorDocumentManager::GetInstance()->RecordEdit(this);
+}
+
+// 1つ前の状態に戻す(Ctrl+Z)
+bool EnemyEditor::UndoEdit(){
+	if(!history_.Undo(enemies_)){
+		return false;
+	}
+	// 戻した結果敵が減っていれば、選択が範囲外を指さないよう解除する
+	if(selectedIndex_ >= static_cast<int>(enemies_.size())){
+		selectedIndex_ = -1;
+	}
+	isDragging_ = false;
+	return true;
+}
+
+// Undoで戻した状態をやり直す(Ctrl+Y)
+bool EnemyEditor::RedoEdit(){
+	if(!history_.Redo(enemies_)){
+		return false;
+	}
+	// やり直した結果敵が減っていれば、選択が範囲外を指さないよう解除する
+	if(selectedIndex_ >= static_cast<int>(enemies_.size())){
+		selectedIndex_ = -1;
+	}
+	isDragging_ = false;
+	return true;
 }

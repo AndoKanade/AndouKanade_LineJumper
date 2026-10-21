@@ -78,10 +78,10 @@ void Player::StartOnPlatform(const Vector3& startPosition,const Vector3& startRo
 	freeBaseRotation_ = startRotation;
 }
 
-// レールの始点にオンレールの状態で乗せる
+// レールの進行度startTの位置にオンレールの状態で乗せる
 // 体力・無敵時間は残したまま、レールの進行とレール上でのジャンプ・乗り換えの途中状態だけを初めに戻す
-void Player::BoardRailStart(){
-	railT_ = 0.0f;
+void Player::BoardRailStart(float startT){
+	railT_ = startT;
 	isRailFinished_ = false;
 	isOnRail_ = true;
 	isOnPlatform_ = false;

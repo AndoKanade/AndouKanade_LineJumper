@@ -56,6 +56,10 @@ private:
 	// ゲームを初期状態(レール先頭)から始め直す
 	// Playに入った瞬間と、レールから落ちたときのリスタートで共通して使う
 	void ResetPlayState();
+	// タイトル・スタート演出を始め、デバッグ用の設定に合わせてレールへ乗せる(Playに入った瞬間とRキーのやり直しで共通して使う)
+	void StartPlaySequence();
+	// Playに入ったときに覚えておいた制御点の位置からレールに乗せる(途中からPlayするとき用)
+	void BoardAtPlayStartPoint();
 
 	// 出発の演出が動かす・参照するもの(GameScene が持つもの)をまとめる
 	DepartureContext MakeDepartureContext() const;
@@ -154,6 +158,13 @@ private:
 
 	// Playに入ったときにタイトル・スタート演出を飛ばし、レールの上からすぐプレイを始めるか(デバッグ用。ImGuiのチェックボックスで切り替える)
 	bool skipTitle_ = false;
+	// Playに入ったときに、Rail Editorで選んでいた制御点からプレイを始めるか(デバッグ用。ImGuiのチェックボックスで切り替える)
+	bool startsFromSelectedPoint_ = false;
+	// Playに入ったときにRail Editorで編集していたレールと制御点(途中から始める位置と、Editへ戻ったときに選択を戻すのに使う)
+	int editRailIndex_ = 0;
+	int editPointIndex_ = -1;
+	// 今回のPlayを選んだ制御点から始めているか(落下リスタートでも同じ位置から始め直すのに使う)
+	bool isPlayingFromPoint_ = false;
 
 	// 1フレームの経過時間(エンジンが固定60fps前提(TimeManagerで60fps固定)なので、そのまま合わせる)
 	static constexpr float kDeltaTime = 1.0f / 60.0f;

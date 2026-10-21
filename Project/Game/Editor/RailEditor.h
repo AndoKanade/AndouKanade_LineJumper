@@ -1,5 +1,7 @@
 #pragma once
 #include "MyMath.h"
+#include "EditHistory.h"
+#include "EditorDocumentManager.h"
 #include <vector>
 #include <memory>
 #include <string>
@@ -8,7 +10,7 @@
 class Obj3D;
 class Obj3dCommon;
 
-class RailEditor{
+class RailEditor : public IEditorDocument{
 public:
 	// レールの制御点を表す構造体
 	struct ControlPoint{
@@ -19,6 +21,9 @@ public:
 		// レール間分岐移動用のデータ
 		int branchTargetRailIndex = -1;  // 分岐先レールのインデックス(-1: 分岐なし)
 		int branchTargetPointIndex = -1; // 分岐先レール側の対応する制御点インデックス
+
+		// 編集履歴で、変更があったかを比べるのに使う
+		bool operator==(const ControlPoint&) const = default;
 	};
 
 	// 着地判定(オフレール時、全レール中から最も近いレールを探す)用の結果
@@ -33,7 +38,7 @@ public:
 	};
 
 	RailEditor();
-	~RailEditor();
+	~RailEditor() override;
 
 	// 初期化処理
 	void Initialize(Obj3dCommon* objCommon);
@@ -69,6 +74,21 @@ public:
 	int GetControlPointCount() const;
 	// 進行度tから、直近に通過した制御点のインデックスを取得(対象はアクティブなレール)
 	int GetControlPointIndexFromT(float t) const;
+	// アクティブなレールの、指定した制御点を通る位置の進行度を取得(曲線が通らない両端の制御点は、曲線の始点・終点の進行度にする)
+	float GetTOfControlPoint(int index) const;
+
+	// 一覧で選択中の制御点のインデックスを取得(-1: 未選択。対象はアクティブなレール)
+	int GetSelectedPointIndex() const{ return selectedPointIndex_; }
+	// 指定レールをアクティブにして、指定した制御点を選択する(Playから戻ったときに、Play前の編集対象に戻すのに使う)
+	void SelectPoint(int railIndex,int pointIndex);
+
+	// 「Focus」で選択中の制御点にカメラを寄せる操作があれば、その位置をoutPositionに入れてtrueを返す(1回読むと消える)
+	// カメラはGameSceneが持っているため、寄せる処理はGameScene側で行う
+	bool ConsumeFocusRequest(Vector3& outPosition);
+
+	// レールの全長から走り切るまでの秒数を求めるときの、全体の速さ(Playerの調整項目railSpeed)を設定する
+	// 調整項目はGameScene側で読むため、同じ値を二重に持たないよう外から渡してもらう
+	void SetBaseRailSpeed(float speed){ baseRailSpeed_ = speed; }
 
 	// ImGui非表示時でもキー操作で表示切り替えを行うための関数(対象はアクティブなレール)
 	void ToggleShowControlPointModels();
@@ -89,11 +109,35 @@ public:
 	float GetControlPointsRadius() const;
 
 	// 全レールの制御点をそれぞれ対応するJSONファイルに保存する
-	void SaveToJson();
+	void SaveToJson() override;
 	// 全レールの制御点をJSONファイルから読み込む(ディスクに存在する分だけ連番でレールを復元する)
 	void LoadFromJson();
 
+	// 未保存の一覧に出す名前
+	const char* GetDocumentName() const override{ return "Rail"; }
+	// 1つ前の状態に戻す(Ctrl+Z)
+	bool UndoEdit() override;
+	// Undoで戻した状態をやり直す(Ctrl+Y)
+	bool RedoEdit() override;
+	// 保存していない変更があるか
+	bool IsModified() const override{ return history_.IsModified(); }
+
 private:
+	// 編集履歴に残す、1本分のレールのデータ(描画用オブジェクトなどを除いた、保存する内容だけ)
+	struct RailSnapshot{
+		std::string name;
+		std::vector<ControlPoint> controlPoints;
+	};
+	using RailsSnapshot = std::vector<RailSnapshot>;
+
+	// レールの全長と走り切るまでの秒数(目安)
+	struct RailStats{
+		float length = 0.0f;           // レールの全長
+		float time = 0.0f;             // 走り切るまでの秒数
+		float lengthToSelected = 0.0f; // レールの始点から選択中の制御点までの長さ
+		float timeToSelected = 0.0f;   // レールの始点から選択中の制御点までの秒数
+	};
+
 	// 1本分のレールが持つデータ一式(制御点+描画用オブジェクト+表示設定)
 	struct Rail{
 		std::string name;                                   // レール名(UI表示・保存ファイル名の目印用)
@@ -143,11 +187,30 @@ private:
 	Vector3 ComputePositionOnRail(const std::vector<ControlPoint>& controlPoints,float t) const;
 	// 指定ワールド座標に最も近いレール上の進行度tを計算する(粗いサンプリング+三分探索で絞り込み)
 	float ComputeNearestTOnRail(const std::vector<ControlPoint>& controlPoints,const Vector3& worldPos) const;
+	// 進行度tから、Catmull-Romの区間番号と区間内の進行度を求める(制御点4つ以上が前提)
+	// 位置・ロール・速度で同じ区間分けを使い、制御点に設定した値がその制御点の位置で効くようにする
+	void ComputeCurveSegment(size_t pointCount,float t,size_t& outSegment,float& outLocalT) const;
+	// 進行度tと制御点配列から、レール上の速度(各制御点のSpeed値を補間したもの)を計算する(GetSpeedOnRail・全長の計算で共用)
+	float ComputeSpeedOnRail(const std::vector<ControlPoint>& controlPoints,float t) const;
+	// アクティブなレールの全長と走り切るまでの秒数、始点から選択中の制御点までの長さと秒数を求める
+	RailStats ComputeActiveRailStats() const;
 
-	// 指定インデックスのレール1本だけをJSONファイルに保存する(SaveToJsonの内部実装)
-	void SaveRailToFile(int index);
+	// 今のレールの状態を編集履歴に残す形で取得する
+	RailsSnapshot MakeSnapshot() const;
+	// 編集履歴の状態をレールに反映する(Undo/Redo用。レールの本数が変わっていれば増減させる)
+	void ApplySnapshot(const RailsSnapshot& snapshot);
+	// 今のレールの状態が、最後に確定した状態から変わっていれば確定して履歴に積む
+	void CommitEditIfChanged();
+
+	// Sceneビュー上で制御点を左ドラッグして動かす処理
+	void UpdateMouseDrag();
+
+	// 指定インデックスのレール1本だけをJSONファイルに保存する(SaveToJsonの内部実装。書き込めなかったときはfalse)
+	bool SaveRailToFile(int index);
 	// 指定インデックスのレール1本だけをJSONファイルから読み込む(LoadFromJsonの内部実装)
 	void LoadRailFromFile(int index);
+	// 全レールをJSONファイルから読み込む(編集履歴には触れない。起動時とLoadFromJsonで使う)
+	void LoadRailsFromFiles();
 
 	std::vector<Rail> rails_;       // 全レールの配列
 	int activeRailIndex_ = 0;       // 現在編集・使用中のレールのインデックス(このレールだけ黄色で描画する)
@@ -163,7 +226,29 @@ private:
 	// Play中のレール本体の管の行列を求め終えたか(Edit中はレールが編集されうるためfalseに戻す)
 	bool areTubesBuilt_ = false;
 
+	// 編集履歴(Undo/Redo)と、保存していない変更があるかの管理
+	EditHistory<RailsSnapshot> history_;
+
+	// 「Focus」で選択中の制御点にカメラを寄せる操作があったか
+	bool hasFocusRequest_ = false;
+
+	// レールの全長から走り切るまでの秒数を求めるときの全体の速さ(GameSceneからSetBaseRailSpeed()で受け取る)
+	float baseRailSpeed_ = 0.0f;
+
+	// Sceneビュー上での制御点のドラッグ
+	bool isPointDragMode_ = false;                   // ONの間だけSceneビュー上で制御点を掴める(的・敵の配置と同時に掴まないよう初期はOFF)
+	bool keepsHeightWhileDragging_ = true;           // ONなら高さを変えずに水平方向だけ動かす(高さはPositionのYで調整する)
+	bool isDragging_ = false;                        // ドラッグ中かどうか
+	Vector3 dragPlaneNormal_ = {0.0f, 1.0f, 0.0f};   // ドラッグ面の法線
+	Vector3 dragPlanePoint_ = {0.0f, 0.0f, 0.0f};    // ドラッグ面が通る点(掴んだ瞬間の制御点の座標)
+	Vector3 dragOffset_ = {0.0f, 0.0f, 0.0f};        // 掴んだ位置と制御点の座標とのずれ(掴んだ瞬間に跳ばないようにする)
+
 	Obj3dCommon* objCommon_ = nullptr; // 3Dオブジェクト共通設定へのポインタ
+
+	// マウスで制御点を掴めるとみなす、レイから制御点までの距離
+	static constexpr float kPickRadius = 0.5f;
+	// 走り切るまでの秒数を求めるとき、速さがこれ未満の区間は止まっているとみなして数えない(0除算防止)
+	static constexpr float kMinStatsSpeed = 1e-4f;
 
 	// レール曲線可視化の、Catmull-Romの1区間あたりのサンプリング分割数
 	// レールを延長して区間が増えても点の間隔が粗くならないよう、区間数に比例させる

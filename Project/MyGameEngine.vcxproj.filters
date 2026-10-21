@@ -500,6 +500,15 @@
     <ClInclude Include="Game\Editor\EnemyEditor.h">
       <Filter>ヘッダー ファイル\Game\Editor</Filter>
     </ClInclude>
+    <ClInclude Include="Game\Editor\EditHistory.h">
+      <Filter>ヘッダー ファイル\Game\Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Editor\EditorDocumentManager.h">
+      <Filter>ヘッダー ファイル\Game\Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Editor\EditorPicking.h">
+      <Filter>ヘッダー ファイル\Game\Editor</Filter>
+    </ClInclude>
     <ClInclude Include="Game\objects\Enemy.h">
       <Filter>ヘッダー ファイル\Game\objects</Filter>
     </ClInclude>
