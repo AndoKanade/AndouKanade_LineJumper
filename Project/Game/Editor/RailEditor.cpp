@@ -26,6 +26,8 @@ namespace{
 	constexpr Vector4 kActiveRailColor = {1.0f, 0.9f, 0.1f, 1.0f};
 	// 乗っていないレールの色(黒)
 	constexpr Vector4 kInactiveRailColor = {0.0f, 0.0f, 0.0f, 1.0f};
+	// 一覧で選択中の制御点の色(アクティブなレールの黄色と見分けやすい水色)
+	constexpr Vector4 kSelectedPointColor = {0.1f, 0.9f, 1.0f, 1.0f};
 
 	// Play中のレール本体の色(インクで塗った区間は自機のインクの黄色、まだ通っていない区間はピンク)
 	constexpr Vector4 kPaintedRailColor = {1.0f, 0.85f, 0.1f, 1.0f};
@@ -48,6 +50,8 @@ namespace{
 
 	// 制御点の目印の表示スケール
 	constexpr float kControlPointScale = 0.2f;
+	// 選択中の制御点の目印の表示スケール(どの点を編集しているか一目で分かるよう、他の制御点より大きくする)
+	constexpr float kSelectedPointScale = 0.35f;
 	// レール曲線のサンプリング点の表示スケール(線のように見せるため制御点より小さくする)
 	constexpr float kCurveScale = 0.04f;
 	// 着地できる範囲のサンプリング点の表示スケール
@@ -301,11 +305,15 @@ void RailEditor::Draw(){
 		if(rail.showControlPointModels){
 			// 制御点ごとに専用の3Dオブジェクトで描画
 			for(size_t i = 0; i < rail.controlPoints.size(); ++i){
+				// 一覧で選択中の制御点(アクティブなレールのものだけ)は、色を変えて大きく描き、編集中の点を見分けやすくする
+				const bool isSelectedPoint = static_cast<int>(railIndex) == activeRailIndex_ && static_cast<int>(i) == selectedPointIndex_;
+				const float pointScale = isSelectedPoint?kSelectedPointScale:kControlPointScale;
+
 				rail.pointObjects[i]->SetTranslate(rail.controlPoints[i].position);
 				// 他のオブジェクトを隠さないよう、球はレールの目印として分かる程度の小ささにする
-				rail.pointObjects[i]->SetScale({kControlPointScale, kControlPointScale, kControlPointScale});
+				rail.pointObjects[i]->SetScale({pointScale, pointScale, pointScale});
 				if(Model::Material* mat = rail.pointObjects[i]->GetMaterial()){
-					mat->color = railColor;
+					mat->color = isSelectedPoint?kSelectedPointColor:railColor;
 				}
 
 				// アクティブカメラに毎フレーム同期

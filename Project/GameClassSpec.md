@@ -860,7 +860,7 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | Save / Load | 全レールを JSON に保存する / JSON から読み込む |
 | Show Control Point Models / Show Rail Curve | 制御点の目印（`RailMarker/railMarker.obj`、上下に尖った宝石の形） / 曲線の表示切り替え |
 | Show Landing Range | 着地できる範囲（レールの左右、緑の点列）の表示切り替え |
-| 制御点一覧 | クリックで選択し、Position / Rotation / Speed / 分岐設定を編集する。Reset で初期値に戻す。Delete で削除する（最後の 1 点は削除できない） |
+| 制御点一覧 | クリックで選択し、Position / Rotation / Speed / 分岐設定を編集する。Reset で初期値に戻す。Delete で削除する（最後の 1 点は削除できない）。選択中の制御点の目印は水色で、他の制御点より大きく（0.2 → 0.35）描く |
 
 #### 主な関数（GameScene から使うもの）
 
