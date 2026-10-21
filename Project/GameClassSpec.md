@@ -173,7 +173,7 @@ Game/
 #### 初期化（Initialize）
 
 1. カメラ `"default"`（プレイ用）を作る。
-2. スカイボックス、RailEditor、Ground を生成する。地面はレールの開始地点を基準に並べる。
+2. スカイボックス、RailEditor、Ground を生成する。地面の格子はレールの開始地点を基準にそろえ、タイルは毎フレームの更新でカメラの真下を中心に並べる。
 3. GlobalVariables にグループ `GameScene` を作る。調整項目は各クラスが自分の Initialize で登録する。
 4. Player、RailCamera、DebugTopCamera（カメラ `"debug_top"` を作る）、PlayerBulletManager を生成する。
 5. TargetManager / EnemyManager を生成する。保存データが無い初回起動時だけ自動配置する。
@@ -630,12 +630,17 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 
 ### Ground（`objects/Ground.h/.cpp`）
 
-雲海の地面。継ぎ目なく並べられる雲海のテクスチャを貼った `CloudSea/cloudSea.obj` を X 軸に -90° 回して水平にし、レールの開始地点を基準に 45 枚（奥 8・手前 1・横 5）並べる。1 枚の 1 辺は 20、高さは -3.0 で一定。雲の色をテクスチャのまま見せるため、ライティングは無効にしている。
+雲海の地面。起伏のある雲の板（`CloudSea/cloudSurface.obj`）と、その上に雲と同じ形で重ねた半透明の霧の層 4 枚（`CloudSea/fogSurface.obj`）を、X 軸に -90° 回して水平にして格子状に並べる。1 枚の 1 辺は 20、雲の高さは -3.0 で一定。
+
+- 格子の向きと位置の基準はレールの開始地点に合わせる。タイルはカメラの真下のマスを中心に、前後左右へ 5 枚ずつ（1 層 11×11 = 121 枚）並べる。
+- カメラの真下のマスが変わったときだけ並べ直す。タイルは必ずマスの中心に置くので、並べ直しても雲の起伏・霧の模様は動いて見えない。
+- カメラから水平に `kDrawRadius`（100。カメラの遠平面の初期値と同じ）以内には必ずタイルがある。枚数が足りているかは `static_assert` で確かめている。
 
 | 関数 | 内容 |
 | --- | --- |
-| `Initialize(Obj3dCommon*, startPosition, forward)` | 地面タイルを生成する |
-| `Update()` / `Draw()` | 行列の更新 / 描画 |
+| `Initialize(Obj3dCommon*, startPosition, forward, paramGroup)` | 雲と霧のタイルを生成し、格子の基準の位置と向きを決める |
+| `Update(deltaTime)` | カメラの真下を中心にした並べ直し・行列の更新・雲の起伏のうねり・霧の UV スクロール |
+| `Draw()` / `DrawFog()` | 雲の描画 / 霧の描画（半透明なので 3D オブジェクトの最後に描く） |
 | `GetHeight()` | 地面の高さを取得する（落下リスタートの判定に使う） |
 
 ### StartPlatform（`objects/StartPlatform.h/.cpp`）

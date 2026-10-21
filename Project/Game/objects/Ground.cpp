@@ -25,9 +25,6 @@ namespace{
 	// 進行方向に直角な横方向を求めるための上方向
 	constexpr Vector3 kWorldUp = {0.0f, 1.0f, 0.0f};
 
-	// 横方向の中央のタイルの添字を求めるための係数(個数-1の半分が中央になる)
-	constexpr float kHalf = 0.5f;
-
 	// UVのずらし量を0〜1の範囲に収めるための周期(テクスチャは1ごとに繰り返す)
 	constexpr float kUvPeriod = 1.0f;
 	// UVは2次元なので、UV変換行列の奥行き方向は拡大しない
@@ -73,6 +70,13 @@ void Ground::Initialize(Obj3dCommon* objCommon,const Vector3& startPosition,cons
 	paramGroup_ = paramGroup;
 	GlobalVariables::GetInstance()->AddItem(paramGroup_,"fogDensity",kDefaultFogDensity);
 
+	// 格子の基準の位置と向きを決める
+	// 右方向は進行方向と上方向の外積で水平に求め、進行方向も右方向と上方向から求め直して水平にする
+	// (レール開始地点が坂になっていても、タイルを水平な間隔で隙間なく並べられるようにする)
+	gridOrigin_ = startPosition;
+	gridRight_ = Normalize(Cross(kWorldUp,forward));
+	gridForward_ = Cross(gridRight_,kWorldUp);
+
 	ModelManager::GetInstance()->LoadModel(kCloudModelPath);
 	ModelManager::GetInstance()->LoadModel(kFogModelPath);
 
@@ -82,7 +86,7 @@ void Ground::Initialize(Obj3dCommon* objCommon,const Vector3& startPosition,cons
 	cloudWave_->Initialize({ModelManager::GetInstance()->FindModel(kCloudModelPath),ModelManager::GetInstance()->FindModel(kFogModelPath)});
 
 	// 雲のタイルを生成する
-	CreateTiles(objCommon,kCloudModelPath,startPosition,forward,kGroundHeight,kCloudWaveHeight,cloudTiles_);
+	CreateTiles(objCommon,kCloudModelPath,kGroundHeight,kCloudWaveHeight,cloudTiles_);
 	for(auto& tile : cloudTiles_){
 		if(Model::Material* material = tile->GetMaterial()){
 			// 起伏に光の当たり方の差を出して立体感をつける
@@ -99,7 +103,7 @@ void Ground::Initialize(Obj3dCommon* objCommon,const Vector3& startPosition,cons
 		FogLayer& layer = fogLayers_[layerIndex];
 		layer.uvOffset = setting.uvStartOffset;
 
-		CreateTiles(objCommon,kFogModelPath,startPosition,forward,kGroundHeight + setting.heightOffset,kCloudWaveHeight,layer.tiles);
+		CreateTiles(objCommon,kFogModelPath,kGroundHeight + setting.heightOffset,kCloudWaveHeight,layer.tiles);
 		for(auto& tile : layer.tiles){
 			if(Model::Material* material = tile->GetMaterial()){
 				material->enableLighting = kDisableLighting;
@@ -111,49 +115,80 @@ void Ground::Initialize(Obj3dCommon* objCommon,const Vector3& startPosition,cons
 	}
 }
 
-// 板モデルのタイルを格子状に並べて生成する
-// 板モデルはXY平面の板なのでX軸を-90度回して水平にし、
-// 基準位置から進行方向(奥)と横方向へ並べることで簡易的な地面を表現する
-void Ground::CreateTiles(Obj3dCommon* objCommon,const std::string& modelPath,const Vector3& startPosition,const Vector3& forward,
-	float height,float thicknessScale,std::vector<std::unique_ptr<Obj3D>>& tiles){
-	// 進行方向に直角な横方向を求める
-	Vector3 right = Normalize(Cross(kWorldUp,forward));
-
-	// タイル1枚の1辺の長さをそのまま並べる間隔にすると、隙間なく敷き詰められる
-	const float tileStep = kTilePlaneSize * kTileScale;
-	// 横方向は左右対称に並べるため、中央のタイルの添字を基準にずらす
-	const float widthCenterIndex = static_cast<float>(kTileCountWidth - 1) * kHalf;
-
+// 板モデルのタイルを、格子1つ分の枚数だけ生成する
+// 板モデルはXY平面の板なのでX軸を-90度回して水平にする
+// 水平方向の位置は PlaceTiles() でカメラの真下を中心に決めるため、ここでは高さだけを決めておく
+void Ground::CreateTiles(Obj3dCommon* objCommon,const std::string& modelPath,float height,float thicknessScale,std::vector<std::unique_ptr<Obj3D>>& tiles){
 	// 生成数は固定なので、再確保が起きないよう先に確保しておく
-	tiles.reserve(static_cast<size_t>(kTileCountBack + kTileCountForward) * static_cast<size_t>(kTileCountWidth));
+	const int tileCount = kTileCountPerSide * kTileCountPerSide;
+	tiles.reserve(static_cast<size_t>(tileCount));
 
-	for(int depthIndex = -kTileCountBack; depthIndex < kTileCountForward; ++depthIndex){
-		for(int widthIndex = 0; widthIndex < kTileCountWidth; ++widthIndex){
-			Vector3 tilePosition = startPosition
-				+ forward * (static_cast<float>(depthIndex) * tileStep)
-				+ right * ((static_cast<float>(widthIndex) - widthCenterIndex) * tileStep);
-			// 高さはレールの起伏に関係なく一定にして、常に足元より下に敷く
-			tilePosition.y = height;
+	for(int i = 0; i < tileCount; ++i){
+		auto tile = std::make_unique<Obj3D>();
+		tile->Initialize(objCommon);
+		tile->SetModel(modelPath);
+		// 高さはレールの起伏に関係なく一定にして、常に足元より下に敷く
+		tile->SetTranslate({gridOrigin_.x, height, gridOrigin_.z});
+		tile->SetRotate({kRotateX, 0.0f, 0.0f});
+		// Z方向は板の厚み(起伏の高さ)に相当するため、横の広がりとは別の拡大率にする
+		tile->SetScale({kTileScale, kTileScale, thicknessScale});
 
-			auto tile = std::make_unique<Obj3D>();
-			tile->Initialize(objCommon);
-			tile->SetModel(modelPath);
+		tiles.push_back(std::move(tile));
+	}
+}
+
+// 指定した格子のマスを中心に、タイルを前後左右へ kTileCountRadius 枚ずつ並べる
+// タイルは必ず格子のマスの中心に置くため、並べ直しても雲の起伏と霧の模様の位置は変わらず、動いて見えない
+void Ground::PlaceTiles(std::vector<std::unique_ptr<Obj3D>>& tiles,int centerDepthIndex,int centerWidthIndex){
+	size_t tileIndex = 0;
+	for(int depthOffset = -kTileCountRadius; depthOffset <= kTileCountRadius; ++depthOffset){
+		for(int widthOffset = -kTileCountRadius; widthOffset <= kTileCountRadius; ++widthOffset){
+			Obj3D* tile = tiles[tileIndex].get();
+			++tileIndex;
+
+			Vector3 tilePosition = gridOrigin_
+				+ gridForward_ * (static_cast<float>(centerDepthIndex + depthOffset) * kTileStep)
+				+ gridRight_ * (static_cast<float>(centerWidthIndex + widthOffset) * kTileStep);
+			// 高さは雲・霧の層ごとに生成時に決めた値のまま変えない
+			tilePosition.y = tile->GetTranslate().y;
 			tile->SetTranslate(tilePosition);
-			tile->SetRotate({kRotateX, 0.0f, 0.0f});
-			// Z方向は板の厚み(起伏の高さ)に相当するため、横の広がりとは別の拡大率にする
-			tile->SetScale({kTileScale, kTileScale, thicknessScale});
-
-			tiles.push_back(std::move(tile));
 		}
 	}
 }
 
+// カメラの真下のマスが変わったら、雲と霧のタイルをそのマスを中心に並べ直す
+// マスが変わらない間は並べ直さず、毎フレーム全タイルの位置を計算し直さないようにする
+void Ground::RecenterTiles(const Vector3& cameraPosition){
+	// カメラの位置を、格子の進行方向・右方向に何マス目かに直す(マスの中心からの距離が半マス以内になるよう四捨五入する)
+	const Vector3 fromOrigin = cameraPosition - gridOrigin_;
+	const int depthIndex = static_cast<int>(std::lround(Dot(fromOrigin,gridForward_) / kTileStep));
+	const int widthIndex = static_cast<int>(std::lround(Dot(fromOrigin,gridRight_) / kTileStep));
+
+	if(hasPlacedTiles_ && depthIndex == centerDepthIndex_ && widthIndex == centerWidthIndex_){
+		return;
+	}
+	hasPlacedTiles_ = true;
+	centerDepthIndex_ = depthIndex;
+	centerWidthIndex_ = widthIndex;
+
+	PlaceTiles(cloudTiles_,depthIndex,widthIndex);
+	for(FogLayer& layer : fogLayers_){
+		PlaceTiles(layer.tiles,depthIndex,widthIndex);
+	}
+}
+
 // 更新処理
-// 位置・向き・大きさは生成時に決めているため、カメラ切り替えへの追従と行列の更新、雲と霧のうねり、霧のUVスクロールだけ毎フレーム行う
+// 向き・大きさは生成時に決めているため、カメラの真下を中心にした並べ直し、カメラ切り替えへの追従と行列の更新、
+// 雲と霧のうねり、霧のUVスクロールだけ毎フレーム行う
 void Ground::Update(float deltaTime){
 	// 雲と霧の起伏をうねらせる(全タイルが同じモデルを使うので、モデルの頂点を1回書き換えれば全タイルに反映される)
 	if(cloudWave_){
 		cloudWave_->Update(deltaTime);
+	}
+
+	// レールを進んで(または俯瞰カメラで)カメラが動いても、見える範囲に必ずタイルがあるようにする
+	if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
+		RecenterTiles(activeCamera->GetTranslate());
 	}
 
 	UpdateTiles(cloudTiles_);
