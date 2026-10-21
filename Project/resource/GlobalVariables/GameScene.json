@@ -8,6 +8,7 @@
         "cameraFollowSharpness": 8.0,
         "cameraHeightOffset": 0.800000011920929,
         "clearTransitionStyle": 6,
+        "departureStyle": 4,
         "fallTransitionStyle": 1,
         "fogDensity": 1.0,
         "mouseSensitivity": 0.00039999998989515007,

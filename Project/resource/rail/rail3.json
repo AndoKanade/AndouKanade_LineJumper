@@ -1,0 +1,80 @@
+{
+    "control_points": [
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                64.30000305175781,
+                4.900000095367432,
+                11.699999809265137
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                69.5999984741211,
+                5.5,
+                11.699999809265137
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                81.69999694824219,
+                5.900000095367432,
+                11.699999809265137
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                92.9000015258789,
+                6.400000095367432,
+                11.699999809265137
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                98.30000305175781,
+                6.900000095367432,
+                11.699999809265137
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        }
+    ],
+    "name": "Rail 3"
+}

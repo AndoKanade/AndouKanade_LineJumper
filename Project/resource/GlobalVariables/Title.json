@@ -1,6 +1,16 @@
 {
     "Title": {
         "bgmVolume": 0.06000002473592758,
+        "gateCameraPosition": [
+            2.200000047683716,
+            1.0,
+            -2.799999952316284
+        ],
+        "gateCameraTarget": [
+            -0.20000000298023224,
+            0.75,
+            0.0
+        ],
         "logoHideMode": 3,
         "logoOffset": [
             0.0,

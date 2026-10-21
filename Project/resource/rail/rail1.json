@@ -34,9 +34,9 @@
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
             "position": [
-                37.0,
-                4.0,
-                7.0
+                40.900001525878906,
+                4.099999904632568,
+                5.800000190734863
             ],
             "rotation": [
                 0.0,
@@ -49,9 +49,9 @@
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
             "position": [
-                44.0,
-                5.0,
-                6.0
+                52.099998474121094,
+                4.900000095367432,
+                5.699999809265137
             ],
             "rotation": [
                 0.0,
@@ -64,9 +64,9 @@
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
             "position": [
-                50.0,
-                5.0,
-                5.0
+                59.599998474121094,
+                5.599999904632568,
+                5.5
             ],
             "rotation": [
                 0.0,
@@ -79,27 +79,12 @@
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
             "position": [
-                97.80000305175781,
-                8.300000190734863,
-                0.800000011920929
+                62.400001525878906,
+                6.299999713897705,
+                5.300000190734863
             ],
             "rotation": [
                 0.0,
-                0.0,
-                0.0
-            ],
-            "speed": 1.0
-        },
-        {
-            "branchTargetPointIndex": -1,
-            "branchTargetRailIndex": -1,
-            "position": [
-                145.39999389648438,
-                3.4000000953674316,
-                -6.5
-            ],
-            "rotation": [
-                1.7000000476837158,
                 0.0,
                 0.0
             ],
