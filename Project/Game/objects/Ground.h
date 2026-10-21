@@ -69,8 +69,11 @@ private:
 	// カメラの真下のマスが変わったら、雲と霧のタイルをそのマスを中心に並べ直す
 	void RecenterTiles(const Vector3& cameraPosition);
 
-	// タイルをアクティブなカメラに追従させて行列を更新する
+	// タイルをアクティブなカメラに追従させる(行列はタイルを並べ直したときだけ PlaceTiles() で更新する)
 	void UpdateTiles(std::vector<std::unique_ptr<Obj3D>>& tiles);
+
+	// アクティブなカメラに映るマスを求めて isTileVisible_ に入れる(映らないマスのタイルは雲も霧も描かない)
+	void UpdateTileVisibility();
 
 	// 起伏のある雲のタイル
 	std::vector<std::unique_ptr<Obj3D>> cloudTiles_;
@@ -100,6 +103,10 @@ private:
 	int centerWidthIndex_ = 0;
 	// 一度でもタイルを並べたか(最初の Update() では必ず並べる)
 	bool hasPlacedTiles_ = false;
+	// マスごとにカメラに映るかどうか(雲と霧の層で同じマスは同じ添字なので、1回求めて全層で使う)
+	std::vector<bool> isTileVisible_;
+	// 1つのマスを雲と霧の層ごと囲む球の半径(この球が視錐台の外にあるマスは描かない)
+	float tileCullingRadius_ = 0.0f;
 
 	// 板モデル1枚の1辺の長さ(cloudSurface.obj・fogSurface.objは-1〜1の2x2なのでこの値になる)
 	static constexpr float kTilePlaneSize = 2.0f;

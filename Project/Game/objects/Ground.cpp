@@ -44,6 +44,51 @@ namespace{
 		Vector2 scrollSpeed;    // 流れる速さ(1秒あたりにずらすUV量)
 	};
 
+	// 視錐台の6つの面のうちの1つ(normal・distanceの順に ax + by + cz + d の a,b,c,d にあたる。normalは正規化済み)
+	struct FrustumPlane{
+		Vector3 normal;
+		float distance;
+	};
+	// 視錐台の面の数(左・右・下・上・近・遠)
+	constexpr size_t kFrustumPlaneCount = 6;
+
+	// ビュープロジェクション行列から、視錐台の6つの面を求める
+	// 行ベクトル×行列の並びなので、クリップ座標の各成分は行列の各列との内積になる
+	// DirectXのクリップ空間(-w<=x<=w, -w<=y<=w, 0<=z<=w)の各条件が、そのまま1つの面になる
+	std::array<FrustumPlane,kFrustumPlaneCount> ExtractFrustumPlanes(const Matrix4x4& viewProjection){
+		// 行列の列c番目を(x, y, z, w)の係数として取り出す
+		auto column = [&viewProjection](int c){
+			return std::array<float,4>{viewProjection.m[0][c], viewProjection.m[1][c], viewProjection.m[2][c], viewProjection.m[3][c]};
+		};
+		const std::array<float,4> columnX = column(0);
+		const std::array<float,4> columnY = column(1);
+		const std::array<float,4> columnZ = column(2);
+		const std::array<float,4> columnW = column(3);
+
+		// 2つの列を足し引きして面の係数にする(sign = 1で足す、-1で引く)
+		auto combine = [](const std::array<float,4>& a,const std::array<float,4>& b,float sign){
+			return std::array<float,4>{a[0] + b[0] * sign, a[1] + b[1] * sign, a[2] + b[2] * sign, a[3] + b[3] * sign};
+		};
+		const std::array<std::array<float,4>,kFrustumPlaneCount> coefficients = {{
+			combine(columnW,columnX,1.0f),  // 左 (x >= -w)
+			combine(columnW,columnX,-1.0f), // 右 (x <= w)
+			combine(columnW,columnY,1.0f),  // 下 (y >= -w)
+			combine(columnW,columnY,-1.0f), // 上 (y <= w)
+			columnZ,                        // 近 (z >= 0)
+			combine(columnW,columnZ,-1.0f), // 遠 (z <= w)
+		}};
+
+		// 法線の長さで割り、面からの距離をワールド座標の長さで比べられるようにする
+		std::array<FrustumPlane,kFrustumPlaneCount> planes{};
+		for(size_t i = 0; i < kFrustumPlaneCount; ++i){
+			const std::array<float,4>& c = coefficients[i];
+			const float length = std::sqrt(c[0] * c[0] + c[1] * c[1] + c[2] * c[2]);
+			const float invLength = (length > 0.0f)?1.0f / length:0.0f;
+			planes[i] = {{c[0] * invLength, c[1] * invLength, c[2] * invLength}, c[3] * invLength};
+		}
+		return planes;
+	}
+
 	// 霧の層(下から順)
 	// 下ほど濃く上ほど薄くして厚みのあるもやに見せ、層ごとに模様の細かさ・流れる向き・速さを変えて立体的に動かす
 	// 4層を重ねた合計の濃さが高すぎると下の雲の起伏が見えなくなるため、各層の不透明度は低めにして雲が透けて見えるようにする
@@ -53,6 +98,20 @@ namespace{
 		{0.70f, 0.11f, 1.0f, {0.62f, 0.84f}, {0.05f, -0.02f}},
 		{1.05f, 0.06f, 2.0f, {0.15f, 0.53f}, {-0.02f, -0.04f}},
 	}};
+
+	// 1つのマスを囲む球の半径(雲と霧の層をまとめて囲み、この球が視錐台の外にあるマスは描かない)
+	// 横の広がりはタイルの対角線の半分、縦は雲の起伏と一番上の霧の層の浮かせ量の分だけ余裕を持たせる
+	float CalculateTileCullingRadius(float tileStep,float cloudWaveHeight){
+		// 正方形の対角線の半分は、1辺の長さ×(√2 / 2)
+		constexpr float kHalfDiagonalRate = 0.70710678f;
+		float maxFogHeightOffset = 0.0f;
+		for(const FogLayerSetting& setting : kFogLayers){
+			maxFogHeightOffset = (std::max)(maxFogHeightOffset,setting.heightOffset);
+		}
+		const float horizontalRadius = tileStep * kHalfDiagonalRate;
+		const float verticalRadius = cloudWaveHeight + maxFogHeightOffset;
+		return std::sqrt(horizontalRadius * horizontalRadius + verticalRadius * verticalRadius);
+	}
 }
 
 Ground::Ground() = default;
@@ -76,6 +135,10 @@ void Ground::Initialize(Obj3dCommon* objCommon,const Vector3& startPosition,cons
 	gridOrigin_ = startPosition;
 	gridRight_ = Normalize(Cross(kWorldUp,forward));
 	gridForward_ = Cross(gridRight_,kWorldUp);
+
+	// 視錐台の外のマスを描かないようにするための、1つのマスを囲む球の半径と、マスごとの見えるかどうか
+	tileCullingRadius_ = CalculateTileCullingRadius(kTileStep,kCloudWaveHeight);
+	isTileVisible_.assign(static_cast<size_t>(kTileCountPerSide * kTileCountPerSide),true);
 
 	ModelManager::GetInstance()->LoadModel(kCloudModelPath);
 	ModelManager::GetInstance()->LoadModel(kFogModelPath);
@@ -152,6 +215,8 @@ void Ground::PlaceTiles(std::vector<std::unique_ptr<Obj3D>>& tiles,int centerDep
 			// 高さは雲・霧の層ごとに生成時に決めた値のまま変えない
 			tilePosition.y = tile->GetTranslate().y;
 			tile->SetTranslate(tilePosition);
+			// タイルは並べ直したとき以外は動かないため、行列(逆行列の計算を含む)はここでだけ求める
+			tile->Update();
 		}
 	}
 }
@@ -225,7 +290,9 @@ void Ground::Update(float deltaTime){
 	}
 }
 
-// タイルをアクティブなカメラに追従させて行列を更新する
+// タイルをアクティブなカメラに追従させる
+// 行列はタイルを並べ直したときに PlaceTiles() で求めるため、ここでは更新しない
+// (カメラとの合成は Draw() の中で毎回行われるので、カメラが動いても追従する)
 void Ground::UpdateTiles(std::vector<std::unique_ptr<Obj3D>>& tiles){
 	Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera();
 	if(!activeCamera){
@@ -234,23 +301,56 @@ void Ground::UpdateTiles(std::vector<std::unique_ptr<Obj3D>>& tiles){
 
 	for(auto& tile : tiles){
 		tile->SetCamera(activeCamera);
-		tile->Update();
+	}
+}
+
+// アクティブなカメラに映るマスを求める
+// タイルは1枚の頂点が多いため、カメラの後ろや横にあって映らないマスは雲も霧も描かないようにする
+// マスを囲む球が視錐台のどれか1つの面より外側にあれば、そのマスは映らない
+void Ground::UpdateTileVisibility(){
+	Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera();
+	if(!activeCamera){
+		// カメラが無いときは判定できないため、すべて描く
+		std::fill(isTileVisible_.begin(),isTileVisible_.end(),true);
+		return;
+	}
+
+	const std::array<FrustumPlane,kFrustumPlaneCount> planes = ExtractFrustumPlanes(activeCamera->GetViewProjectionMatrix());
+	for(size_t tileIndex = 0; tileIndex < isTileVisible_.size() && tileIndex < cloudTiles_.size(); ++tileIndex){
+		// 球の中心は雲のタイルの位置(霧の層は真上に重なっているため、半径の縦方向の余裕で囲む)
+		const Vector3& center = cloudTiles_[tileIndex]->GetTranslate();
+		bool isVisible = true;
+		for(const FrustumPlane& plane : planes){
+			if(Dot(plane.normal,center) + plane.distance < -tileCullingRadius_){
+				isVisible = false;
+				break;
+			}
+		}
+		isTileVisible_[tileIndex] = isVisible;
 	}
 }
 
 // 雲の描画処理
+// カメラの更新が終わった描画のときに映るマスを求め、霧の描画(DrawFog())でも同じ結果を使う
 void Ground::Draw(){
-	for(auto& tile : cloudTiles_){
-		tile->Draw();
+	UpdateTileVisibility();
+
+	for(size_t tileIndex = 0; tileIndex < cloudTiles_.size(); ++tileIndex){
+		if(isTileVisible_[tileIndex]){
+			cloudTiles_[tileIndex]->Draw();
+		}
 	}
 }
 
 // 霧の描画処理
 // 上から見下ろすカメラでは下の層ほど奥になるため、下の層から順に描いて半透明を正しく重ねる
+// 映るかどうかは、直前の Draw() で求めたマスごとの結果を使う
 void Ground::DrawFog(){
 	for(auto& layer : fogLayers_){
-		for(auto& tile : layer.tiles){
-			tile->Draw();
+		for(size_t tileIndex = 0; tileIndex < layer.tiles.size(); ++tileIndex){
+			if(isTileVisible_[tileIndex]){
+				layer.tiles[tileIndex]->Draw();
+			}
 		}
 	}
 }
