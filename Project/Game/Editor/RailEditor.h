@@ -179,6 +179,8 @@ private:
 	ControlPoint ComputeExtendedPoint(const std::vector<ControlPoint>& controlPoints) const;
 	// 指定インデックスの位置に制御点を挿入し、その制御点を選択状態にする
 	void InsertControlPoint(Rail& rail,size_t insertIndex,const ControlPoint& point);
+	// 指定した制御点の直後に、その制御点から始まる螺旋(らせん階段のような形)の制御点をまとめて挿入する(形はspiral_の設定で決める)
+	void GenerateSpiral(Rail& rail,size_t startIndex);
 	// 新しいレールを1本追加し、アクティブなレールとして切り替える
 	void AddRail();
 	// レールのインデックスから保存先ファイルパスを求める(0番目のみ既存の互換パスを使う)
@@ -246,12 +248,28 @@ private:
 	// Sceneビュー上での制御点のドラッグ
 	bool isPointDragMode_ = false;                   // ONの間だけSceneビュー上で制御点を掴める(的・敵の配置と同時に掴まないよう初期はOFF)
 	bool keepsHeightWhileDragging_ = true;           // ONなら高さを変えずに水平方向だけ動かす(高さはPositionのYで調整する)
+
+	// 螺旋を作るときの設定(ImGuiで変える。作った後の制御点は普通の制御点と同じように保存・編集できる)
+	struct SpiralSettings{
+		float radius = 8.0f;        // 螺旋の半径(真上から見た円の半径)
+		float risePerTurn = 6.0f;   // 1周で上がる高さ(負の値なら下がる)
+		float turns = 2.0f;         // 何周するか
+		int pointsPerTurn = 8;      // 1周に置く制御点の数(多いほど円に近くなる)
+		bool turnsRight = true;     // 右回り(真上から見て時計回り)か
+	};
+	SpiralSettings spiral_;
 	bool isDragging_ = false;                        // ドラッグ中かどうか
 	Vector3 dragPlaneNormal_ = {0.0f, 1.0f, 0.0f};   // ドラッグ面の法線
 	Vector3 dragPlanePoint_ = {0.0f, 0.0f, 0.0f};    // ドラッグ面が通る点(掴んだ瞬間の制御点の座標)
 	Vector3 dragOffset_ = {0.0f, 0.0f, 0.0f};        // 掴んだ位置と制御点の座標とのずれ(掴んだ瞬間に跳ばないようにする)
 
 	Obj3dCommon* objCommon_ = nullptr; // 3Dオブジェクト共通設定へのポインタ
+
+	// 螺旋の設定で使える範囲(半径が小さすぎると急カーブになり、1周の点が少なすぎると円に見えないため)
+	static constexpr float kMinSpiralRadius = 1.0f;
+	static constexpr float kMinSpiralTurns = 0.25f;
+	static constexpr int kMinSpiralPointsPerTurn = 4;
+	static constexpr int kMaxSpiralPointsPerTurn = 32;
 
 	// マウスで制御点を掴めるとみなす、レイから制御点までの距離
 	static constexpr float kPickRadius = 0.5f;

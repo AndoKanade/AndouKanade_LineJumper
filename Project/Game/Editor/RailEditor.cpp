@@ -11,6 +11,7 @@
 #include "EditorPicking.h"
 #include "externals/json.hpp"
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <fstream>
 #include <filesystem>
@@ -66,6 +67,16 @@ namespace{
 	constexpr Vector3 kDefaultExtendOffset = {5.0f, 0.0f, 0.0f};
 	// 選択中の制御点と次の制御点の間に挿入するときの位置の割合(中間に置く)
 	constexpr float kInsertMiddleRate = 0.5f;
+
+	// 1周の角度(ラジアン)
+	constexpr float kTwoPi = 3.14159265f * 2.0f;
+	// 螺旋に入る向きが決まらない(前の制御点が無い・真上や真下にある)ときに使う向き
+	constexpr Vector3 kDefaultSpiralForward = {1.0f, 0.0f, 0.0f};
+	// 螺旋に入る向きとして使える水平方向の長さの下限(これ未満なら向きが決まらないとみなす)
+	constexpr float kMinSpiralForwardLength = 1e-4f;
+	// 螺旋の設定をImGuiでドラッグして変えるときの変化量
+	constexpr float kSpiralDragSpeed = 0.1f;
+	constexpr float kSpiralTurnsDragSpeed = 0.05f;
 	// 制御点一覧の表示領域の高さ(制御点が増えても、下の編集欄がスクロールで隠れないよう一覧だけをスクロールさせる)
 	constexpr float kPointListHeight = 150.0f;
 	// Catmull-Romの区間数(制御点数から引く数。始点と終点の制御点は曲線の向きを決めるだけで、曲線は通らないため)
@@ -168,6 +179,56 @@ void RailEditor::InsertControlPoint(Rail& rail,size_t insertIndex,const ControlP
 	// 制御点の目印は毎フレーム制御点の座標へ置き直すため、個数だけそろえればよい
 	SyncPointObjectsToControlPoints(rail);
 	selectedPointIndex_ = static_cast<int>(insertIndex);
+}
+
+// 指定した制御点の直後に、その制御点から始まる螺旋の制御点をまとめて挿入する
+// 前の制御点から指定した制御点へ進んできた向きのまま螺旋に入るよう、円の中心をその向きの右(左)横に置く
+// 高さは角度に比例して上げ、らせん階段のように1周ごとにrisePerTurnだけ上がる
+void RailEditor::GenerateSpiral(Rail& rail,size_t startIndex){
+	std::vector<ControlPoint>& controlPoints = rail.controlPoints;
+	const ControlPoint startPoint = controlPoints[startIndex];
+
+	// 螺旋に入る向き(水平)。前の制御点から指定した制御点への向きを使う
+	Vector3 forward = kDefaultSpiralForward;
+	if(startIndex > 0){
+		Vector3 incoming = startPoint.position - controlPoints[startIndex - 1].position;
+		incoming.y = 0.0f;
+		if(Length(incoming) >= kMinSpiralForwardLength){
+			forward = Normalize(incoming);
+		}
+	}
+	// 進む向きの右横(水平)。右回りならこちら側に、左回りなら反対側に円の中心を置く
+	const Vector3 right = {forward.z, 0.0f, -forward.x};
+	const float side = spiral_.turnsRight?1.0f:-1.0f;
+	const Vector3 center = startPoint.position + right * (side * spiral_.radius);
+
+	// 螺旋の上に置く制御点の数
+	const int spiralPointCount = (std::max)(1,static_cast<int>(std::lround(spiral_.turns * static_cast<float>(spiral_.pointsPerTurn))));
+	// 末尾に足すときは、最後の制御点は曲線の向きを決めるだけで曲線が通らないため、螺旋の終わりまで曲線が通るよう1つ先にもう1つ足す
+	const bool isAppending = (startIndex + 1 == controlPoints.size());
+	const int generateCount = spiralPointCount + (isAppending?1:0);
+
+	std::vector<ControlPoint> spiralPoints;
+	spiralPoints.reserve(static_cast<size_t>(generateCount));
+	for(int i = 1; i <= generateCount; ++i){
+		const float turnRate = static_cast<float>(i) / static_cast<float>(spiral_.pointsPerTurn);
+		const float angle = kTwoPi * turnRate;
+
+		// 角度0で指定した制御点に重なり、進む向きへ出発して中心の周りを回る
+		ControlPoint point = startPoint;
+		point.position = center - right * (side * spiral_.radius * std::cos(angle)) + forward * (spiral_.radius * std::sin(angle));
+		point.position.y = startPoint.position.y + spiral_.risePerTurn * turnRate;
+		// 分岐設定は引き継がない(速度・回転は指定した制御点のものを引き継ぐ)
+		point.branchTargetRailIndex = kDefaultControlPoint.branchTargetRailIndex;
+		point.branchTargetPointIndex = kDefaultControlPoint.branchTargetPointIndex;
+		spiralPoints.push_back(point);
+	}
+
+	controlPoints.insert(controlPoints.begin() + startIndex + 1,spiralPoints.begin(),spiralPoints.end());
+	// 制御点の目印は毎フレーム制御点の座標へ置き直すため、個数だけそろえればよい
+	SyncPointObjectsToControlPoints(rail);
+	// 螺旋の終わりの制御点を選び、続けて延長や調整をしやすくする
+	selectedPointIndex_ = static_cast<int>(startIndex) + spiralPointCount;
 }
 
 // 新しいレールを1本追加し、アクティブなレールとして切り替える
@@ -391,6 +452,33 @@ void RailEditor::Update(){
 		// 選択中の制御点にカメラを寄せるボタン(俯瞰デバッグカメラに切り替えて、今の向きのまま近づける)
 		if(ImGui::Button("Focus")){
 			hasFocusRequest_ = true;
+		}
+
+		// 選択中の制御点から螺旋(らせん階段のような形)を作る
+		// 制御点を1つずつ置くと手間がかかるため、半径・1周で上がる高さ・周回数を決めてまとめて作る(Ctrl+Zで戻せる)
+		if(ImGui::CollapsingHeader("Spiral")){
+			ImGui::DragFloat("Radius",&spiral_.radius,kSpiralDragSpeed,kMinSpiralRadius,FLT_MAX);
+			ImGui::DragFloat("Rise / Turn",&spiral_.risePerTurn,kSpiralDragSpeed);
+			ImGui::DragFloat("Turns",&spiral_.turns,kSpiralTurnsDragSpeed,kMinSpiralTurns,FLT_MAX);
+			ImGui::SliderInt("Points / Turn",&spiral_.pointsPerTurn,kMinSpiralPointsPerTurn,kMaxSpiralPointsPerTurn);
+			if(ImGui::RadioButton("Right",spiral_.turnsRight)){
+				spiral_.turnsRight = true;
+			}
+			ImGui::SameLine();
+			if(ImGui::RadioButton("Left",!spiral_.turnsRight)){
+				spiral_.turnsRight = false;
+			}
+
+			// 手入力で範囲の外にされても、形が崩れないよう制限する
+			spiral_.radius = (std::max)(spiral_.radius,kMinSpiralRadius);
+			spiral_.turns = (std::max)(spiral_.turns,kMinSpiralTurns);
+			spiral_.pointsPerTurn = std::clamp(spiral_.pointsPerTurn,kMinSpiralPointsPerTurn,kMaxSpiralPointsPerTurn);
+
+			ImGui::TextDisabled("(この点の後ろに挿入。後ろの点は残る)");
+			if(ImGui::Button("Generate Spiral")){
+				// 挿入でcontrolPointsが再確保されるとselectedPointの参照が無効になるため、ここ以降は使わない
+				GenerateSpiral(activeRail,static_cast<size_t>(selectedPointIndex_));
+			}
 		}
 
 		ImGui::PopID();
