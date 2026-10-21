@@ -197,7 +197,7 @@ Game/
    9. `Player::UpdateMovement()` でジャンプ・WASD 移動・着地判定を行う。地面まで落ちたら `ResetPlayState()` を呼ぶ。`isPlayerMovable` の間も同じく動かす。出発台を使う演出なら、出発台の手前の線を越えたら演出を始める。歩いてレールへ乗ったとき・出発の演出がレールへ乗せ終えたときは `StartSequence::NotifyBoarded()` を呼び、`PlayBoardedEffects()` で足元から輪・インクのしぶき・インクの跡を出す。
    10. 射撃（手元からインクのしぶきも出す。スタート台の上では的・敵に当たらない試し撃ち）、弾の移動、的・敵と弾の当たり判定、壊れた的ごとの演出と連鎖数の加算、弾の削除と行列の更新、レティクルの色の更新。
    11. 演出・スピード線・HUD の更新。レールを進んでいる間は、通った区間を塗り、足元から後ろへしぶきを飛ばし、スピード線を出す。
-3. デバッグ用のキー操作（F1 / F4 / F5）と、Edit モード中の ImGui パネル（`ShowEditorPanels()`）を処理する。
+3. デバッグ用のキー操作（F4 / F5）と、Edit モード中の ImGui パネル（`ShowEditorPanels()`）を処理する。
 
 - 4〜10 のうち入力・移動・当たり判定・勝敗判定は、`isGameplayActive` が true のときだけ動く。Edit 中・開始演出中は表示の更新だけ行う。
 
@@ -252,7 +252,7 @@ Game/
 | ウィンドウ | 表示するモード | 内容 |
 | --- | --- | --- |
 | Rail Branch Debug | 常時 | レールの本数、アクティブレール、進行度、オンレール状態、敵の体力（EnemyManager が表示）、プレイヤーの体力など |
-| GameScene Debug | Edit のみ | タイトルを飛ばす設定、選んだ制御点から始める設定（Start From Selected Point）、レール・的・敵の編集の Undo / Redo / Save All と未保存のエディター名の表示、落下リスタート・クリアへの切り替えの演出の選択と Preview、出発の演出の選択（Departure。次にゲートを開けたときから使われる）、カメラ座標・回転の編集、俯瞰カメラの切り替え（DebugTopCamera が表示）、ライティング |
+| GameScene Debug | Edit のみ | タイトルを飛ばす設定、選んだ制御点から始める設定（Start From Selected Point）、レール・的・敵の編集の Undo / Redo / Save All と未保存のエディター名の表示、落下リスタート・クリアへの切り替えの演出の選択と Preview、出発の演出の選択（Departure。次にゲートを開けたときから使われる）、カメラ座標・回転の編集、ライティング |
 | Hierarchy | Edit のみ | 的の一覧。クリックで選択できる（TargetManager が表示） |
 | Inspector | Edit のみ | 選択中の的の座標・生存フラグの編集（TargetManager が表示） |
 
@@ -768,14 +768,14 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 
 ### DebugTopCamera（`Camera/DebugTopCamera.h/.cpp`）
 
-レール全体を真上から見下ろす俯瞰デバッグカメラ（カメラ `"debug_top"`）。
+レール全体を真上から見下ろす俯瞰デバッグカメラ（カメラ `"debug_top"`）。Edit モード中は常に有効で、Play に入るとプレイ用カメラに切り替わる。
 
 | 関数 | 内容 |
 | --- | --- |
 | `Initialize(Obj3dCommon*)` | カメラを生成し、高さ 30 から真下を向かせる |
-| `HandleToggleKey(input, railEditor)` | F1 で切り替える。ON にした瞬間に、制御点全体が映る高さ（半径 × 2.2 ＋ 10）に合わせる |
+| `Enable()` / `Disable()` | 俯瞰カメラを ON / OFF にする。Edit に戻ったとき / Play に入ったときに GameScene が呼ぶ。位置と向きは OFF の間も残す |
+| `SetPose(pose)` | カメラの位置と向きを指定した画に合わせる。Edit モードで始めたときに、Play の最初と同じプレイ用カメラの画を GameScene が渡す |
 | `UpdateMove(input)` | 有効な間、WASD で平面移動、QE で高さを移動する（速度 10） |
-| `ShowToggleCheckbox(railEditor)` | ImGui の切り替え用チェックボックス（ImGui がある構成のみ） |
 | `FocusOnPoint(position)` | 俯瞰カメラを ON にし、今の向きのまま position の手前 8.0 の位置へ寄せる（Rail Editor の Focus 用） |
 | `IsEnabled()` | 有効かどうかを取得する |
 
@@ -998,8 +998,7 @@ Scene ビュー上のマウス位置から画面奥へ伸びるレイを求め�
 | --- | --- |
 | F2 | Edit / Play の切り替え |
 | R | Play 中にタイトルから最初からやり直す（確認用の一時的な処理） |
-| F1 | 俯瞰デバッグカメラの切り替え。ON にした瞬間に、制御点全体が映るよう自動で合わせる |
-| WASD / Q E | 俯瞰カメラ中の平面移動 / 高さの移動 |
+| WASD / Q E | Edit 中の俯瞰カメラの平面移動 / 高さの移動 |
 | F4 | 制御点の目印の表示切り替え |
 | F5 | レール曲線の表示切り替え |
 | Ctrl+Z / Ctrl+Y（Ctrl+Shift+Z） | Edit 中にレール・的・敵の編集を元に戻す / やり直す |

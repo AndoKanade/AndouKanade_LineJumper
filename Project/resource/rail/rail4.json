@@ -304,9 +304,39 @@
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
             "position": [
-                108.25435638427734,
-                25.1875,
-                15.692731857299805
+                114.55400085449219,
+                25.187999725341797,
+                14.793000221252441
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                120.00900268554688,
+                25.875,
+                15.484999656677246
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                134.16299438476563,
+                27.062000274658203,
+                17.277999877929688
             ],
             "rotation": [
                 0.0,
