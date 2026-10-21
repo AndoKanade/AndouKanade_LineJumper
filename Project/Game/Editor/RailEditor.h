@@ -99,15 +99,16 @@ private:
 		std::string name;                                   // レール名(UI表示・保存ファイル名の目印用)
 		std::vector<ControlPoint> controlPoints;            // 制御点を保存する配列
 		std::vector<std::unique_ptr<Obj3D>> pointObjects;   // 制御点描画用の3Dオブジェクト群
-		std::vector<std::unique_ptr<Obj3D>> curveObjects;   // レール曲線サンプリング点描画用のオブジェクト群(固定数)
+		std::vector<std::unique_ptr<Obj3D>> curveObjects;   // レール曲線サンプリング点描画用のオブジェクト群(区間数に合わせて足りない分だけ増やす)
 
 		// 着地できる範囲(レールの左右へ許容距離ぶん離れた位置)を示す点列
 		// 1サンプルにつき左右2個使うため、要素数はkLandingRangeSampleCountの2倍で固定する
 		std::vector<std::unique_ptr<Obj3D>> landingRangeObjects;
 
-		// Play中にレールの本体として描く管(円柱をつないだもの。要素数はkTubeSegmentCountで固定する)
+		// Play中にレールの本体として描く管(円柱をつないだもの。区間数に合わせて足りない分だけ増やす)
 		std::vector<std::unique_ptr<Obj3D>> tubeObjects;
 		// 管の区間ごとに描画するかどうか(短すぎて向きが定まらない区間はfalse。BuildTubes()で求める)
+		// 要素数がそのレールで使う管の数になる
 		std::vector<bool> tubeSegmentVisible;
 
 		bool showControlPointModels = true;                 // 制御点の球体モデルの描画フラグ
@@ -128,6 +129,12 @@ private:
 	void DrawTubes();
 	// rail.pointObjectsの個数をrail.controlPointsに同期
 	void SyncPointObjectsToControlPoints(Rail& rail);
+	// 描画用オブジェクトがcount個に満たなければ、足りない分だけmodelPathのモデルで生成する(多い分は削らず、使わないだけにする)
+	void EnsureObjectCount(std::vector<std::unique_ptr<Obj3D>>& objects,size_t count,const std::string& modelPath);
+	// レールの末尾を延長する位置に置く制御点を求める(末尾2点の向きにそのまま伸ばす)
+	ControlPoint ComputeExtendedPoint(const std::vector<ControlPoint>& controlPoints) const;
+	// 指定インデックスの位置に制御点を挿入し、その制御点を選択状態にする
+	void InsertControlPoint(Rail& rail,size_t insertIndex,const ControlPoint& point);
 	// 新しいレールを1本追加し、アクティブなレールとして切り替える
 	void AddRail();
 	// レールのインデックスから保存先ファイルパスを求める(0番目のみ既存の互換パスを使う)
@@ -158,11 +165,13 @@ private:
 
 	Obj3dCommon* objCommon_ = nullptr; // 3Dオブジェクト共通設定へのポインタ
 
-	// レール曲線可視化のサンプリング分割数
-	static constexpr int kCurveSampleCount = 100;
+	// レール曲線可視化の、Catmull-Romの1区間あたりのサンプリング分割数
+	// レールを延長して区間が増えても点の間隔が粗くならないよう、区間数に比例させる
+	static constexpr int kCurveSamplesPerSegment = 20;
 
-	// Play中のレール本体の管の分割数(多いほど曲がりがなめらかになる)
-	static constexpr int kTubeSegmentCount = 120;
+	// Play中のレール本体の管の、Catmull-Romの1区間あたりの分割数(多いほど曲がりがなめらかになる)
+	// 曲線の点列と同じく、レールを延長しても管が角ばらないよう区間数に比例させる
+	static constexpr int kTubeSegmentsPerRailSegment = 24;
 	// Play中のレール本体の管の半径
 	static constexpr float kTubeRadius = 0.05f;
 	// 管の1区間の長さがこれ未満なら、向きが定まらないため描画しない

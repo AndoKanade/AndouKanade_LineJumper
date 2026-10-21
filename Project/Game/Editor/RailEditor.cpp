@@ -59,6 +59,15 @@ namespace{
 
 	// 進行方向を前後の座標の差分で求めるときに使う、進行度tの刻み幅
 	constexpr float kForwardSampleDelta = 0.01f;
+
+	// 制御点が1つしかなく延長する向きが決まらないときに、末尾から伸ばす量
+	constexpr Vector3 kDefaultExtendOffset = {5.0f, 0.0f, 0.0f};
+	// 選択中の制御点と次の制御点の間に挿入するときの位置の割合(中間に置く)
+	constexpr float kInsertMiddleRate = 0.5f;
+	// 制御点一覧の表示領域の高さ(制御点が増えても、下の編集欄がスクロールで隠れないよう一覧だけをスクロールさせる)
+	constexpr float kPointListHeight = 150.0f;
+	// Catmull-Romの区間数(制御点数から引く数。始点と終点の制御点は曲線の向きを決めるだけで、曲線は通らないため)
+	constexpr size_t kCatmullRomExtraPointCount = 3;
 }
 
 RailEditor::RailEditor() = default;
@@ -83,6 +92,49 @@ void RailEditor::SyncPointObjectsToControlPoints(Rail& rail){
 	}
 }
 
+// 描画用オブジェクトがcount個に満たなければ、足りない分だけ生成する
+// 曲線の点列・管はレールの区間数で必要な数が変わるため、延長して足りなくなったときだけ増やす
+void RailEditor::EnsureObjectCount(std::vector<std::unique_ptr<Obj3D>>& objects,size_t count,const std::string& modelPath){
+	if(objects.size() >= count){
+		return;
+	}
+	objects.reserve(count);
+	while(objects.size() < count){
+		objects.push_back(CreatePointObject(modelPath));
+	}
+}
+
+// レールの末尾を延長する位置に置く制御点を求める
+// 末尾2点の差をそのまま末尾に足し、同じ向き・同じ間隔で伸ばす。回転と速度は末尾の制御点を引き継ぐ
+RailEditor::ControlPoint RailEditor::ComputeExtendedPoint(const std::vector<ControlPoint>& controlPoints) const{
+	if(controlPoints.empty()){
+		return kDefaultControlPoint;
+	}
+
+	ControlPoint point = controlPoints.back();
+	// 分岐設定は延長した制御点には引き継がない
+	point.branchTargetRailIndex = kDefaultControlPoint.branchTargetRailIndex;
+	point.branchTargetPointIndex = kDefaultControlPoint.branchTargetPointIndex;
+
+	if(controlPoints.size() < 2){
+		point.position = point.position + kDefaultExtendOffset;
+		return point;
+	}
+
+	const Vector3& last = controlPoints[controlPoints.size() - 1].position;
+	const Vector3& prev = controlPoints[controlPoints.size() - 2].position;
+	point.position = last + (last - prev);
+	return point;
+}
+
+// 指定インデックスの位置に制御点を挿入し、その制御点を選択状態にする(続けて位置を調整しやすくするため)
+void RailEditor::InsertControlPoint(Rail& rail,size_t insertIndex,const ControlPoint& point){
+	rail.controlPoints.insert(rail.controlPoints.begin() + insertIndex,point);
+	// 制御点の目印は毎フレーム制御点の座標へ置き直すため、個数だけそろえればよい
+	SyncPointObjectsToControlPoints(rail);
+	selectedPointIndex_ = static_cast<int>(insertIndex);
+}
+
 // 新しいレールを1本追加し、アクティブなレールとして切り替える
 void RailEditor::AddRail(){
 	Rail rail;
@@ -90,26 +142,13 @@ void RailEditor::AddRail(){
 	rail.controlPoints.push_back(kDefaultControlPoint);
 	rail.pointObjects.push_back(CreatePointObject(kControlPointModelPath));
 
-	// レール曲線可視化用のサンプリング点オブジェクトを固定数だけ生成しておく
-	rail.curveObjects.reserve(kCurveSampleCount);
-	for(int i = 0; i < kCurveSampleCount; ++i){
-		rail.curveObjects.push_back(CreatePointObject(kSampleModelPath));
-	}
+	// 曲線の点列・管は区間数で必要な数が変わるため、ここでは作らずDraw()・BuildTubes()で足りない分だけ生成する
 
-	// 着地できる範囲可視化用のオブジェクトも固定数だけ生成しておく(1サンプルにつき左右2個)
+	// 着地できる範囲可視化用のオブジェクトは固定数だけ生成しておく(1サンプルにつき左右2個)
 	const int landingRangeObjectCount = kLandingRangeSampleCount * 2;
 	rail.landingRangeObjects.reserve(landingRangeObjectCount);
 	for(int i = 0; i < landingRangeObjectCount; ++i){
 		rail.landingRangeObjects.push_back(CreatePointObject(kSampleModelPath));
-	}
-
-	// Play中のレール本体の管も固定数だけ生成しておく
-	rail.tubeObjects.reserve(kTubeSegmentCount);
-	for(int i = 0; i < kTubeSegmentCount; ++i){
-		auto tube = std::make_unique<Obj3D>();
-		tube->Initialize(objCommon_);
-		tube->SetModel(kTubeModelPath);
-		rail.tubeObjects.push_back(std::move(tube));
 	}
 
 	rails_.push_back(std::move(rail));
@@ -168,14 +207,11 @@ void RailEditor::Update(){
 	// 以降はアクティブなレールに対する編集操作
 	Rail& activeRail = rails_[activeRailIndex_];
 
-	// 制御点の追加ボタン
+	// 制御点の追加ボタン(レールを延長しやすいよう、原点ではなく末尾2点の向きにそのまま伸ばした位置へ追加する)
 	if(ImGui::Button("Add Control Point")){
-		// リストの最後に新しい制御点を追加
-		activeRail.controlPoints.push_back(kDefaultControlPoint);
-
-		// 追加した制御点用の3Dオブジェクトを生成
-		activeRail.pointObjects.push_back(CreatePointObject(kControlPointModelPath));
+		InsertControlPoint(activeRail,activeRail.controlPoints.size(),ComputeExtendedPoint(activeRail.controlPoints));
 	}
+	ImGui::TextDisabled("(末尾の2点と同じ向き・間隔で延長する)");
 
 	ImGui::Separator();
 
@@ -211,7 +247,9 @@ void RailEditor::Update(){
 	int deleteIndex = -1;
 
 	// 制御点一覧(Hierarchy的な一覧表示)。クリックした行を選択状態にする
+	// 一覧は高さを決めた子ウィンドウの中だけでスクロールさせ、制御点が増えても下の編集欄が見えるようにする
 	ImGui::Text("Control Points: %zu",activeRail.controlPoints.size());
+	ImGui::BeginChild("ControlPointList",ImVec2(0.0f,kPointListHeight),true);
 	for(size_t i = 0; i < activeRail.controlPoints.size(); ++i){
 		// IDの重複を防ぐためPushIDを使用
 		ImGui::PushID(static_cast<int>(i));
@@ -227,6 +265,7 @@ void RailEditor::Update(){
 		}
 		ImGui::PopID();
 	}
+	ImGui::EndChild();
 
 	ImGui::Separator();
 
@@ -259,6 +298,24 @@ void RailEditor::Update(){
 			deleteIndex = selectedPointIndex_;
 		}
 		ImGui::EndDisabled();
+
+		// 選択中の制御点の直後に制御点を挿入するボタン(曲がりを細かく作りたい区間に点を足す用)
+		// 次の制御点があればその中間、末尾ならAdd Control Pointと同じく延長した位置に置く
+		if(ImGui::Button("Insert After")){
+			const size_t insertIndex = static_cast<size_t>(selectedPointIndex_) + 1;
+			ControlPoint insertPoint;
+			if(insertIndex < activeRail.controlPoints.size()){
+				const ControlPoint& next = activeRail.controlPoints[insertIndex];
+				insertPoint = kDefaultControlPoint;
+				insertPoint.position = Lerp(selectedPoint.position,next.position,kInsertMiddleRate);
+				insertPoint.rotation = Lerp(selectedPoint.rotation,next.rotation,kInsertMiddleRate);
+				insertPoint.speed = Lerp(selectedPoint.speed,next.speed,kInsertMiddleRate);
+			} else{
+				insertPoint = ComputeExtendedPoint(activeRail.controlPoints);
+			}
+			// 挿入でcontrolPointsが再確保されるとselectedPointの参照が無効になるため、ここ以降は使わない
+			InsertControlPoint(activeRail,insertIndex,insertPoint);
+		}
 
 		ImGui::PopID();
 	} else{
@@ -329,8 +386,12 @@ void RailEditor::Draw(){
 		// レール曲線をサンプリング点列(小さい球)で可視化する簡易版
 		// Catmull-Romは制御点4つ以上必要なので、それ未満のときは何も描画しない
 		if(rail.showCurve && rail.controlPoints.size() >= 4){
-			for(int i = 0; i < kCurveSampleCount; ++i){
-				float t = static_cast<float>(i) / static_cast<float>(kCurveSampleCount - 1);
+			// 区間数に比例した数の点を並べ、レールを延長しても点の間隔が粗くならないようにする(終点の分だけ1つ多い)
+			const size_t curveSampleCount = (rail.controlPoints.size() - kCatmullRomExtraPointCount) * kCurveSamplesPerSegment + 1;
+			EnsureObjectCount(rail.curveObjects,curveSampleCount,kSampleModelPath);
+
+			for(size_t i = 0; i < curveSampleCount; ++i){
+				float t = static_cast<float>(i) / static_cast<float>(curveSampleCount - 1);
 				Vector3 pos = ComputePositionOnRail(rail.controlPoints,t);
 
 				rail.curveObjects[i]->SetTranslate(pos);
@@ -399,12 +460,16 @@ void RailEditor::Draw(){
 // レールを細かい区間に分け、区間ごとに円柱を始点から終点へ向けて伸ばして並べる
 void RailEditor::BuildTubes(){
 	for(Rail& rail : rails_){
-		rail.tubeSegmentVisible.assign(kTubeSegmentCount,false);
-
 		// Catmull-Romは制御点4つ以上必要なので、それ未満のときは管を作らない
 		if(rail.controlPoints.size() < 4){
+			rail.tubeSegmentVisible.clear();
 			continue;
 		}
+
+		// 区間数に比例した数の管を使い、レールを延長しても管が角ばらないようにする
+		const size_t tubeCount = (rail.controlPoints.size() - kCatmullRomExtraPointCount) * kTubeSegmentsPerRailSegment;
+		EnsureObjectCount(rail.tubeObjects,tubeCount,kTubeModelPath);
+		rail.tubeSegmentVisible.assign(tubeCount,false);
 
 		// レールの始点と終点に制御点の目印を置く
 		// Catmull-Romの曲線は2番目の制御点から最後の1つ前の制御点までを通るため、その2点がレールの始点と終点になる
@@ -418,8 +483,8 @@ void RailEditor::BuildTubes(){
 
 		// 区間の終点は次の区間の始点になるため、前の区間の終点を使い回して座標の計算を1回で済ませる
 		Vector3 start = ComputePositionOnRail(rail.controlPoints,0.0f);
-		for(int i = 0; i < kTubeSegmentCount; ++i){
-			float endT = static_cast<float>(i + 1) / static_cast<float>(kTubeSegmentCount);
+		for(size_t i = 0; i < tubeCount; ++i){
+			float endT = static_cast<float>(i + 1) / static_cast<float>(tubeCount);
 			Vector3 end = ComputePositionOnRail(rail.controlPoints,endT);
 
 			Vector3 segment = end - start;
@@ -472,13 +537,14 @@ void RailEditor::DrawTubes(){
 			}
 		}
 
-		for(int i = 0; i < kTubeSegmentCount; ++i){
+		const size_t tubeCount = rail.tubeSegmentVisible.size();
+		for(size_t i = 0; i < tubeCount; ++i){
 			if(!rail.tubeSegmentVisible[i]){
 				continue;
 			}
 
 			// 区間の中央の進行度が塗った範囲に入っていれば、インクの色にする
-			float middleT = (static_cast<float>(i) + kTubeSegmentMiddleRate) / static_cast<float>(kTubeSegmentCount);
+			float middleT = (static_cast<float>(i) + kTubeSegmentMiddleRate) / static_cast<float>(tubeCount);
 			bool isPaintedSegment = rail.isPainted && middleT >= rail.paintStartT && middleT <= rail.paintEndT;
 
 			Obj3D* tube = rail.tubeObjects[i].get();
