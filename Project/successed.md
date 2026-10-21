@@ -1043,3 +1043,16 @@ Visual Studio でのビルドはしていない。DirectX まわりを仮のヘ�
 ### ビルド確認（9.）
 
 Visual Studio でのビルドはしていない。ピクセルシェーダーは Linux 版の DXC でエンジンと同じオプション（ps_6_0、-Zpr など）でコンパイルが通ることを確認し、定数バッファの並び（useBlinnPhong 104・distanceFadeStart 108・distanceFadeEnd 112）が C++ の `Model::Material` と一致することを確かめた。Ground は仮のヘッダーで g++ でビルドした。画面では確認していない。
+
+### 10. 遠くのレール・スタート台なども空に溶け込ませるようにした
+
+対象ファイル: `Engine/Graphics/3D/Obj3DCommon.h`、`Engine/Graphics/3D/Obj3D.h/.cpp`、`Engine/Graphics/3D/Camera.h`、`Game/objects/Ground.cpp`、`Game/scenes/GameScene.h/.cpp`
+
+- 地面だけが空に溶け込み、遠くのレールなどがくっきりしたままだと、もやの手前に浮いて見え、カメラの遠平面（100）で急に現れたり消えたりする。地面以外の 3D オブジェクトも、遠くほど空の色に溶け込ませるようにした。
+- `Obj3dCommon` に全オブジェクト共通の溶け込ませる距離を持たせ、`Obj3D::Draw()` で毎回マテリアルに書き込む。物ごとに設定しなくても、レール・スタート台・的・敵などすべてに効く。地面のタイルは `SetUseSceneDistanceFade(false)` で独自の距離（45〜95）のままにした。
+- レールは進む先や飛び移れるレールを見せる道しるべで、敵は 25 以内でプレイヤーに気づくため、地面より遠い 60〜95 から溶け込ませる。調整項目 `objectFadeStart` / `objectFadeEnd` で変えられる。End はカメラの遠平面（`Camera::GetFarClip()` を追加）を超えないよう制限する。
+- 溶け込ませるのは Play 中だけ。Edit 中は俯瞰カメラで遠くの制御点も編集するため溶け込ませない。シーンを抜けるときは 0 に戻し、他のシーンへ持ち越さない。
+
+### ビルド確認（10.）
+
+Visual Studio でのビルドはしていない。Ground は仮のヘッダーで g++ でビルドした。Obj3D・Obj3dCommon・GameScene は DirectX まわりの依存が多いため、この環境では確認できていない。画面では確認していない。

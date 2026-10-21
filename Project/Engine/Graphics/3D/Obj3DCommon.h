@@ -46,6 +46,9 @@ public: // 外部から呼び出すもの
 
 	// セッター
 	void SetDefaultCamera(Camera* camera){ this->defaultCamera_ = camera; }
+	// 遠くの3Dオブジェクトを空の色に溶け込ませる距離(全オブジェクト共通。End <= Startのときは溶け込ませない)
+	// 独自の距離を使うオブジェクト(Obj3D::SetUseSceneDistanceFade(false))には効かない
+	void SetSceneDistanceFade(float start,float end){ sceneDistanceFadeStart_ = start; sceneDistanceFadeEnd_ = end; }
 
 	// ゲッター
 	ID3D12RootSignature* GetRootSignature() const{ return rootSignature.Get(); }
@@ -60,6 +63,10 @@ public: // 外部から呼び出すもの
 
 	ID3D12RootSignature* GetComputeRootSignature() const{ return computeRootSignature.Get(); }
 	ID3D12PipelineState* GetComputePipelineState() const{ return computePipelineState.Get(); }
+
+	// 全オブジェクト共通の、遠くを空の色に溶け込ませる距離
+	float GetSceneDistanceFadeStart() const{ return sceneDistanceFadeStart_; }
+	float GetSceneDistanceFadeEnd() const{ return sceneDistanceFadeEnd_; }
 
 	// ライトデータ取得
 	DirectionalLight* GetDirectionalLightData(){ return directionalLightData_; }
@@ -103,4 +110,8 @@ private: // メンバ変数
 	// スポットライトリソース
 	Microsoft::WRL::ComPtr<ID3D12Resource> spotLightResource_;
 	SpotLight* spotLightData_ = nullptr;
+
+	// 全オブジェクト共通の、遠くを空の色に溶け込ませる距離(初期値は溶け込ませない)
+	float sceneDistanceFadeStart_ = 0.0f;
+	float sceneDistanceFadeEnd_ = 0.0f;
 };

@@ -24,6 +24,7 @@ public:
 	const Vector3& GetRotate() const{ return transform.rotate; }
 	const Vector3& GetTranslate() const{ return transform.translate; }
 	float GetFov() const{ return fov; }
+	float GetFarClip() const{ return farClip; }
 	D3D12_GPU_VIRTUAL_ADDRESS GetGPUVirtualAddress() const{
 		return resource->GetGPUVirtualAddress();
 	}

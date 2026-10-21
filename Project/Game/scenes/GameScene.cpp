@@ -44,6 +44,7 @@
 #include "UI/StageHUD.h"
 #include "UI/SpeedLines.h"
 #include "UI/HelpOverlay.h"
+#include <algorithm>
 #include <iterator>
 
 namespace{
@@ -79,6 +80,12 @@ namespace{
 	constexpr DepartureStyle kDefaultDepartureStyle = DepartureStyle::CountdownFlip;
 	// レールを進む全体の速さの調整項目名(Playerが登録する。Rail Editorで走り切るまでの秒数を出すのに使う)
 	const char* kRailSpeedKey = "railSpeed";
+	// Play中に、遠くのレール・スタート台・的・敵などを空の色に溶け込ませ始める距離・溶け込みきる距離の調整項目名と初期値(カメラからの距離)
+	// レールは進む先や飛び移れるレールを見せる道しるべで、敵は25以内でプレイヤーに気づくため、地面(45〜95)より遠くから溶け込ませる
+	const char* kObjectFadeStartKey = "objectFadeStart";
+	const char* kObjectFadeEndKey = "objectFadeEnd";
+	constexpr float kDefaultObjectFadeStart = 60.0f;
+	constexpr float kDefaultObjectFadeEnd = 95.0f;
 	// 演出の初期値(保存済みJSONがあればそちらが優先される)
 	constexpr SceneTransition::Style kDefaultFallTransitionStyle = SceneTransition::Style::RailStripes;
 	constexpr SceneTransition::Style kDefaultClearTransitionStyle = SceneTransition::Style::InkBurst;
@@ -160,6 +167,9 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kFallTransitionKey,static_cast<int32_t>(kDefaultFallTransitionStyle));
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kClearTransitionKey,static_cast<int32_t>(kDefaultClearTransitionStyle));
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kDepartureStyleKey,static_cast<int32_t>(kDefaultDepartureStyle));
+	// 遠くの物を空の色に溶け込ませる距離(Play中だけ使う)
+	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kObjectFadeStartKey,kDefaultObjectFadeStart);
+	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kObjectFadeEndKey,kDefaultObjectFadeEnd);
 
 	// 太陽の生成(方角はレール開始地点の進行方向を基準にする)
 	sun_ = std::make_unique<Sun>();
@@ -253,6 +263,8 @@ void GameScene::Finalize(){
 		isCursorClipped_ = false;
 		::ClipCursor(nullptr);
 	}
+	// 遠くの物を溶け込ませる距離は全オブジェクト共通の設定のため、他のシーンに持ち越さないよう元に戻す
+	object3dCommon_->SetSceneDistanceFade(0.0f,0.0f);
 }
 
 // ゲームを初期状態(レール先頭)から始め直す
@@ -287,6 +299,27 @@ void GameScene::ResetPlayState(){
 
 	// 雑魚敵も撃破前の初期状態(体力満タン)から始める
 	enemyManager_->Reset();
+}
+
+// 遠くの物を空の色に溶け込ませる距離を、全オブジェクト共通の設定にする
+void GameScene::UpdateSceneDistanceFade(){
+	if(!EditorContext::GetInstance()->IsPlayMode()){
+		object3dCommon_->SetSceneDistanceFade(0.0f,0.0f);
+		return;
+	}
+
+	// カメラの遠平面より先は描画されず、そこで切れて見えるため、溶け込みきる距離は遠平面より遠くしない
+	// (カメラからの距離は、遠平面で切れる位置の奥行きより必ず長いため、遠平面の距離で比べれば足りる)
+	GlobalVariables* gv = GlobalVariables::GetInstance();
+	const float requestedFadeEnd = gv->GetFloatValue(kGameSceneGroup,kObjectFadeEndKey);
+	// カメラが無いときは遠平面が分からないため、調整項目の値をそのまま使う
+	float maxFadeEnd = requestedFadeEnd;
+	if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
+		maxFadeEnd = activeCamera->GetFarClip();
+	}
+	const float fadeEnd = std::clamp(requestedFadeEnd,0.0f,maxFadeEnd);
+	const float fadeStart = std::clamp(gv->GetFloatValue(kGameSceneGroup,kObjectFadeStartKey),0.0f,fadeEnd);
+	object3dCommon_->SetSceneDistanceFade(fadeStart,fadeEnd);
 }
 
 // タイトル・スタート演出を始め、デバッグ用の設定に合わせてレールへ乗せる
@@ -345,6 +378,10 @@ void GameScene::Update(){
 
 	// 地面タイルの更新(霧のUVスクロールも行う)
 	ground_->Update(kDeltaTime);
+
+	// Play中だけ、遠くのレール・スタート台・的・敵などを空の色に溶け込ませ、カメラの遠平面で急に現れたり消えたりして見えないようにする
+	// Edit中は俯瞰カメラで遠くの制御点も編集するため、溶け込ませない(地面は独自の距離で溶け込ませる)
+	UpdateSceneDistanceFade();
 
 	// 衝撃の瞬間の画面演出を進める
 	// ヒットストップ中は、出発ゲートとインクの演出の時間を止めて、衝撃の瞬間を強調する

@@ -60,6 +60,8 @@ private:
 	void StartPlaySequence();
 	// Playに入ったときに覚えておいた制御点の位置からレールに乗せる(途中からPlayするとき用)
 	void BoardAtPlayStartPoint();
+	// 遠くの物を空の色に溶け込ませる距離を、全オブジェクト共通の設定にする(Play中だけ溶け込ませ、Edit中は溶け込ませない)
+	void UpdateSceneDistanceFade();
 
 	// 出発の演出が動かす・参照するもの(GameScene が持つもの)をまとめる
 	DepartureContext MakeDepartureContext() const;

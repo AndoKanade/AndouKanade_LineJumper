@@ -106,6 +106,13 @@ void Obj3D::Draw(){
     }
     transformationMatrixData->WVP = worldViewProjectionMatrix;
 
+    // 遠くを空の色に溶け込ませる距離は、シーンの状態(Play中かどうかなど)で変わるため、描画のたびに全オブジェクト共通の値を書き込む
+    // 独自の距離を使うもの(雲海の地面など)は書き換えない
+    if(usesSceneDistanceFade_ && materialData){
+        materialData->distanceFadeStart = object3dCommon->GetSceneDistanceFadeStart();
+        materialData->distanceFadeEnd = object3dCommon->GetSceneDistanceFadeEnd();
+    }
+
     // パイプライン切り替え
     if(isSkinning_){
         commandList->SetGraphicsRootSignature(object3dCommon->GetSkinningRootSignature());

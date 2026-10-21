@@ -33,6 +33,9 @@ public:
 	void SetModel(const std::string& filePath);
 	void SetCamera(Camera* camera){ this->camera = camera; }
 	void SetIsSkinning(bool isSkinning){ isSkinning_ = isSkinning; }
+	// 遠くを空の色に溶け込ませる距離に、全オブジェクト共通の値(Obj3dCommon)を使うか
+	// falseにすると描画時に書き換えなくなるため、マテリアルに独自の距離を設定して使える
+	void SetUseSceneDistanceFade(bool use){ usesSceneDistanceFade_ = use; }
 	// インクの塗りテクスチャを設定する(nullptr なら塗られていない見た目で描く)
 	// モデルの UV が面どうしで重ならないように展開されていること
 	void SetPaintCanvas(const PaintCanvas* paintCanvas){ paintCanvas_ = paintCanvas; }
@@ -89,6 +92,9 @@ private:
 	Animation animation_;
 	float animationTime_ = 0.0f;
 	bool isSkinning_ = false;
+
+	// 遠くを空の色に溶け込ませる距離に、全オブジェクト共通の値を使うか
+	bool usesSceneDistanceFade_ = true;
 
 	// インクの塗りテクスチャ(持ち主は PaintManager)
 	const PaintCanvas* paintCanvas_ = nullptr;

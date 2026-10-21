@@ -637,7 +637,8 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 - カメラから水平に `kDrawRadius`（100。カメラの遠平面の初期値と同じ）以内には必ずタイルがある。枚数が足りているかは `static_assert` で確かめている。
 - タイルは 1 枚 4608 ポリゴンと重いため、描画のたびにカメラの視錐台に映るマスを求め、映らないマスは雲も霧も描かない（`UpdateTileVisibility()`）。マスを雲と霧の層ごと囲む球（半径約 14.2）が、視錐台の 6 面のどれかより外にあれば映らないとみなす。雲と霧の層で同じマスは同じ添字なので、`Draw()` で 1 回求めて `DrawFog()` でも使う。
 - タイルの行列（逆行列の計算を含む）は並べ直したときだけ求め、毎フレームはカメラの設定だけ行う。
-- 地面の切れ目が見えないよう、カメラからの距離が `horizonFadeStart`（初期値 45）から `horizonFadeEnd`（初期値 95）の間で、雲と霧の色をその方向に見える空（スカイボックス）の色へ少しずつ近づける。どちらも GlobalVariables の調整項目で、End は `kDrawRadius`（100）を超えないよう制限する。処理は Obj3D のピクセルシェーダーにあり、マテリアルの `distanceFadeStart` / `distanceFadeEnd` を設定した物だけに効く（初期値 0 は効かない）。
+- 地面の切れ目が見えないよう、カメラからの距離が `horizonFadeStart`（初期値 45）から `horizonFadeEnd`（初期値 95）の間で、雲と霧の色をその方向に見える空（スカイボックス）の色へ少しずつ近づける。どちらも GlobalVariables の調整項目で、End は `kDrawRadius`（100）を超えないよう制限する。処理は Obj3D のピクセルシェーダーにあり、マテリアルの `distanceFadeStart` / `distanceFadeEnd` で距離を決める。地面のタイルは `Obj3D::SetUseSceneDistanceFade(false)` で全オブジェクト共通の距離を使わず、この独自の距離を使う。
+- 地面以外の 3D オブジェクト（レール・スタート台・的・敵など）は、`Obj3dCommon::SetSceneDistanceFade()` の全オブジェクト共通の距離を `Obj3D::Draw()` で毎回マテリアルに書き込む。GameScene は Play 中だけ調整項目 `objectFadeStart`（初期値 60）〜 `objectFadeEnd`（初期値 95。カメラの遠平面を超えないよう制限）を設定し、Edit 中と他のシーンでは 0（溶け込ませない）にする（`GameScene::UpdateSceneDistanceFade()`）。
 
 | 関数 | 内容 |
 | --- | --- |

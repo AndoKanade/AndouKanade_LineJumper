@@ -198,6 +198,8 @@ void Ground::CreateTiles(Obj3dCommon* objCommon,const std::string& modelPath,flo
 		tile->SetRotate({kRotateX, 0.0f, 0.0f});
 		// Z方向は板の厚み(起伏の高さ)に相当するため、横の広がりとは別の拡大率にする
 		tile->SetScale({kTileScale, kTileScale, thicknessScale});
+		// 地面は他の物より手前から空に溶け込ませるため、全オブジェクト共通の距離は使わず、Update()で独自の距離を設定する
+		tile->SetUseSceneDistanceFade(false);
 
 		tiles.push_back(std::move(tile));
 	}
