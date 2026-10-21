@@ -68,19 +68,21 @@ void WinAPI::Update(){}
 // メッセージの取得とディスパッチ
 bool WinAPI::ProcessMessage(){
 	MSG msg{};
+	bool isQuitRequested = false;
 
-	// メッセージがある場合は取得して処理
-	if(PeekMessage(&msg,nullptr,0,0,PM_REMOVE)){
+	// たまっているメッセージを、このフレームのうちにすべて処理する
+	// 1フレームに1つずつだと、キーを押し続けたりマウスを動かしたりしてメッセージが多く来たときに処理が追いつかず、
+	// メッセージから入力を受け取っているImGuiの反応が遅れる(DirectInputで読んでいるカメラ操作だけは遅れないため、ずれて見える)
+	while(PeekMessage(&msg,nullptr,0,0,PM_REMOVE)){
+		// 終了メッセージが来たら、終了リクエストとして呼び出し側へ伝える
+		if(msg.message == WM_QUIT){
+			isQuitRequested = true;
+		}
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
 	}
 
-	// 終了メッセージが来たらtrueを返す
-	if(msg.message == WM_QUIT){
-		return true;
-	}
-
-	return false;
+	return isQuitRequested;
 }
 
 // 終了処理
