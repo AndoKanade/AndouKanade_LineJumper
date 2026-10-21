@@ -59,6 +59,12 @@ public:
 		Matrix4x4 uvTransform;
 		float shininess;
 		float environmentCoefficient;
+		// 鏡面反射をBlinn-Phongで求めるか(0ならPhong。シェーダー側にあった項目に合わせて持つ)
+		int32_t useBlinnPhong;
+		// カメラからの距離がdistanceFadeStartからdistanceFadeEndまでの間で、色を背景の空の色へ少しずつ近づける
+		// (遠くの物の切れ目を空に溶け込ませて見えなくするため。End <= Startのときは近づけない)
+		float distanceFadeStart;
+		float distanceFadeEnd;
 	};
 
 	// アルファテストの既定のしきい値(半分以上透けているピクセルは描画しない)

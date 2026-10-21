@@ -8,7 +8,10 @@
 #include "Camera.h"
 #include "EditorWidgets.h"
 #include "EditorContext.h"
+#include "EditorPicking.h"
 #include "externals/json.hpp"
+#include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <fstream>
 #include <filesystem>
@@ -26,6 +29,8 @@ namespace{
 	constexpr Vector4 kActiveRailColor = {1.0f, 0.9f, 0.1f, 1.0f};
 	// 乗っていないレールの色(黒)
 	constexpr Vector4 kInactiveRailColor = {0.0f, 0.0f, 0.0f, 1.0f};
+	// 一覧で選択中の制御点の色(アクティブなレールの黄色と見分けやすい水色)
+	constexpr Vector4 kSelectedPointColor = {0.1f, 0.9f, 1.0f, 1.0f};
 
 	// Play中のレール本体の色(インクで塗った区間は自機のインクの黄色、まだ通っていない区間はピンク)
 	constexpr Vector4 kPaintedRailColor = {1.0f, 0.85f, 0.1f, 1.0f};
@@ -48,6 +53,8 @@ namespace{
 
 	// 制御点の目印の表示スケール
 	constexpr float kControlPointScale = 0.2f;
+	// 選択中の制御点の目印の表示スケール(どの点を編集しているか一目で分かるよう、他の制御点より大きくする)
+	constexpr float kSelectedPointScale = 0.35f;
 	// レール曲線のサンプリング点の表示スケール(線のように見せるため制御点より小さくする)
 	constexpr float kCurveScale = 0.04f;
 	// 着地できる範囲のサンプリング点の表示スケール
@@ -55,10 +62,47 @@ namespace{
 
 	// 進行方向を前後の座標の差分で求めるときに使う、進行度tの刻み幅
 	constexpr float kForwardSampleDelta = 0.01f;
+
+	// 制御点が1つしかなく延長する向きが決まらないときに、末尾から伸ばす量
+	constexpr Vector3 kDefaultExtendOffset = {5.0f, 0.0f, 0.0f};
+	// 選択中の制御点と次の制御点の間に挿入するときの位置の割合(中間に置く)
+	constexpr float kInsertMiddleRate = 0.5f;
+
+	// 1周の角度(ラジアン)
+	constexpr float kTwoPi = 3.14159265f * 2.0f;
+	// 螺旋に入る向きが決まらない(前の制御点が無い・真上や真下にある)ときに使う向き
+	constexpr Vector3 kDefaultSpiralForward = {1.0f, 0.0f, 0.0f};
+	// 螺旋に入る向きとして使える水平方向の長さの下限(これ未満なら向きが決まらないとみなす)
+	constexpr float kMinSpiralForwardLength = 1e-4f;
+	// 螺旋の設定をImGuiでドラッグして変えるときの変化量
+	constexpr float kSpiralDragSpeed = 0.1f;
+	constexpr float kSpiralTurnsDragSpeed = 0.05f;
+	// 制御点一覧の表示領域の高さ(制御点が増えても、下の編集欄がスクロールで隠れないよう一覧だけをスクロールさせる)
+	constexpr float kPointListHeight = 150.0f;
+	// Catmull-Romの区間数(制御点数から引く数。始点と終点の制御点は曲線の向きを決めるだけで、曲線は通らないため)
+	constexpr size_t kCatmullRomExtraPointCount = 3;
+
+	// 高さを変えずに制御点をドラッグするときの、ドラッグ面の法線(真上)
+	constexpr Vector3 kHorizontalDragPlaneNormal = {0.0f, 1.0f, 0.0f};
+	// 走り切るまでの秒数を求めるとき、細かく分けた1区間の中で速さを読む位置の割合(中央で読む)
+	constexpr float kStatsSpeedSampleRate = 0.5f;
 }
 
 RailEditor::RailEditor() = default;
-RailEditor::~RailEditor() = default;
+
+// 破棄したエディターをCtrl+Zや保存の対象に残さないよう、登録を外す
+RailEditor::~RailEditor(){
+	// 保存していない変更があれば、次に作ったエディターで戻せるよう取っておく(変更が無ければ前に取っておいたものも消す)
+	// 操作の途中でまだ履歴に積んでいない変更も含めるため、先に確定してから判定する
+	CommitEditIfChanged();
+	if(history_.IsModified()){
+		unsavedStash_ = MakeSnapshot();
+	} else{
+		unsavedStash_.reset();
+	}
+
+	EditorDocumentManager::GetInstance()->Unregister(this);
+}
 
 // 制御点・曲線の点列・着地範囲の描画用のObj3Dを1つ生成する(Initialize/追加ボタン/ロードで共通利用)
 std::unique_ptr<Obj3D> RailEditor::CreatePointObject(const std::string& modelPath){
@@ -79,6 +123,123 @@ void RailEditor::SyncPointObjectsToControlPoints(Rail& rail){
 	}
 }
 
+// 描画用オブジェクトがcount個に満たなければ、足りない分だけ生成する
+// 曲線の点列・管はレールの区間数で必要な数が変わるため、延長して足りなくなったときだけ増やす
+void RailEditor::EnsureObjectCount(std::vector<std::unique_ptr<Obj3D>>& objects,size_t count,const std::string& modelPath){
+	if(objects.size() >= count){
+		return;
+	}
+	objects.reserve(count);
+	while(objects.size() < count){
+		objects.push_back(CreatePointObject(modelPath));
+	}
+}
+
+// 制御点数pointCountのレールで、Edit中の曲線の点列に使う点の数を求める
+// 区間数に比例した数の点を並べ、レールを延長しても点の間隔が粗くならないようにする(終点の分だけ1つ多い)
+size_t RailEditor::GetCurveSampleCount(size_t pointCount) const{
+	// Catmull-Romは制御点4つ以上必要なので、それ未満のときは曲線を描かない
+	if(pointCount < 4){
+		return 0;
+	}
+	return (pointCount - kCatmullRomExtraPointCount) * kCurveSamplesPerSegment + 1;
+}
+
+// Edit中の曲線の点列・着地できる範囲の点を描くオブジェクトを、全レール共通の置き場から1つ取り出す
+// 置き場の先頭から順に使い、足りなければ増やす。New Railや制御点の追加で一度にたくさん作ると画面が止まるため、
+// 1フレームに作る数を制限し、作りきれなかった点は描かずに次のフレーム以降に回す(数フレームで全部描かれる)
+Obj3D* RailEditor::AcquireSampleObject(){
+	if(usedSampleObjectCount_ >= sampleObjects_.size()){
+		if(createdSampleObjectCount_ >= kMaxSampleObjectCreatePerFrame){
+			return nullptr;
+		}
+		sampleObjects_.push_back(CreatePointObject(kSampleModelPath));
+		++createdSampleObjectCount_;
+	}
+	return sampleObjects_[usedSampleObjectCount_++].get();
+}
+
+// レールの末尾を延長する位置に置く制御点を求める
+// 末尾2点の差をそのまま末尾に足し、同じ向き・同じ間隔で伸ばす。回転と速度は末尾の制御点を引き継ぐ
+RailEditor::ControlPoint RailEditor::ComputeExtendedPoint(const std::vector<ControlPoint>& controlPoints) const{
+	if(controlPoints.empty()){
+		return kDefaultControlPoint;
+	}
+
+	ControlPoint point = controlPoints.back();
+	// 分岐設定は延長した制御点には引き継がない
+	point.branchTargetRailIndex = kDefaultControlPoint.branchTargetRailIndex;
+	point.branchTargetPointIndex = kDefaultControlPoint.branchTargetPointIndex;
+
+	if(controlPoints.size() < 2){
+		point.position = point.position + kDefaultExtendOffset;
+		return point;
+	}
+
+	const Vector3& last = controlPoints[controlPoints.size() - 1].position;
+	const Vector3& prev = controlPoints[controlPoints.size() - 2].position;
+	point.position = last + (last - prev);
+	return point;
+}
+
+// 指定インデックスの位置に制御点を挿入し、その制御点を選択状態にする(続けて位置を調整しやすくするため)
+void RailEditor::InsertControlPoint(Rail& rail,size_t insertIndex,const ControlPoint& point){
+	rail.controlPoints.insert(rail.controlPoints.begin() + insertIndex,point);
+	// 制御点の目印は毎フレーム制御点の座標へ置き直すため、個数だけそろえればよい
+	SyncPointObjectsToControlPoints(rail);
+	selectedPointIndex_ = static_cast<int>(insertIndex);
+}
+
+// 指定した制御点の直後に、その制御点から始まる螺旋の制御点をまとめて挿入する
+// 前の制御点から指定した制御点へ進んできた向きのまま螺旋に入るよう、円の中心をその向きの右(左)横に置く
+// 高さは角度に比例して上げ、らせん階段のように1周ごとにrisePerTurnだけ上がる
+void RailEditor::GenerateSpiral(Rail& rail,size_t startIndex){
+	std::vector<ControlPoint>& controlPoints = rail.controlPoints;
+	const ControlPoint startPoint = controlPoints[startIndex];
+
+	// 螺旋に入る向き(水平)。前の制御点から指定した制御点への向きを使う
+	Vector3 forward = kDefaultSpiralForward;
+	if(startIndex > 0){
+		Vector3 incoming = startPoint.position - controlPoints[startIndex - 1].position;
+		incoming.y = 0.0f;
+		if(Length(incoming) >= kMinSpiralForwardLength){
+			forward = Normalize(incoming);
+		}
+	}
+	// 進む向きの右横(水平)。右回りならこちら側に、左回りなら反対側に円の中心を置く
+	const Vector3 right = {forward.z, 0.0f, -forward.x};
+	const float side = spiral_.turnsRight?1.0f:-1.0f;
+	const Vector3 center = startPoint.position + right * (side * spiral_.radius);
+
+	// 螺旋の上に置く制御点の数
+	const int spiralPointCount = (std::max)(1,static_cast<int>(std::lround(spiral_.turns * static_cast<float>(spiral_.pointsPerTurn))));
+	// 末尾に足すときは、最後の制御点は曲線の向きを決めるだけで曲線が通らないため、螺旋の終わりまで曲線が通るよう1つ先にもう1つ足す
+	const bool isAppending = (startIndex + 1 == controlPoints.size());
+	const int generateCount = spiralPointCount + (isAppending?1:0);
+
+	std::vector<ControlPoint> spiralPoints;
+	spiralPoints.reserve(static_cast<size_t>(generateCount));
+	for(int i = 1; i <= generateCount; ++i){
+		const float turnRate = static_cast<float>(i) / static_cast<float>(spiral_.pointsPerTurn);
+		const float angle = kTwoPi * turnRate;
+
+		// 角度0で指定した制御点に重なり、進む向きへ出発して中心の周りを回る
+		ControlPoint point = startPoint;
+		point.position = center - right * (side * spiral_.radius * std::cos(angle)) + forward * (spiral_.radius * std::sin(angle));
+		point.position.y = startPoint.position.y + spiral_.risePerTurn * turnRate;
+		// 分岐設定は引き継がない(速度・回転は指定した制御点のものを引き継ぐ)
+		point.branchTargetRailIndex = kDefaultControlPoint.branchTargetRailIndex;
+		point.branchTargetPointIndex = kDefaultControlPoint.branchTargetPointIndex;
+		spiralPoints.push_back(point);
+	}
+
+	controlPoints.insert(controlPoints.begin() + startIndex + 1,spiralPoints.begin(),spiralPoints.end());
+	// 制御点の目印は毎フレーム制御点の座標へ置き直すため、個数だけそろえればよい
+	SyncPointObjectsToControlPoints(rail);
+	// 螺旋の終わりの制御点を選び、続けて延長や調整をしやすくする
+	selectedPointIndex_ = static_cast<int>(startIndex) + spiralPointCount;
+}
+
 // 新しいレールを1本追加し、アクティブなレールとして切り替える
 void RailEditor::AddRail(){
 	Rail rail;
@@ -86,27 +247,9 @@ void RailEditor::AddRail(){
 	rail.controlPoints.push_back(kDefaultControlPoint);
 	rail.pointObjects.push_back(CreatePointObject(kControlPointModelPath));
 
-	// レール曲線可視化用のサンプリング点オブジェクトを固定数だけ生成しておく
-	rail.curveObjects.reserve(kCurveSampleCount);
-	for(int i = 0; i < kCurveSampleCount; ++i){
-		rail.curveObjects.push_back(CreatePointObject(kSampleModelPath));
-	}
-
-	// 着地できる範囲可視化用のオブジェクトも固定数だけ生成しておく(1サンプルにつき左右2個)
-	const int landingRangeObjectCount = kLandingRangeSampleCount * 2;
-	rail.landingRangeObjects.reserve(landingRangeObjectCount);
-	for(int i = 0; i < landingRangeObjectCount; ++i){
-		rail.landingRangeObjects.push_back(CreatePointObject(kSampleModelPath));
-	}
-
-	// Play中のレール本体の管も固定数だけ生成しておく
-	rail.tubeObjects.reserve(kTubeSegmentCount);
-	for(int i = 0; i < kTubeSegmentCount; ++i){
-		auto tube = std::make_unique<Obj3D>();
-		tube->Initialize(objCommon_);
-		tube->SetModel(kTubeModelPath);
-		rail.tubeObjects.push_back(std::move(tube));
-	}
+	// 曲線の点列・着地できる範囲の点は全レール共通の置き場(sampleObjects_)から使い、
+	// 管は区間数で必要な数が変わるためBuildTubes()で足りない分だけ生成する
+	// (New Railで一度にたくさん作ると画面が止まるため、ここでは制御点の目印1つだけを作る)
 
 	rails_.push_back(std::move(rail));
 	activeRailIndex_ = static_cast<int>(rails_.size()) - 1;
@@ -134,7 +277,30 @@ void RailEditor::Initialize(Obj3dCommon* objCommon){
 	AddRail();
 
 	// 保存済みのJSONがあれば読み込んで初期状態を上書きする(ホットロードの起動時オート読込)
-	LoadFromJson();
+	LoadRailsFromFiles();
+
+	// 編集中に描画用オブジェクトを作って画面が止まらないよう、読み込んだレールに必要な分を起動時に作っておく
+	// 曲線の点列は延長に備えて多めに作り、管はPlayに入ったときに作らずに済むよう今の区間数の分だけ作る
+	size_t sampleObjectCount = kSampleObjectHeadroom;
+	for(Rail& rail : rails_){
+		sampleObjectCount += GetCurveSampleCount(rail.controlPoints.size());
+		if(rail.controlPoints.size() >= 4){
+			EnsureObjectCount(rail.tubeObjects,(rail.controlPoints.size() - kCatmullRomExtraPointCount) * kTubeSegmentsPerRailSegment,kTubeModelPath);
+		}
+	}
+	EnsureObjectCount(sampleObjects_,sampleObjectCount,kSampleModelPath);
+
+	// 読み込んだ状態を編集の基準(保存済み)にし、Ctrl+Z・すべて保存の対象に登録する
+	history_.Reset(MakeSnapshot());
+	EditorDocumentManager::GetInstance()->Register(this);
+
+	// 前のシーンで保存せずに残していた変更があれば戻す
+	// 読み込んだファイルの状態からの1回の編集として積み、未保存のままにする(Ctrl+Zで読み込んだファイルの状態に戻せる)
+	if(unsavedStash_){
+		ApplySnapshot(*unsavedStash_);
+		unsavedStash_.reset();
+		CommitEditIfChanged();
+	}
 }
 
 // エディターの更新処理
@@ -164,14 +330,11 @@ void RailEditor::Update(){
 	// 以降はアクティブなレールに対する編集操作
 	Rail& activeRail = rails_[activeRailIndex_];
 
-	// 制御点の追加ボタン
+	// 制御点の追加ボタン(レールを延長しやすいよう、原点ではなく末尾2点の向きにそのまま伸ばした位置へ追加する)
 	if(ImGui::Button("Add Control Point")){
-		// リストの最後に新しい制御点を追加
-		activeRail.controlPoints.push_back(kDefaultControlPoint);
-
-		// 追加した制御点用の3Dオブジェクトを生成
-		activeRail.pointObjects.push_back(CreatePointObject(kControlPointModelPath));
+		InsertControlPoint(activeRail,activeRail.controlPoints.size(),ComputeExtendedPoint(activeRail.controlPoints));
 	}
+	ImGui::TextDisabled("(末尾の2点と同じ向き・間隔で延長する)");
 
 	ImGui::Separator();
 
@@ -185,6 +348,7 @@ void RailEditor::Update(){
 	}
 	ImGui::SameLine();
 	ImGui::Text("(%s)",GetRailFilePath(activeRailIndex_).c_str());
+	EditorWidgets::ShowUnsavedMark(history_.IsModified());
 
 	ImGui::Separator();
 
@@ -195,6 +359,23 @@ void RailEditor::Update(){
 	// ジャンプしてレールに着地できる範囲の表示ON/OFF切り替え(全レールまとめて切り替わる)
 	ImGui::Checkbox("Show Landing Range",&showLandingRange_);
 	ImGui::TextDisabled("(着地できる水平方向の許容距離: %.2f)",landingRangeRadius_);
+
+	// Sceneビュー上で制御点を左ドラッグして動かす設定
+	ImGui::Checkbox("Drag Points In Scene",&isPointDragMode_);
+	ImGui::BeginDisabled(!isPointDragMode_);
+	ImGui::Checkbox("Keep Height",&keepsHeightWhileDragging_);
+	ImGui::EndDisabled();
+	ImGui::TextDisabled("(Sceneビューで左ドラッグして移動)");
+	// 的・敵の配置エディターも同じ左ドラッグで掴むため、重なった物を一緒に掴まないよう注意を出す
+	ImGui::TextDisabled("(的・敵のPlacement Modeと同時ONに注意)");
+
+	ImGui::Separator();
+
+	// レールの全長と走り切るまでの秒数(ステージの流れを組むときの目安)
+	const RailStats stats = ComputeActiveRailStats();
+	ImGui::Text("Length: %.1f  Time: %.1fs",stats.length,stats.time);
+	// 発射直後の加速・空中で遅くなる分は含まない
+	ImGui::TextDisabled("(railSpeed %.2f での目安)",baseRailSpeed_);
 
 	ImGui::Separator();
 
@@ -207,7 +388,10 @@ void RailEditor::Update(){
 	int deleteIndex = -1;
 
 	// 制御点一覧(Hierarchy的な一覧表示)。クリックした行を選択状態にする
+	// 一覧は高さを決めた子ウィンドウの中だけでスクロールさせ、制御点が増えても下の編集欄が見えるようにする
 	ImGui::Text("Control Points: %zu",activeRail.controlPoints.size());
+	ImGui::TextDisabled("(ダブルクリックでカメラを寄せる)");
+	ImGui::BeginChild("ControlPointList",ImVec2(0.0f,kPointListHeight),true);
 	for(size_t i = 0; i < activeRail.controlPoints.size(); ++i){
 		// IDの重複を防ぐためPushIDを使用
 		ImGui::PushID(static_cast<int>(i));
@@ -221,8 +405,13 @@ void RailEditor::Update(){
 		if(ImGui::Selectable(label,selectedPointIndex_ == static_cast<int>(i))){
 			selectedPointIndex_ = static_cast<int>(i);
 		}
+		// ダブルクリックした制御点にカメラを寄せる(1回目のクリックで選択済みのため、選択中の制御点に寄せればよい)
+		if(ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)){
+			hasFocusRequest_ = true;
+		}
 		ImGui::PopID();
 	}
+	ImGui::EndChild();
 
 	ImGui::Separator();
 
@@ -231,6 +420,8 @@ void RailEditor::Update(){
 		ImGui::PushID(selectedPointIndex_);
 		ControlPoint& selectedPoint = activeRail.controlPoints[selectedPointIndex_];
 		ImGui::Text("Point %d",selectedPointIndex_);
+		// レールの始点からこの制御点までの長さと秒数(敵や的をどのあたりに置くか決める目安)
+		ImGui::Text("From Start: %.1f  %.1fs",stats.lengthToSelected,stats.timeToSelected);
 
 		// 座標、回転、速度の編集UI
 		ImGui::DragFloat3("Position",&selectedPoint.position.x,0.1f);
@@ -256,6 +447,57 @@ void RailEditor::Update(){
 		}
 		ImGui::EndDisabled();
 
+		// 選択中の制御点の直後に制御点を挿入するボタン(曲がりを細かく作りたい区間に点を足す用)
+		// 次の制御点があればその中間、末尾ならAdd Control Pointと同じく延長した位置に置く
+		if(ImGui::Button("Insert After")){
+			const size_t insertIndex = static_cast<size_t>(selectedPointIndex_) + 1;
+			ControlPoint insertPoint;
+			if(insertIndex < activeRail.controlPoints.size()){
+				const ControlPoint& next = activeRail.controlPoints[insertIndex];
+				insertPoint = kDefaultControlPoint;
+				insertPoint.position = Lerp(selectedPoint.position,next.position,kInsertMiddleRate);
+				insertPoint.rotation = Lerp(selectedPoint.rotation,next.rotation,kInsertMiddleRate);
+				insertPoint.speed = Lerp(selectedPoint.speed,next.speed,kInsertMiddleRate);
+			} else{
+				insertPoint = ComputeExtendedPoint(activeRail.controlPoints);
+			}
+			// 挿入でcontrolPointsが再確保されるとselectedPointの参照が無効になるため、ここ以降は使わない
+			InsertControlPoint(activeRail,insertIndex,insertPoint);
+		}
+		ImGui::SameLine();
+
+		// 選択中の制御点にカメラを寄せるボタン(俯瞰デバッグカメラに切り替えて、今の向きのまま近づける)
+		if(ImGui::Button("Focus")){
+			hasFocusRequest_ = true;
+		}
+
+		// 選択中の制御点から螺旋(らせん階段のような形)を作る
+		// 制御点を1つずつ置くと手間がかかるため、半径・1周で上がる高さ・周回数を決めてまとめて作る(Ctrl+Zで戻せる)
+		if(ImGui::CollapsingHeader("Spiral")){
+			ImGui::DragFloat("Radius",&spiral_.radius,kSpiralDragSpeed,kMinSpiralRadius,FLT_MAX);
+			ImGui::DragFloat("Rise / Turn",&spiral_.risePerTurn,kSpiralDragSpeed);
+			ImGui::DragFloat("Turns",&spiral_.turns,kSpiralTurnsDragSpeed,kMinSpiralTurns,FLT_MAX);
+			ImGui::SliderInt("Points / Turn",&spiral_.pointsPerTurn,kMinSpiralPointsPerTurn,kMaxSpiralPointsPerTurn);
+			if(ImGui::RadioButton("Right",spiral_.turnsRight)){
+				spiral_.turnsRight = true;
+			}
+			ImGui::SameLine();
+			if(ImGui::RadioButton("Left",!spiral_.turnsRight)){
+				spiral_.turnsRight = false;
+			}
+
+			// 手入力で範囲の外にされても、形が崩れないよう制限する
+			spiral_.radius = (std::max)(spiral_.radius,kMinSpiralRadius);
+			spiral_.turns = (std::max)(spiral_.turns,kMinSpiralTurns);
+			spiral_.pointsPerTurn = std::clamp(spiral_.pointsPerTurn,kMinSpiralPointsPerTurn,kMaxSpiralPointsPerTurn);
+
+			ImGui::TextDisabled("(この点の後ろに挿入。後ろの点は残る)");
+			if(ImGui::Button("Generate Spiral")){
+				// 挿入でcontrolPointsが再確保されるとselectedPointの参照が無効になるため、ここ以降は使わない
+				GenerateSpiral(activeRail,static_cast<size_t>(selectedPointIndex_));
+			}
+		}
+
 		ImGui::PopID();
 	} else{
 		ImGui::TextDisabled("Select a point above");
@@ -270,6 +512,15 @@ void RailEditor::Update(){
 	}
 
 	ImGui::End();
+
+	// パネルの外(Sceneビュー上)でのマウスドラッグによる制御点の移動
+	UpdateMouseDrag();
+
+	// ImGuiの操作中・ドラッグ中は値が動いている途中のため、操作を終えてから1回の編集として履歴に積む
+	// Inspectorなど他の場所からの編集もまとめて拾えるよう、変更があったかは状態を比べて判定する
+	if(!ImGui::IsAnyItemActive() && !isDragging_){
+		CommitEditIfChanged();
+	}
 #endif
 }
 
@@ -288,6 +539,10 @@ void RailEditor::Draw(){
 	// Edit中はレールが編集されうるため、次にPlayに入ったときに管の行列を求め直す
 	areTubesBuilt_ = false;
 
+	// 曲線の点列・着地できる範囲の点のオブジェクトは、毎フレーム置き場の先頭から使い直す
+	usedSampleObjectCount_ = 0;
+	createdSampleObjectCount_ = 0;
+
 	Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera();
 
 	// レールの乗り換えを目視確認できるよう、アクティブなレールだけでなく全レールを描画する
@@ -301,11 +556,15 @@ void RailEditor::Draw(){
 		if(rail.showControlPointModels){
 			// 制御点ごとに専用の3Dオブジェクトで描画
 			for(size_t i = 0; i < rail.controlPoints.size(); ++i){
+				// 一覧で選択中の制御点(アクティブなレールのものだけ)は、色を変えて大きく描き、編集中の点を見分けやすくする
+				const bool isSelectedPoint = static_cast<int>(railIndex) == activeRailIndex_ && static_cast<int>(i) == selectedPointIndex_;
+				const float pointScale = isSelectedPoint?kSelectedPointScale:kControlPointScale;
+
 				rail.pointObjects[i]->SetTranslate(rail.controlPoints[i].position);
 				// 他のオブジェクトを隠さないよう、球はレールの目印として分かる程度の小ささにする
-				rail.pointObjects[i]->SetScale({kControlPointScale, kControlPointScale, kControlPointScale});
+				rail.pointObjects[i]->SetScale({pointScale, pointScale, pointScale});
 				if(Model::Material* mat = rail.pointObjects[i]->GetMaterial()){
-					mat->color = railColor;
+					mat->color = isSelectedPoint?kSelectedPointColor:railColor;
 				}
 
 				// アクティブカメラに毎フレーム同期
@@ -321,23 +580,30 @@ void RailEditor::Draw(){
 		// レール曲線をサンプリング点列(小さい球)で可視化する簡易版
 		// Catmull-Romは制御点4つ以上必要なので、それ未満のときは何も描画しない
 		if(rail.showCurve && rail.controlPoints.size() >= 4){
-			for(int i = 0; i < kCurveSampleCount; ++i){
-				float t = static_cast<float>(i) / static_cast<float>(kCurveSampleCount - 1);
+			const size_t curveSampleCount = GetCurveSampleCount(rail.controlPoints.size());
+			for(size_t i = 0; i < curveSampleCount; ++i){
+				// オブジェクトを作りきれていなければ、残りの点は次のフレーム以降に描く
+				Obj3D* curveObject = AcquireSampleObject();
+				if(!curveObject){
+					break;
+				}
+
+				float t = static_cast<float>(i) / static_cast<float>(curveSampleCount - 1);
 				Vector3 pos = ComputePositionOnRail(rail.controlPoints,t);
 
-				rail.curveObjects[i]->SetTranslate(pos);
+				curveObject->SetTranslate(pos);
 				// 制御点よりさらに小さくして、線のように見せる
-				rail.curveObjects[i]->SetScale({kCurveScale, kCurveScale, kCurveScale});
-				if(Model::Material* mat = rail.curveObjects[i]->GetMaterial()){
+				curveObject->SetScale({kCurveScale, kCurveScale, kCurveScale});
+				if(Model::Material* mat = curveObject->GetMaterial()){
 					mat->color = railColor;
 				}
 
 				if(activeCamera){
-					rail.curveObjects[i]->SetCamera(activeCamera);
+					curveObject->SetCamera(activeCamera);
 				}
 
-				rail.curveObjects[i]->Update();
-				rail.curveObjects[i]->Draw();
+				curveObject->Update();
+				curveObject->Draw();
 			}
 		}
 
@@ -362,9 +628,12 @@ void RailEditor::Draw(){
 				}
 				horizontalRight = Normalize(horizontalRight) * landingRangeRadius_;
 
-				// 左右1組を、まとめて確保しておいたオブジェクトの連続した2要素に割り当てる
-				Obj3D* rightObject = rail.landingRangeObjects[i * 2].get();
-				Obj3D* leftObject = rail.landingRangeObjects[i * 2 + 1].get();
+				// 左右1組のオブジェクトを取り出す(作りきれていなければ、残りの点は次のフレーム以降に描く)
+				Obj3D* rightObject = AcquireSampleObject();
+				Obj3D* leftObject = AcquireSampleObject();
+				if(!rightObject || !leftObject){
+					break;
+				}
 
 				rightObject->SetTranslate(pos + horizontalRight);
 				leftObject->SetTranslate(pos - horizontalRight);
@@ -391,12 +660,16 @@ void RailEditor::Draw(){
 // レールを細かい区間に分け、区間ごとに円柱を始点から終点へ向けて伸ばして並べる
 void RailEditor::BuildTubes(){
 	for(Rail& rail : rails_){
-		rail.tubeSegmentVisible.assign(kTubeSegmentCount,false);
-
 		// Catmull-Romは制御点4つ以上必要なので、それ未満のときは管を作らない
 		if(rail.controlPoints.size() < 4){
+			rail.tubeSegmentVisible.clear();
 			continue;
 		}
+
+		// 区間数に比例した数の管を使い、レールを延長しても管が角ばらないようにする
+		const size_t tubeCount = (rail.controlPoints.size() - kCatmullRomExtraPointCount) * kTubeSegmentsPerRailSegment;
+		EnsureObjectCount(rail.tubeObjects,tubeCount,kTubeModelPath);
+		rail.tubeSegmentVisible.assign(tubeCount,false);
 
 		// レールの始点と終点に制御点の目印を置く
 		// Catmull-Romの曲線は2番目の制御点から最後の1つ前の制御点までを通るため、その2点がレールの始点と終点になる
@@ -410,8 +683,8 @@ void RailEditor::BuildTubes(){
 
 		// 区間の終点は次の区間の始点になるため、前の区間の終点を使い回して座標の計算を1回で済ませる
 		Vector3 start = ComputePositionOnRail(rail.controlPoints,0.0f);
-		for(int i = 0; i < kTubeSegmentCount; ++i){
-			float endT = static_cast<float>(i + 1) / static_cast<float>(kTubeSegmentCount);
+		for(size_t i = 0; i < tubeCount; ++i){
+			float endT = static_cast<float>(i + 1) / static_cast<float>(tubeCount);
 			Vector3 end = ComputePositionOnRail(rail.controlPoints,endT);
 
 			Vector3 segment = end - start;
@@ -464,13 +737,14 @@ void RailEditor::DrawTubes(){
 			}
 		}
 
-		for(int i = 0; i < kTubeSegmentCount; ++i){
+		const size_t tubeCount = rail.tubeSegmentVisible.size();
+		for(size_t i = 0; i < tubeCount; ++i){
 			if(!rail.tubeSegmentVisible[i]){
 				continue;
 			}
 
 			// 区間の中央の進行度が塗った範囲に入っていれば、インクの色にする
-			float middleT = (static_cast<float>(i) + kTubeSegmentMiddleRate) / static_cast<float>(kTubeSegmentCount);
+			float middleT = (static_cast<float>(i) + kTubeSegmentMiddleRate) / static_cast<float>(tubeCount);
 			bool isPaintedSegment = rail.isPainted && middleT >= rail.paintStartT && middleT <= rail.paintEndT;
 
 			Obj3D* tube = rail.tubeObjects[i].get();
@@ -639,18 +913,13 @@ Vector3 RailEditor::GetRotationOnRail(float t) const{
 	float yaw = std::atan2(forward.x,forward.z);
 
 	// ロール(Z軸回転)は制御点間の値を補間して使用(バンク演出用)
+	// 位置と同じ区間分けで、区間の始点・終点にあたる制御点(GetPositionOnRailで言うp1・p2)の値を補間し、制御点の位置でその値になるようにする
 	float roll = 0.0f;
-	if(controlPoints.size() >= 2){
-		size_t numSegments = controlPoints.size() - 1;
-		float scaledT = t * static_cast<float>(numSegments);
-		size_t segment = static_cast<size_t>(scaledT);
-
-		if(segment >= numSegments){
-			segment = numSegments - 1;
-		}
-
-		float localT = scaledT - static_cast<float>(segment);
-		roll = Lerp(controlPoints[segment].rotation.z,controlPoints[segment + 1].rotation.z,localT);
+	if(controlPoints.size() >= 4){
+		size_t segment = 0;
+		float localT = 0.0f;
+		ComputeCurveSegment(controlPoints.size(),t,segment,localT);
+		roll = Lerp(controlPoints[segment + kRailStartPointIndex].rotation.z,controlPoints[segment + kRailStartPointIndex + 1].rotation.z,localT);
 	}
 
 	return {pitch, yaw, roll};
@@ -681,19 +950,30 @@ Vector3 RailEditor::GetForwardOnRail(float t) const{
 
 // 進行度t(0〜1)からレール上の速度(各制御点のSpeed値を補間したもの)を取得(対象はアクティブなレール)
 float RailEditor::GetSpeedOnRail(float t) const{
-	const std::vector<ControlPoint>& controlPoints = rails_[activeRailIndex_].controlPoints;
+	return ComputeSpeedOnRail(rails_[activeRailIndex_].controlPoints,t);
+}
 
+// 進行度tと制御点配列から、レール上の速度(各制御点のSpeed値を補間したもの)を計算する
+float RailEditor::ComputeSpeedOnRail(const std::vector<ControlPoint>& controlPoints,float t) const{
 	// 制御点が無い場合は既定速度を返す
 	if(controlPoints.empty()){
-		return 1.0f;
+		return kDefaultControlPoint.speed;
 	}
-	// 制御点が1つだけの場合は補間できないためその点のSpeed値をそのまま返す
-	if(controlPoints.size() == 1){
+	// 曲線を作れない(制御点4つ未満)ときは補間できないため、先頭の制御点のSpeed値をそのまま返す
+	if(controlPoints.size() < 4){
 		return controlPoints[0].speed;
 	}
 
-	// GetRotationOnRailのロール補間と同じ区間分割(全制御点をそのまま区間とする)でSpeed値を線形補間する
-	size_t numSegments = controlPoints.size() - 1;
+	// GetRotationOnRailのロール補間と同じく、位置と同じ区間分けで区間の始点・終点にあたる制御点のSpeed値を補間する
+	size_t segment = 0;
+	float localT = 0.0f;
+	ComputeCurveSegment(controlPoints.size(),t,segment,localT);
+	return Lerp(controlPoints[segment + kRailStartPointIndex].speed,controlPoints[segment + kRailStartPointIndex + 1].speed,localT);
+}
+
+// 進行度tから、Catmull-Romの区間番号と区間内の進行度を求める(ComputePositionOnRailと同じ区間分け。制御点4つ以上が前提)
+void RailEditor::ComputeCurveSegment(size_t pointCount,float t,size_t& outSegment,float& outLocalT) const{
+	size_t numSegments = pointCount - kCatmullRomExtraPointCount;
 	float scaledT = t * static_cast<float>(numSegments);
 	size_t segment = static_cast<size_t>(scaledT);
 
@@ -701,8 +981,8 @@ float RailEditor::GetSpeedOnRail(float t) const{
 		segment = numSegments - 1;
 	}
 
-	float localT = scaledT - static_cast<float>(segment);
-	return Lerp(controlPoints[segment].speed,controlPoints[segment + 1].speed,localT);
+	outSegment = segment;
+	outLocalT = scaledT - static_cast<float>(segment);
 }
 
 // 進行度tの位置からレールに沿ってdistanceだけ進んだ先の進行度を取得(対象はアクティブなレール)
@@ -735,6 +1015,29 @@ void RailEditor::SwitchActiveRail(int index){
 
 	// レールが変わったら、別レールの制御点を指したままにならないよう選択を解除する
 	selectedPointIndex_ = -1;
+}
+
+// 指定レールをアクティブにして、指定した制御点を選択する(範囲外の制御点を指定したときは未選択にする)
+void RailEditor::SelectPoint(int railIndex,int pointIndex){
+	SwitchActiveRail(railIndex);
+	if(pointIndex >= 0 && pointIndex < static_cast<int>(rails_[activeRailIndex_].controlPoints.size())){
+		selectedPointIndex_ = pointIndex;
+	}
+}
+
+// 「Focus」の操作があれば、選択中の制御点の位置を返す(1回読むと消える)
+bool RailEditor::ConsumeFocusRequest(Vector3& outPosition){
+	if(!hasFocusRequest_){
+		return false;
+	}
+	hasFocusRequest_ = false;
+
+	const std::vector<ControlPoint>& controlPoints = rails_[activeRailIndex_].controlPoints;
+	if(selectedPointIndex_ < 0 || selectedPointIndex_ >= static_cast<int>(controlPoints.size())){
+		return false;
+	}
+	outPosition = controlPoints[selectedPointIndex_].position;
+	return true;
 }
 
 // 現在アクティブなレールのインデックスを取得(デバッグ表示用)
@@ -772,6 +1075,68 @@ int RailEditor::GetControlPointIndexFromT(float t) const{
 
 	// 区間の始点(GetPositionOnRailで言うp1)のインデックスが「直近に通過した制御点」
 	return static_cast<int>(segment) + 1;
+}
+
+// アクティブなレールの、指定した制御点を通る位置の進行度を取得
+// 制御点iは、ComputePositionOnRailの区間(i - 1)の始点にあたる
+// 0番目は曲線より手前、最後の制御点は曲線より先にあり曲線が通らないため、曲線の始点・終点の進行度に丸める
+float RailEditor::GetTOfControlPoint(int index) const{
+	const std::vector<ControlPoint>& controlPoints = rails_[activeRailIndex_].controlPoints;
+
+	// Catmull-Rom補間には最低4点必要
+	if(controlPoints.size() < 4){
+		return 0.0f;
+	}
+
+	const float numSegments = static_cast<float>(controlPoints.size() - kCatmullRomExtraPointCount);
+	const float t = (static_cast<float>(index) - static_cast<float>(kRailStartPointIndex)) / numSegments;
+	return std::clamp(t,0.0f,1.0f);
+}
+
+// アクティブなレールの全長と走り切るまでの秒数、始点から選択中の制御点までの長さと秒数を求める
+// 曲線の点列と同じ細かさでレールを分け、分けた区間ごとに「長さ÷その区間の速さ」を足していく
+// 速さはPlayerと同じく、制御点のSpeed値に全体の速さ(railSpeed)を掛けたもの
+RailEditor::RailStats RailEditor::ComputeActiveRailStats() const{
+	RailStats stats;
+	const std::vector<ControlPoint>& controlPoints = rails_[activeRailIndex_].controlPoints;
+
+	// Catmull-Rom補間には最低4点必要
+	if(controlPoints.size() < 4){
+		return stats;
+	}
+
+	const size_t curveSegmentCount = controlPoints.size() - kCatmullRomExtraPointCount;
+	const size_t sampleCount = curveSegmentCount * kCurveSamplesPerSegment;
+
+	// 選択中の制御点までに含まれる、分けた区間の数(制御点が曲線を通る位置は区間の境目にあたるため、整数で数えられる)
+	size_t samplesToSelected = 0;
+	if(selectedPointIndex_ >= 0 && selectedPointIndex_ < static_cast<int>(controlPoints.size())){
+		const int curveSegmentIndex = std::clamp(selectedPointIndex_ - static_cast<int>(kRailStartPointIndex),0,static_cast<int>(curveSegmentCount));
+		samplesToSelected = static_cast<size_t>(curveSegmentIndex) * kCurveSamplesPerSegment;
+	}
+
+	// 区間の終点は次の区間の始点になるため、前の区間の終点を使い回して座標の計算を1回で済ませる
+	Vector3 start = ComputePositionOnRail(controlPoints,0.0f);
+	for(size_t i = 0; i < sampleCount; ++i){
+		const float startT = static_cast<float>(i) / static_cast<float>(sampleCount);
+		const float endT = static_cast<float>(i + 1) / static_cast<float>(sampleCount);
+		const Vector3 end = ComputePositionOnRail(controlPoints,endT);
+
+		const float length = Distance(start,end);
+		const float speed = ComputeSpeedOnRail(controlPoints,Lerp(startT,endT,kStatsSpeedSampleRate)) * baseRailSpeed_;
+		const float time = (speed >= kMinStatsSpeed)?length / speed:0.0f;
+
+		stats.length += length;
+		stats.time += time;
+		if(i < samplesToSelected){
+			stats.lengthToSelected += length;
+			stats.timeToSelected += time;
+		}
+
+		start = end;
+	}
+
+	return stats;
 }
 
 // アクティブなレールの全制御点を囲む範囲の中心座標を取得
@@ -834,8 +1199,8 @@ void RailEditor::ToggleShowCurve(){
 	rails_[activeRailIndex_].showCurve = !rails_[activeRailIndex_].showCurve;
 }
 
-// 指定インデックスのレール1本だけをJSONファイルに保存する
-void RailEditor::SaveRailToFile(int index){
+// 指定インデックスのレール1本だけをJSONファイルに保存する(書き込めなかったときはfalse)
+bool RailEditor::SaveRailToFile(int index){
 	Rail& rail = rails_[index];
 
 	// ルート要素。nameは読み込み時の簡易フォーマットチェック・レール名の保存用
@@ -867,9 +1232,10 @@ void RailEditor::SaveRailToFile(int index){
 	// ファイルへ書き出し(setwで人が読める整形出力にする)
 	std::ofstream file(savePathStr);
 	if(!file.is_open()){
-		return;
+		return false;
 	}
 	file << std::setw(4) << root << std::endl;
+	return true;
 }
 
 // 指定インデックスのレール1本だけをJSONファイルから読み込む(ファイルが無ければ何もしない)
@@ -923,15 +1289,34 @@ void RailEditor::LoadRailFromFile(int index){
 
 // 全レールをそれぞれ対応するJSONファイルへ保存する
 void RailEditor::SaveToJson(){
+	// まだ履歴に積んでいない編集があれば先に確定し、保存した状態を保存済みとして記録できるようにする
+	CommitEditIfChanged();
+
+	bool isAllSaved = true;
 	for(size_t i = 0; i < rails_.size(); ++i){
-		SaveRailToFile(static_cast<int>(i));
+		if(!SaveRailToFile(static_cast<int>(i))){
+			isAllSaved = false;
+		}
 	}
+
+	// 1本でも書き込めなかったときは、未保存の表示を残す
+	if(isAllSaved){
+		history_.MarkSaved();
+	}
+}
+
+// 全レールをJSONファイルから読み込む(Loadボタン用)
+// 読み込みも1回の編集として履歴に積み、Ctrl+Zで読み込む前に戻せるようにする
+void RailEditor::LoadFromJson(){
+	LoadRailsFromFiles();
+	CommitEditIfChanged();
+	history_.MarkSaved();
 }
 
 // 全レールをJSONファイルから読み込む
 // メモリ上に既にあるレールは対応ファイルで上書きし、ディスクにのみ存在するレール(rail1.json, rail2.json...)は
 // New Rail相当の追加をしながら連番で読み込んでいく(ファイルが途切れたところで打ち切り)
-void RailEditor::LoadFromJson(){
+void RailEditor::LoadRailsFromFiles(){
 	// 既存のレールを、それぞれ対応するファイルがあれば読み込み直す
 	for(size_t i = 0; i < rails_.size(); ++i){
 		LoadRailFromFile(static_cast<int>(i));
@@ -947,4 +1332,166 @@ void RailEditor::LoadFromJson(){
 
 	// 読み込み後は先頭のレールをアクティブな編集対象にする
 	activeRailIndex_ = 0;
+}
+// 今のレールの状態を編集履歴に残す形で取得する
+RailEditor::RailsSnapshot RailEditor::MakeSnapshot() const{
+	RailsSnapshot snapshot;
+	snapshot.reserve(rails_.size());
+	for(const Rail& rail : rails_){
+		snapshot.push_back({rail.name, rail.controlPoints});
+	}
+	return snapshot;
+}
+
+// 編集履歴の状態をレールに反映する
+void RailEditor::ApplySnapshot(const RailsSnapshot& snapshot){
+	const int prevActiveRailIndex = activeRailIndex_;
+
+	// レールの本数を履歴の状態にそろえる(New Railを戻したときは減らし、やり直したときは増やす)
+	while(rails_.size() < snapshot.size()){
+		AddRail();
+	}
+	while(rails_.size() > snapshot.size()){
+		rails_.pop_back();
+	}
+
+	for(size_t i = 0; i < rails_.size(); ++i){
+		rails_[i].name = snapshot[i].name;
+		rails_[i].controlPoints = snapshot[i].controlPoints;
+		SyncPointObjectsToControlPoints(rails_[i]);
+	}
+
+	// アクティブなレールは戻す前のものを残し、消えたレールを指していれば最後のレールにする
+	// (AddRail()は追加したレールをアクティブにするため、ここで戻す)
+	activeRailIndex_ = (std::min)(prevActiveRailIndex,static_cast<int>(rails_.size()) - 1);
+	if(activeRailIndex_ != prevActiveRailIndex){
+		selectedPointIndex_ = -1;
+	}
+	isDragging_ = false;
+}
+
+// 今のレールの状態が、最後に確定した状態から変わっていれば確定して履歴に積む
+// 毎フレームの比較で状態を丸ごとコピーしないよう、変わっていたときだけ状態を作る
+void RailEditor::CommitEditIfChanged(){
+	const RailsSnapshot& committed = history_.GetCommitted();
+	bool isChanged = (committed.size() != rails_.size());
+	for(size_t i = 0; !isChanged && i < rails_.size(); ++i){
+		isChanged = (committed[i].name != rails_[i].name || committed[i].controlPoints != rails_[i].controlPoints);
+	}
+	if(!isChanged){
+		return;
+	}
+
+	history_.Commit(MakeSnapshot());
+	EditorDocumentManager::GetInstance()->RecordEdit(this);
+}
+
+// 1つ前の状態に戻す(Ctrl+Z)
+bool RailEditor::UndoEdit(){
+	RailsSnapshot snapshot;
+	if(!history_.Undo(snapshot)){
+		return false;
+	}
+	ApplySnapshot(snapshot);
+	return true;
+}
+
+// Undoで戻した状態をやり直す(Ctrl+Y)
+bool RailEditor::RedoEdit(){
+	RailsSnapshot snapshot;
+	if(!history_.Redo(snapshot)){
+		return false;
+	}
+	ApplySnapshot(snapshot);
+	return true;
+}
+
+// Sceneビュー上で制御点を左ドラッグして動かす処理
+// 全レールの制御点から掴む点を探し、別のレールの点を掴んだときはそのレールをアクティブにする
+void RailEditor::UpdateMouseDrag(){
+#ifdef USE_IMGUI
+	// ドラッグの設定がOFF、またはImGuiのウィジェットを操作中のときはドラッグ判定を行わない
+	if(!isPointDragMode_ || ImGui::IsAnyItemActive()){
+		isDragging_ = false;
+		return;
+	}
+
+	// 左ボタンが離されていればドラッグ終了
+	if(!ImGui::IsMouseDown(ImGuiMouseButton_Left)){
+		isDragging_ = false;
+	}
+
+	EditorPicking::PickRay ray{};
+	if(!EditorPicking::ComputeMouseRay(ray)){
+		return;
+	}
+
+	// 左ボタンを押した瞬間、レイの近くに制御点があれば掴む
+	if(!isDragging_ && ImGui::IsMouseClicked(ImGuiMouseButton_Left)){
+		int hitRailIndex = -1;
+		int hitPointIndex = -1;
+		float bestDistanceAlongRay = 0.0f;
+
+		for(size_t railIndex = 0; railIndex < rails_.size(); ++railIndex){
+			// 目印を隠しているレールの制御点は、見えないまま掴まないよう対象外にする
+			if(!rails_[railIndex].showControlPointModels){
+				continue;
+			}
+
+			const std::vector<ControlPoint>& controlPoints = rails_[railIndex].controlPoints;
+			for(size_t pointIndex = 0; pointIndex < controlPoints.size(); ++pointIndex){
+				const Vector3& pointPos = controlPoints[pointIndex].position;
+
+				// レイ方向に対する射影距離。負ならカメラの後方にあるので対象外
+				float distanceAlongRay = Dot(pointPos - ray.origin,ray.direction);
+				if(distanceAlongRay < 0.0f){
+					continue;
+				}
+
+				// レイ上の最近傍点と制御点との距離が掴める範囲に収まっているかを判定する
+				Vector3 nearestOnRay = ray.origin + ray.direction * distanceAlongRay;
+				if(Distance(nearestOnRay,pointPos) > kPickRadius){
+					continue;
+				}
+
+				// 複数の制御点が重なって見えている場合は、手前にあるものを優先する
+				if(hitRailIndex < 0 || distanceAlongRay < bestDistanceAlongRay){
+					hitRailIndex = static_cast<int>(railIndex);
+					hitPointIndex = static_cast<int>(pointIndex);
+					bestDistanceAlongRay = distanceAlongRay;
+				}
+			}
+		}
+
+		if(hitRailIndex >= 0){
+			if(hitRailIndex != activeRailIndex_){
+				SwitchActiveRail(hitRailIndex);
+			}
+			selectedPointIndex_ = hitPointIndex;
+			isDragging_ = true;
+
+			// 高さを変えないときは水平な面、変えるときは掴んだ瞬間のレイ方向を法線とする面(画面に平行な面)の上で動かす
+			const Vector3& pointPos = rails_[hitRailIndex].controlPoints[hitPointIndex].position;
+			dragPlaneNormal_ = keepsHeightWhileDragging_?kHorizontalDragPlaneNormal:ray.direction;
+			dragPlanePoint_ = pointPos;
+
+			// 掴んだ位置と制御点の座標とのずれを保持し、掴んだ瞬間に制御点が跳ばないようにする
+			Vector3 hitPos{};
+			if(EditorPicking::IntersectRayPlane(ray,dragPlanePoint_,dragPlaneNormal_,hitPos)){
+				dragOffset_ = pointPos - hitPos;
+			} else{
+				dragOffset_ = {0.0f, 0.0f, 0.0f};
+			}
+		}
+	}
+
+	// ドラッグ中は、掴んだときの面とレイの交点へ制御点を移動させる
+	std::vector<ControlPoint>& controlPoints = rails_[activeRailIndex_].controlPoints;
+	if(isDragging_ && selectedPointIndex_ >= 0 && selectedPointIndex_ < static_cast<int>(controlPoints.size())){
+		Vector3 hitPos{};
+		if(EditorPicking::IntersectRayPlane(ray,dragPlanePoint_,dragPlaneNormal_,hitPos)){
+			controlPoints[selectedPointIndex_].position = hitPos + dragOffset_;
+		}
+	}
+#endif
 }

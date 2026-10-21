@@ -87,11 +87,8 @@ void StartSequence::Start(bool skipTitle){
 	}
 
 	// タイトル演出を飛ばす場合は、BGMも鳴らさずにそのままプレイ中にする
-	// 出発ゲートも開けておき、台の上からすぐレールへ歩いて乗れるようにする
+	// プレイヤーはレールの始点から始めるため、ゲートは開けず、カウントダウンやゲートが開く演出も出さない
 	if(skipTitle){
-		if(startPlatform_){
-			startPlatform_->BeginOpenGate();
-		}
 		phase_ = Phase::Playing;
 		return;
 	}

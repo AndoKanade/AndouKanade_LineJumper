@@ -416,6 +416,9 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClInclude Include="Game\Editor\RailEditor.h" />
     <ClInclude Include="Game\Editor\TargetEditor.h" />
     <ClInclude Include="Game\Editor\EnemyEditor.h" />
+    <ClInclude Include="Game\Editor\EditHistory.h" />
+    <ClInclude Include="Game\Editor\EditorDocumentManager.h" />
+    <ClInclude Include="Game\Editor\EditorPicking.h" />
     <ClInclude Include="Game\objects\Enemy.h" />
     <ClInclude Include="Game\objects\CloudWave.h" />
     <ClInclude Include="Game\objects\Sun.h" />

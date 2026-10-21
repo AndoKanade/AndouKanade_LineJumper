@@ -42,8 +42,9 @@ public:
 	/// <param name="startRotation">カメラ・プレイヤーの基準向き(レールの始点の向きにそろえる)</param>
 	void StartOnPlatform(const Vector3& startPosition,const Vector3& startRotation);
 
-	// レールの始点にオンレールの状態で乗せる(出発の演出でレールへ乗せるときに使う。体力はそのまま)
-	void BoardRailStart();
+	// レールの進行度startTの位置にオンレールの状態で乗せる(出発の演出でレールへ乗せるときに使う。体力はそのまま)
+	// 始点以外を指定すると、Editモードで選んだ制御点から途中のプレイを始められる
+	void BoardRailStart(float startT = 0.0f);
 
 	/// <summary>
 	/// 出発の演出中に、プレイヤーの表示を演出側で決めた位置・向き・大きさにする(UpdateTransform() の後に呼んで上書きする)
@@ -193,7 +194,7 @@ private:
 	// 表示位置(UpdateTransform()で求める)
 	Vector3 position_ = {0.0f, 0.0f, 0.0f};
 
-	// 現在の体力(0になるとそれ以上減らない)
+	// 現在の体力(0になるとそれ以上減らない)	
 	int hp_ = kMaxHp;
 	// 被弾後の無敵時間の残り(秒)。0より大きい間は敵弾が当たっても体力が減らない
 	float invincibleTimer_ = 0.0f;

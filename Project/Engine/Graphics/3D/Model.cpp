@@ -118,6 +118,10 @@ void Model::CreateMaterialData(){
     materialData->uvTransform = MakeIdentity4x4();
     materialData->shininess = 50.0f;
     materialData->environmentCoefficient = 0.0f;
+    materialData->useBlinnPhong = 0;
+    // 遠くを空の色に溶け込ませる処理は、使うもの(雲海の地面など)だけが距離を設定する
+    materialData->distanceFadeStart = 0.0f;
+    materialData->distanceFadeEnd = 0.0f;
 }
 
 //=============================================================================

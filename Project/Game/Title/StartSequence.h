@@ -51,7 +51,7 @@ public:
 	/// <summary>
 	/// タイトルから始める(Playに入った瞬間に呼ぶ)
 	/// </summary>
-	/// <param name="skipTitle">trueならタイトル・カメラの回り込み・出発ゲートを飛ばして、すぐプレイ可能にする(デバッグ用。ゲートは開いた状態になる)</param>
+	/// <param name="skipTitle">trueならタイトル・カメラの回り込み・出発ゲートを飛ばして、すぐプレイ可能にする(デバッグ用。ゲートは閉じたままで、プレイヤーは GameScene 側でレールの始点に乗せる)</param>
 	void Start(bool skipTitle = false);
 
 	// 演出を止めて何も行わない状態に戻す(Editモードに戻ったときに呼ぶ)

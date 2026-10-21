@@ -33,7 +33,7 @@ Game/
 ├── objects/   Player / PlayerBulletManager / TargetManager / Enemy / EnemyManager / Ground / Sun / StartPlatform / InkEffectManager / ComboCounter / StageResult
 ├── Camera/    RailCamera（プレイ用カメラ）/ DebugTopCamera（俯瞰デバッグカメラ）/ ScreenImpact（ヒットストップ・画面の揺れ）/ CameraPose（演出のカメラの補間）
 ├── UI/        Reticle（画面中央のレティクル）/ StageHUD（体力・的の数・連鎖数）/ SpeedLines（スピード線）/ HelpOverlay（H キーで開く操作説明）
-└── Editor/    RailEditor / TargetEditor / EnemyEditor（Editモード中の配置ツール）
+└── Editor/    RailEditor / TargetEditor / EnemyEditor（Editモード中の配置ツール）/ EditHistory・EditorDocumentManager（Undo/Redo と保存の管理）/ EditorPicking（Scene ビューでのマウス選択）
 ```
 
 ### シーンの流れ
@@ -46,7 +46,6 @@ Game/
 
 - タイトルは独立したシーンではなく、GameScene の中の開始演出（`StartSequence`）として表示する。
 - GAME へ切り替わるたびに GameScene が作り直され、Play モードならタイトルから始まる。
-- 提出用の設定（`GameScene.cpp` の `kReturnToTitleAfterBoarding` が true）の間は、レールに乗って 2 秒たつと暗転してタイトルへ戻る。
 - ESC キーでいつでもゲームを終了する（`Framework::Update()`）。
 
 ### Edit モードと Play モード
@@ -174,7 +173,7 @@ Game/
 #### 初期化（Initialize）
 
 1. カメラ `"default"`（プレイ用）を作る。
-2. スカイボックス、RailEditor、Ground を生成する。地面はレールの開始地点を基準に並べる。
+2. スカイボックス、RailEditor、Ground を生成する。地面の格子はレールの開始地点を基準にそろえ、タイルは毎フレームの更新でカメラの真下を中心に並べる。
 3. GlobalVariables にグループ `GameScene` を作る。調整項目は各クラスが自分の Initialize で登録する。
 4. Player、RailCamera、DebugTopCamera（カメラ `"debug_top"` を作る）、PlayerBulletManager を生成する。
 5. TargetManager / EnemyManager を生成する。保存データが無い初回起動時だけ自動配置する。
@@ -187,12 +186,12 @@ Game/
    - ScreenImpact を進め、ヒットストップ中はスタート台とインクの演出の時間を止める。
    - 遮断棒が跳ね上がった瞬間（`StartPlatform::IsBarBurstTriggered()`）に、ゲートからインクを飛び散らせ、ヒットストップ・画面の揺れ・放射ブラーをかける。出発台を使う演出なら、この瞬間に `DepartureDirector::Prepare()` で使う演出を決める。
 2. `UpdateGameplay()` で次の処理を順番に行う。
-   1. Play に入った瞬間は `ResetPlayState()` と `startSequence_->Start()` を呼ぶ。Edit に戻った瞬間は `startSequence_->Stop()` を呼ぶ。
+   1. Play に入った瞬間は、Rail Editor で編集中のレールと選択中の制御点を覚えてから、`ResetPlayState()` と `StartPlaySequence()`（`startSequence_->Start()`）を呼ぶ。ImGui の「Skip Title」が ON なら、続けて `Player::BoardRailStart()` でレールの始点に乗せ、タイトル・スタート台を飛ばしてすぐプレイを始める。「Start From Selected Point」が ON で制御点を選んでいれば、同じくタイトル・スタート台を飛ばし、その制御点の位置（`RailEditor::GetTOfControlPoint()`）から始める（落下リスタートと R キーのやり直しも同じ位置から）。Edit に戻った瞬間は `startSequence_->Stop()` を呼び、覚えておいたレールと制御点を選び直す（`RailEditor::SelectPoint()`）。
    2. Play 中は `startSequence_->Update()` にプレイヤーの座標を渡して呼び、`isGameplayActive`（Play 中かつ開始演出が終わってプレイ可能）と `isPlayerMovable`（開始演出のうちスタート台の上を動ける段階）を求める。ゲートを開け始めた瞬間に始める出発の演出（CountdownFlip）は、ここで `Prepare()` と `Begin()` を呼んで始める。
    3. マウスカーソルの表示を切り替える（`UpdateCursorVisibility()`）。
    4. `Player::UpdateRailProgress()` でレールを進め、`Player::UpdateBasePose()` で基準位置・基準向きを求める。
    5. `RailCamera::Update()` でカメラをプレイヤーの後ろ上に置き、照準の入力を反映する（スタート台の上を動ける間も照準を動かせる）。
-   6. クリア判定、提出用のタイトルへ戻す判定、状態確認用のデバッグウィンドウ（`ShowStatusWindow()`）。
+   6. クリア判定、状態確認用のデバッグウィンドウ（`ShowStatusWindow()`）。
    7. `Player::UpdateTransform()` でプレイヤーをレールの上に立たせ、照準の方向へ向ける。出発の演出中は `DepartureDirector::Update()` でプレイヤーの表示を上書きする。カメラは「タイトル・回り込み（StartSequence）→ 出発の演出 → ゲートを映すカメラ」の優先順で上書きし、最後に画面の揺れを足す。
    8. 敵の更新、敵弾とプレイヤーの当たり判定、ゲームオーバー判定。
    9. `Player::UpdateMovement()` でジャンプ・WASD 移動・着地判定を行う。地面まで落ちたら `ResetPlayState()` を呼ぶ。`isPlayerMovable` の間も同じく動かす。出発台を使う演出なら、出発台の手前の線を越えたら演出を始める。歩いてレールへ乗ったとき・出発の演出がレールへ乗せ終えたときは `StartSequence::NotifyBoarded()` を呼び、`PlayBoardedEffects()` で足元から輪・インクのしぶき・インクの跡を出す。
@@ -210,7 +209,6 @@ Game/
 | 試し撃ち | スタート台の上（`isPlayerMovable` の間）でも撃てる。この弾は的・敵に当たらず、台に着いたところにインクを塗る |
 | 出発の演出 | ImGui の「Departure」で選んだ演出で、スタート台からレールへ移る（Title の Departure を参照） |
 | 落下リスタート | どのレールにも乗れずに地面の高さまで落ちたら暗転（`SceneManager::StartTransition()`）を始め、画面を覆っている間に `ResetPlayState()` を呼ぶ。開始演出は挟まない |
-| 提出用のタイトルへ戻す | `kReturnToTitleAfterBoarding` が true の間は、レールに乗ってプレイが始まってから `kReturnToTitleDelay`（2 秒）たつと `Fade` で暗転し、覆っている間に `ResetPlayState()` と `StartSequence::Start()` を呼ぶ。落下リスタートしたら数え直す |
 | クリア | オンレール中にレールの終端に着いたら CLEAR へ移る。移る前に壊した的の数・総数・最大連鎖数を StageResult に書き込む（的を全部壊すことはクリアの条件にしない） |
 | ゲームオーバー | プレイヤーの体力が 0 になったら GAMEOVER へ移る |
 | 当たり判定 | すべてモデルの頂点から求めた境界球（`Model::BoundingSphere`）同士の重なりで判定する。プレイヤー・敵本体はワールド行列で変換した球（`Obj3D::GetWorldBoundingSphere()`）、弾・的は現在座標と表示スケールから求めた球を使う |
@@ -254,7 +252,7 @@ Game/
 | ウィンドウ | 表示するモード | 内容 |
 | --- | --- | --- |
 | Rail Branch Debug | 常時 | レールの本数、アクティブレール、進行度、オンレール状態、敵の体力（EnemyManager が表示）、プレイヤーの体力など |
-| GameScene Debug | Edit のみ | タイトルを飛ばす設定、落下リスタート・クリアへの切り替えの演出の選択と Preview、出発の演出の選択（Departure。次にゲートを開けたときから使われる）、カメラ座標・回転の編集、俯瞰カメラの切り替え（DebugTopCamera が表示）、ライティング |
+| GameScene Debug | Edit のみ | タイトルを飛ばす設定、選んだ制御点から始める設定（Start From Selected Point）、レール・的・敵の編集の Undo / Redo / Save All と未保存のエディター名の表示、落下リスタート・クリアへの切り替えの演出の選択と Preview、出発の演出の選択（Departure。次にゲートを開けたときから使われる）、カメラ座標・回転の編集、俯瞰カメラの切り替え（DebugTopCamera が表示）、ライティング |
 | Hierarchy | Edit のみ | 的の一覧。クリックで選択できる（TargetManager が表示） |
 | Inspector | Edit のみ | 選択中の的の座標・生存フラグの編集（TargetManager が表示） |
 
@@ -308,7 +306,7 @@ GameScene が直接触るのは StartSequence と DepartureDirector で、残り
 | 関数 | 内容 |
 | --- | --- |
 | `Initialize(Obj3dCommon*, SpriteCommon*, Input*, StartPlatform*)` | TitleLogo・TitleUI・StageIntroUI を生成し、出発ゲートを開け閉めするスタート台を受け取る |
-| `Start(skipTitle)` | `Title` から始める。カメラワーク・タイトル表示・出発までの表示・出発ゲートも初期状態に戻す。`skipTitle` が true ならゲートを開けてすぐ `Playing` にする |
+| `Start(skipTitle)` | `Title` から始める。カメラワーク・タイトル表示・出発までの表示・出発ゲートも初期状態に戻す。`skipTitle` が true ならゲートは閉じたまますぐ `Playing` にする（カウントダウン・ゲートが開く演出は出さない。プレイヤーは GameScene 側でレールの始点に乗せる） |
 | `Stop()` | `None` に戻す |
 | `Update(float deltaTime, playerPosition)` | 段階ごとの処理と、次の段階への切り替えを行う。プレイヤーの座標はゲートの前にいるかの判定に使う |
 | `NotifyBoarded()` | `Boarding` / `Departure` 中にプレイヤーがレールに乗ったら呼ぶ。「GO!」を出して `Playing` にする |
@@ -559,7 +557,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `UpdateInvincible(deltaTime)` | 無敵時間を進める |
 | `TakeDamage()` | 無敵中でなければ体力を 1 減らし、無敵時間を始める |
 | `StartOnPlatform(startPosition, startRotation)` | スタート台の上にオフレールの状態で立たせる（`Reset()` の後に呼ぶ） |
-| `BoardRailStart()` | レールの始点にオンレールの状態で乗せる（出発の演出用。体力は残す） |
+| `BoardRailStart(startT)` | レールの進行度 startT（省略時は 0 = 始点）にオンレールの状態で乗せる（出発の演出・途中からの Play 用。体力は残す） |
 | `SetDirectedPose(position, rotate, scaleRate)` | 出発の演出中に、表示を演出が決めた位置・向き・大きさにする |
 | `StartRailBoost(rate, duration)` | レールを進む速さを `rate` 倍にし、`duration` 秒かけて元に戻す |
 | `UpdateMovement(input, railEditor, startPlatform, cameraForward, cameraRight, groundHeight, deltaTime)` | ジャンプ・WASD 移動・着地判定。スタート台の上に立たせ続け、出発ゲートが閉じている間はゲートより先へ進めない。地面まで落ちてリスタートが必要になったら true を返す |
@@ -632,12 +630,21 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 
 ### Ground（`objects/Ground.h/.cpp`）
 
-雲海の地面。継ぎ目なく並べられる雲海のテクスチャを貼った `CloudSea/cloudSea.obj` を X 軸に -90° 回して水平にし、レールの開始地点を基準に 45 枚（奥 8・手前 1・横 5）並べる。1 枚の 1 辺は 20、高さは -3.0 で一定。雲の色をテクスチャのまま見せるため、ライティングは無効にしている。
+雲海の地面。起伏のある雲の板（`CloudSea/cloudSurface.obj`）と、その上に雲と同じ形で重ねた半透明の霧の層 4 枚（`CloudSea/fogSurface.obj`）を、X 軸に -90° 回して水平にして格子状に並べる。1 枚の 1 辺は 20、雲の高さは -3.0 で一定。
+
+- 格子の向きと位置の基準はレールの開始地点に合わせる。タイルはカメラの真下のマスを中心に、前後左右へ 5 枚ずつ（1 層 11×11 = 121 枚）並べる。
+- カメラの真下のマスが変わったときだけ並べ直す。タイルは必ずマスの中心に置くので、並べ直しても雲の起伏・霧の模様は動いて見えない。
+- カメラから水平に `kDrawRadius`（100。カメラの遠平面の初期値と同じ）以内には必ずタイルがある。枚数が足りているかは `static_assert` で確かめている。
+- タイルは 1 枚 4608 ポリゴンと重いため、描画のたびにカメラの視錐台に映るマスを求め、映らないマスは雲も霧も描かない（`UpdateTileVisibility()`）。マスを雲と霧の層ごと囲む球（半径約 14.2）が、視錐台の 6 面のどれかより外にあれば映らないとみなす。雲と霧の層で同じマスは同じ添字なので、`Draw()` で 1 回求めて `DrawFog()` でも使う。
+- タイルの行列（逆行列の計算を含む）は並べ直したときだけ求め、毎フレームはカメラの設定だけ行う。
+- 地面の切れ目が見えないよう、カメラからの距離が `horizonFadeStart`（初期値 45）から `horizonFadeEnd`（初期値 95）の間で、雲と霧の色をその方向に見える空（スカイボックス）の色へ少しずつ近づける。どちらも GlobalVariables の調整項目で、End は `kDrawRadius`（100）を超えないよう制限する。処理は Obj3D のピクセルシェーダーにあり、マテリアルの `distanceFadeStart` / `distanceFadeEnd` で距離を決める。地面のタイルは `Obj3D::SetUseSceneDistanceFade(false)` で全オブジェクト共通の距離を使わず、この独自の距離を使う。
+- 地面以外の 3D オブジェクト（レール・スタート台・的・敵など）は、`Obj3dCommon::SetSceneDistanceFade()` の全オブジェクト共通の距離を `Obj3D::Draw()` で毎回マテリアルに書き込む。GameScene は Play 中だけ調整項目 `objectFadeStart`（初期値 60）〜 `objectFadeEnd`（初期値 95。カメラの遠平面を超えないよう制限）を設定し、Edit 中と他のシーンでは 0（溶け込ませない）にする（`GameScene::UpdateSceneDistanceFade()`）。
 
 | 関数 | 内容 |
 | --- | --- |
-| `Initialize(Obj3dCommon*, startPosition, forward)` | 地面タイルを生成する |
-| `Update()` / `Draw()` | 行列の更新 / 描画 |
+| `Initialize(Obj3dCommon*, startPosition, forward, paramGroup)` | 雲と霧のタイルを生成し、格子の基準の位置と向きを決める |
+| `Update(deltaTime)` | カメラの真下を中心にした並べ直し（並べ直したときだけ行列を更新）・雲の起伏のうねり・霧の UV スクロール |
+| `Draw()` / `DrawFog()` | 映るマスを求めて雲を描く / 同じ結果で霧を描く（半透明なので 3D オブジェクトの最後に描く。必ず `Draw()` の後に呼ぶ） |
 | `GetHeight()` | 地面の高さを取得する（落下リスタートの判定に使う） |
 
 ### StartPlatform（`objects/StartPlatform.h/.cpp`）
@@ -769,6 +776,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `HandleToggleKey(input, railEditor)` | F1 で切り替える。ON にした瞬間に、制御点全体が映る高さ（半径 × 2.2 ＋ 10）に合わせる |
 | `UpdateMove(input)` | 有効な間、WASD で平面移動、QE で高さを移動する（速度 10） |
 | `ShowToggleCheckbox(railEditor)` | ImGui の切り替え用チェックボックス（ImGui がある構成のみ） |
+| `FocusOnPoint(position)` | 俯瞰カメラを ON にし、今の向きのまま position の手前 8.0 の位置へ寄せる（Rail Editor の Focus 用） |
 | `IsEnabled()` | 有効かどうかを取得する |
 
 ---
@@ -848,9 +856,9 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
   - `speed`：その区間の速度倍率
   - 分岐設定：保存はされるが、今の実行時には読まれない
 - 位置は Catmull-Rom スプラインで補間する。
-- 向き（ピッチ・ヨー）は進行方向から逆算し、ロールは制御点間を線形補間する。
+- 向き（ピッチ・ヨー）は進行方向から逆算し、ロールは制御点間を線形補間する。ロールと速度は位置と同じ区間分けで補間し、制御点に設定した値がその制御点を通る位置で効く。
 - Edit モードの描画では、アクティブなレールを黄色、それ以外を黒で表示する。
-- Play モードの描画では、編集用の目印（制御点の目印・曲線の点列・着地範囲）は出さず、レール本体を管（`RailTube/railTube.obj` を 120 区間つないだもの、半径 0.05）で描く。インクで塗った区間（`PaintActiveRail(t)` で広げ、`ClearPaint()` で消す）は黄色、それ以外はピンクにする。
+- Play モードの描画では、編集用の目印（制御点の目印・曲線の点列・着地範囲）は出さず、レール本体を管（`RailTube/railTube.obj` を Catmull-Rom の 1 区間あたり 24 本つないだもの、半径 0.05）で描く。Edit 中の曲線の点列も 1 区間あたり 20 点。曲線の点列と着地範囲の点は全レール共通の置き場（`sampleObjects_`）のオブジェクトを使い回し、起動時に読み込んだレールに必要な数＋200 個を作っておく。足りなくなったら 1 フレームに 8 個まで作り、作りきれなかった点は次のフレーム以降に描く（Obj3D は 1 つ作るごとに GPU のバッファを 2 つ確保して重いため、一度にたくさん作って画面が止まらないようにする）。管は起動時に今の区間数の分を作り、延長して足りなくなった分は Play に入ったときに作る。インクで塗った区間（`PaintActiveRail(t)` で広げ、`ClearPaint()` で消す）は黄色、それ以外はピンクにする。
 
 #### ImGui パネル「Rail Editor」
 
@@ -858,11 +866,15 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | --- | --- |
 | レール一覧 | クリックでアクティブなレールを切り替える |
 | New Rail | レールを 1 本追加し、アクティブにする |
-| Add Control Point | アクティブなレールの末尾に制御点を追加する |
+| Add Control Point | アクティブなレールの末尾に、末尾 2 点と同じ向き・間隔で伸ばした位置へ制御点を追加し、選択する |
 | Save / Load | 全レールを JSON に保存する / JSON から読み込む |
 | Show Control Point Models / Show Rail Curve | 制御点の目印（`RailMarker/railMarker.obj`、上下に尖った宝石の形） / 曲線の表示切り替え |
 | Show Landing Range | 着地できる範囲（レールの左右、緑の点列）の表示切り替え |
-| 制御点一覧 | クリックで選択し、Position / Rotation / Speed / 分岐設定を編集する。Reset で初期値に戻す。Delete で削除する（最後の 1 点は削除できない） |
+| Drag Points In Scene / Keep Height | ON の間、Scene ビュー上で制御点を左ドラッグして動かせる（初期は OFF。レイから 0.5 以内の制御点を全レールから探し、別のレールの点ならそのレールをアクティブにする）。Keep Height が ON（初期値）なら水平な面の上で動かし高さを変えない。OFF なら画面に平行な面の上で動かす。目印を隠しているレールの制御点は掴まない |
+| Length / Time | アクティブなレールの全長と、走り切るまでの秒数の目安（制御点の Speed × 調整項目 railSpeed で走ったとき。発射直後の加速・空中で遅くなる分は含まない） |
+| 制御点一覧 | クリックで選択し、Position / Rotation / Speed / 分岐設定を編集する。Reset で初期値に戻す。Delete で削除する（最後の 1 点は削除できない）。Insert After で次の制御点との中間に制御点を挿入する（末尾なら延長）。Focus またはダブルクリックで、俯瞰カメラをその制御点へ寄せる。From Start に始点からその制御点までの長さと秒数を出す。一覧は高さ 150 の枠の中だけでスクロールする。選択中の制御点の目印は水色で、他の制御点より大きく（0.2 → 0.35）描く |
+| Spiral | 選択中の制御点の後ろに、その点から始まる螺旋（らせん階段のような形）の制御点をまとめて挿入する。Radius（半径。下限 1）/ Rise / Turn（1 周で上がる高さ。負なら下がる）/ Turns（周回数。下限 0.25）/ Points / Turn（1 周の制御点数 4〜32）/ Right・Left（回る向き）で形を決める。前の制御点から進んできた向きのまま螺旋に入るよう、円の中心を進む向きの横に置く。末尾に足すときは、螺旋の終わりまで曲線が通るよう向きを決めるだけの点を 1 つ多く足す。後ろの制御点は消さずに残す。作った後は螺旋の終わりの点を選ぶ。Ctrl+Z で戻せる |
+| 未保存の表示 | 保存していない変更があるとき、Save の下に「未保存」と出す（TargetEditor・EnemyEditor も同じ） |
 
 #### 主な関数（GameScene から使うもの）
 
@@ -878,6 +890,8 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | `SetLandingRangeRadius(radius)` | 着地範囲の表示に使う許容距離を受け取る |
 | `ToggleShowControlPointModels()` / `ToggleShowCurve()` | キー操作用の表示切り替え |
 | `SaveToJson()` / `LoadFromJson()` | 保存・読み込み。起動時は自動で読み込む |
+| `GetTOfControlPoint(index)` / `GetSelectedPointIndex()` / `SelectPoint(rail, point)` | 途中からの Play 用。制御点を通る位置の進行度（両端の制御点は曲線の始点・終点に丸める）/ 選択中の制御点 / Play から戻ったときの選び直し |
+| `ConsumeFocusRequest(outPos)` / `SetBaseRailSpeed(speed)` | Focus の操作があれば選択中の制御点の位置を返す / 走り切るまでの秒数の計算に使う railSpeed を受け取る |
 
 ### TargetEditor（`Editor/TargetEditor.h/.cpp`）
 
@@ -921,6 +935,20 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | マウスドラッグ | TargetEditor と同じ |
 
 - 古い保存データに `patrolDirection` や `maxHp` が無くても、初期値で補って読み込める。
+
+### EditHistory / EditorDocumentManager（`Editor/EditHistory.h`、`Editor/EditorDocumentManager.h`）
+
+レール・的・敵のエディターの Undo / Redo と、保存していない変更の管理（ヘッダーオンリー）。
+
+- 各エディターは `IEditorDocument`（`UndoEdit()` / `RedoEdit()` / `SaveToJson()` / `IsModified()` / `GetDocumentName()`）を実装し、初期化時に `EditorDocumentManager` に登録、破棄時に登録を外す。
+- `EditHistory<T>` は確定した状態を履歴に積む（1 エディターあたり最大 100 件）。状態ごとに番号を振り、保存したときの番号と比べて未保存かどうかを判定する。Undo で保存したときの状態まで戻れば未保存の表示も消える。
+- 各エディターは毎フレームの最後に、ImGui の操作中・ドラッグ中でなければ今の状態と最後に確定した状態を比べ、変わっていれば 1 回の編集として確定する。Inspector など他の場所からの編集もこれで拾う。Load も 1 回の編集として積むため、Ctrl+Z で読み込む前に戻せる。
+- `EditorDocumentManager` は「どのエディターを編集したか」の順番を覚え、Ctrl+Z ではレール・的・敵をまたいで編集した順に戻す。
+- クリア・ゲームオーバーなどでシーンが切り替わると、エディターは作り直されてファイルから読み込み直す。保存していない変更が消えないよう、エディターは破棄されるときに未保存の内容を static な置き場（`unsavedStash_`）に取っておき、次に作ったエディターが読み込みの後で戻す。ファイルには書き込まず、戻した内容は「未保存」のまま（Ctrl+Z でファイルの状態に戻せる）。アプリを終了したときは取っておかない。
+
+### EditorPicking（`Editor/EditorPicking.h`）
+
+Scene ビュー上のマウス位置から画面奥へ伸びるレイを求める処理と、レイと平面の交点を求める処理（ヘッダーオンリー）。今は RailEditor が使う（TargetEditor・EnemyEditor は同じ処理をそれぞれのクラスに持っている）。
 
 ---
 
@@ -974,6 +1002,8 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | WASD / Q E | 俯瞰カメラ中の平面移動 / 高さの移動 |
 | F4 | 制御点の目印の表示切り替え |
 | F5 | レール曲線の表示切り替え |
+| Ctrl+Z / Ctrl+Y（Ctrl+Shift+Z） | Edit 中にレール・的・敵の編集を元に戻す / やり直す |
+| Ctrl+S | Edit 中に、保存していない変更があるレール・的・敵をすべて保存する |
 
 ### クリア画面・ゲームオーバー画面
 

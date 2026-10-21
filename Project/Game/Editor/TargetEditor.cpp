@@ -52,11 +52,35 @@ namespace{
 }
 
 TargetEditor::TargetEditor() = default;
-TargetEditor::~TargetEditor() = default;
+// 破棄したエディターをCtrl+Zや保存の対象に残さないよう、登録を外す
+TargetEditor::~TargetEditor(){
+	// 保存していない変更があれば、次に作ったエディターで戻せるよう取っておく(変更が無ければ前に取っておいたものも消す)
+	// 操作の途中でまだ履歴に積んでいない変更も含めるため、先に確定してから判定する
+	CommitEditIfChanged();
+	if(history_.IsModified()){
+		unsavedStash_ = targets_;
+	} else{
+		unsavedStash_.reset();
+	}
+
+	EditorDocumentManager::GetInstance()->Unregister(this);
+}
 
 // 初期化処理(保存済みJSONがあれば読み込む)
 void TargetEditor::Initialize(){
-	LoadFromJson();
+	LoadTargetsFromFile();
+
+	// 読み込んだ状態を編集の基準(保存済み)にし、Ctrl+Z・すべて保存の対象に登録する
+	history_.Reset(targets_);
+	EditorDocumentManager::GetInstance()->Register(this);
+
+	// 前のシーンで保存せずに残していた変更があれば戻す
+	// 読み込んだファイルの状態からの1回の編集として積み、未保存のままにする(Ctrl+Zで読み込んだファイルの状態に戻せる)
+	if(unsavedStash_){
+		targets_ = *unsavedStash_;
+		unsavedStash_.reset();
+		CommitEditIfChanged();
+	}
 }
 
 // 更新処理(ImGuiでの編集UIとマウスドラッグによる移動)
@@ -110,6 +134,7 @@ void TargetEditor::Update(){
 	}
 	ImGui::SameLine();
 	ImGui::Text("(%s)",kTargetSaveFilePath.c_str());
+	EditorWidgets::ShowUnsavedMark(history_.IsModified());
 
 	ImGui::Separator();
 
@@ -122,6 +147,12 @@ void TargetEditor::Update(){
 
 	// パネルの外(Sceneビュー上)でのマウスドラッグによる移動処理
 	UpdateMouseDrag();
+
+	// ImGuiの操作中・ドラッグ中は値が動いている途中のため、操作を終えてから1回の編集として履歴に積む
+	// Inspectorなど他の場所からの編集もまとめて拾えるよう、変更があったかは状態を比べて判定する
+	if(!ImGui::IsAnyItemActive() && !isDragging_){
+		CommitEditIfChanged();
+	}
 #endif
 }
 
@@ -332,6 +363,9 @@ void TargetEditor::SetSelectedIndex(int index){
 
 // 配置内容をJSONファイルに保存する
 void TargetEditor::SaveToJson(){
+	// まだ履歴に積んでいない編集があれば先に確定し、保存した状態を保存済みとして記録できるようにする
+	CommitEditIfChanged();
+
 	// ルート要素。targetsは読み込み時の簡易フォーマットチェックにも使う
 	nlohmann::json root;
 
@@ -355,14 +389,25 @@ void TargetEditor::SaveToJson(){
 		return;
 	}
 	file << std::setw(4) << root << std::endl;
+	history_.MarkSaved();
 }
 
-// 配置内容をJSONファイルから読み込む(ファイルが無ければ何もしない)
+// 配置内容をJSONファイルから読み込む(Loadボタン用。ファイルが無ければ何もしない)
+// 読み込みも1回の編集として履歴に積み、Ctrl+Zで読み込む前に戻せるようにする
 void TargetEditor::LoadFromJson(){
+	if(!LoadTargetsFromFile()){
+		return;
+	}
+	CommitEditIfChanged();
+	history_.MarkSaved();
+}
+
+// 配置内容をJSONファイルから読み込む(ファイルが無い・形式が違うときは現状維持でfalse)
+bool TargetEditor::LoadTargetsFromFile(){
 	std::ifstream file(kTargetSaveFilePath);
 	if(!file.is_open()){
 		// ファイルがまだ無い(初回起動など)ときは現状維持
-		return;
+		return false;
 	}
 
 	nlohmann::json root;
@@ -370,7 +415,7 @@ void TargetEditor::LoadFromJson(){
 
 	// 最低限のフォーマットチェック。想定外なら読み込みを中止して現状維持
 	if(!root.is_object() || !root.contains("targets") || !root["targets"].is_array()){
-		return;
+		return false;
 	}
 
 	// 読み込んだ内容で配置を置き換える
@@ -386,4 +431,40 @@ void TargetEditor::LoadFromJson(){
 	// 読み込みで的の個数が変わるため、選択とドラッグ状態は解除する
 	selectedIndex_ = -1;
 	isDragging_ = false;
+	return true;
+}
+
+// 配置内容が、最後に確定した状態から変わっていれば確定して履歴に積む
+void TargetEditor::CommitEditIfChanged(){
+	if(targets_ == history_.GetCommitted()){
+		return;
+	}
+	history_.Commit(targets_);
+	EditorDocumentManager::GetInstance()->RecordEdit(this);
+}
+
+// 1つ前の状態に戻す(Ctrl+Z)
+bool TargetEditor::UndoEdit(){
+	if(!history_.Undo(targets_)){
+		return false;
+	}
+	// 戻した結果的が減っていれば、選択が範囲外を指さないよう解除する
+	if(selectedIndex_ >= static_cast<int>(targets_.size())){
+		selectedIndex_ = -1;
+	}
+	isDragging_ = false;
+	return true;
+}
+
+// Undoで戻した状態をやり直す(Ctrl+Y)
+bool TargetEditor::RedoEdit(){
+	if(!history_.Redo(targets_)){
+		return false;
+	}
+	// やり直した結果的が減っていれば、選択が範囲外を指さないよう解除する
+	if(selectedIndex_ >= static_cast<int>(targets_.size())){
+		selectedIndex_ = -1;
+	}
+	isDragging_ = false;
+	return true;
 }

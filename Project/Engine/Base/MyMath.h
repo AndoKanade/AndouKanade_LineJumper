@@ -18,6 +18,9 @@ struct Vector2{
 
 struct Vector3{
     float x,y,z;
+
+    // エディターの編集履歴で、変更があったかを比べるのに使う
+    bool operator==(const Vector3&) const = default;
 };
 
 struct Vector4{

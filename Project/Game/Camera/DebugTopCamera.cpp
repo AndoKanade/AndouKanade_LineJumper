@@ -104,6 +104,29 @@ void DebugTopCamera::Disable(){
 	ApplyActiveCamera();
 }
 
+// 俯瞰デバッグカメラをONにして、今の向きのままtargetPositionの手前へ寄せる
+// 向きを変えないことで、右ドラッグで合わせた見やすい角度のまま次々に制御点を確認できるようにする
+void DebugTopCamera::FocusOnPoint(const Vector3& targetPosition){
+	if(!isEnabled_){
+		isEnabled_ = true;
+		ApplyActiveCamera();
+	}
+
+	Camera* debugTopCamera = CameraManager::GetInstance()->GetCamera(kDebugTopCameraName);
+	if(!debugTopCamera){
+		return;
+	}
+
+	// 上下(pitch_)・左右(yaw_)の向きから前方向を求める(pitch_が正なら下を向く)
+	const Vector3 forward = {
+		std::sin(yaw_) * std::cos(pitch_),
+		-std::sin(pitch_),
+		std::cos(yaw_) * std::cos(pitch_)
+	};
+	debugTopCamera->SetTranslate(targetPosition - forward * kFocusDistance);
+	debugTopCamera->SetRotate({pitch_, yaw_, 0.0f});
+}
+
 // マウスカーソルがゲーム画面の上にあるか
 bool DebugTopCamera::IsMouseOnGameView() const{
 #ifdef USE_IMGUI

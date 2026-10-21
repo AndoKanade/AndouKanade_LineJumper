@@ -157,6 +157,19 @@ namespace EditorWidgets{
 	}
 #endif
 
+	// 保存していない変更があるときだけ、目立つ色で「未保存」と表示する(各エディターのSaveボタンの近くに出す)
+	inline void ShowUnsavedMark(bool isModified){
+#ifdef USE_IMGUI
+		// 保存し忘れに気づきやすいよう、赤みのある色にする
+		constexpr ImVec4 kUnsavedTextColor = {1.0f, 0.45f, 0.45f, 1.0f};
+		if(isModified){
+			ImGui::TextColored(kUnsavedTextColor,"未保存 (Ctrl+Sで保存)");
+		}
+#else
+		(void)isModified;
+#endif
+	}
+
 	// Vector3 を X/Y/Z の3行のボタンエディタで編集する。
 	inline bool ButtonVector3(const char* label,Vector3& v,float step = 0.1f,float fastStep = 1.0f){
 #ifdef USE_IMGUI

@@ -18,6 +18,7 @@
 
 // レールエディター
 #include "Editor/RailEditor.h"
+#include "Editor/EditorDocumentManager.h"
 // ステージ開始演出(タイトル → カメラの回り込み → スタート台で準備 → レールへ乗り込む)
 #include "Title/StartSequence.h"
 // 出発の演出(スタート台からステージのレールへ移るときの演出)
@@ -43,6 +44,7 @@
 #include "UI/StageHUD.h"
 #include "UI/SpeedLines.h"
 #include "UI/HelpOverlay.h"
+#include <algorithm>
 #include <iterator>
 
 namespace{
@@ -76,14 +78,17 @@ namespace{
 	// 出発の演出を保存する調整項目名(DepartureStyle の番号で保存する)と、初期値
 	const char* kDepartureStyleKey = "departureStyle";
 	constexpr DepartureStyle kDefaultDepartureStyle = DepartureStyle::CountdownFlip;
+	// レールを進む全体の速さの調整項目名(Playerが登録する。Rail Editorで走り切るまでの秒数を出すのに使う)
+	const char* kRailSpeedKey = "railSpeed";
+	// Play中に、遠くのレール・スタート台・的・敵などを空の色に溶け込ませ始める距離・溶け込みきる距離の調整項目名と初期値(カメラからの距離)
+	// レールは進む先や飛び移れるレールを見せる道しるべで、敵は25以内でプレイヤーに気づくため、地面(45〜95)より遠くから溶け込ませる
+	const char* kObjectFadeStartKey = "objectFadeStart";
+	const char* kObjectFadeEndKey = "objectFadeEnd";
+	constexpr float kDefaultObjectFadeStart = 60.0f;
+	constexpr float kDefaultObjectFadeEnd = 95.0f;
 	// 演出の初期値(保存済みJSONがあればそちらが優先される)
 	constexpr SceneTransition::Style kDefaultFallTransitionStyle = SceneTransition::Style::RailStripes;
 	constexpr SceneTransition::Style kDefaultClearTransitionStyle = SceneTransition::Style::InkBurst;
-
-	// 提出用: レールに乗ってプレイが始まってから、暗転してタイトルへ戻すか(false にすると、そのままプレイを続ける)
-	constexpr bool kReturnToTitleAfterBoarding = true;
-	// レールに乗ってからタイトルへ戻し始めるまでの時間(秒)
-	constexpr float kReturnToTitleDelay = 2.0f;
 
 	// 調整項目に保存した番号から演出の種類を取得する
 	SceneTransition::Style GetTransitionStyle(const char* key){
@@ -162,6 +167,9 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kFallTransitionKey,static_cast<int32_t>(kDefaultFallTransitionStyle));
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kClearTransitionKey,static_cast<int32_t>(kDefaultClearTransitionStyle));
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kDepartureStyleKey,static_cast<int32_t>(kDefaultDepartureStyle));
+	// 遠くの物を空の色に溶け込ませる距離(Play中だけ使う)
+	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kObjectFadeStartKey,kDefaultObjectFadeStart);
+	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kObjectFadeEndKey,kDefaultObjectFadeEnd);
 
 	// 太陽の生成(方角はレール開始地点の進行方向を基準にする)
 	sun_ = std::make_unique<Sun>();
@@ -255,6 +263,8 @@ void GameScene::Finalize(){
 		isCursorClipped_ = false;
 		::ClipCursor(nullptr);
 	}
+	// 遠くの物を溶け込ませる距離は全オブジェクト共通の設定のため、他のシーンに持ち越さないよう元に戻す
+	object3dCommon_->SetSceneDistanceFade(0.0f,0.0f);
 }
 
 // ゲームを初期状態(レール先頭)から始め直す
@@ -280,9 +290,6 @@ void GameScene::ResetPlayState(){
 		player_->StartOnPlatform(startPlatform_->GetSpawnPosition(),railEditor_->GetRotationOnRail(0.0f));
 	}
 
-	// タイトルへ戻すまでの時間も数え直す
-	playTimeSinceBoarded_ = 0.0f;
-
 	// 出ている演出・連鎖数・スピード線・画面の揺れ・出発の演出も消す
 	inkEffect_->Reset();
 	screenImpact_->Reset();
@@ -292,6 +299,46 @@ void GameScene::ResetPlayState(){
 
 	// 雑魚敵も撃破前の初期状態(体力満タン)から始める
 	enemyManager_->Reset();
+}
+
+// 遠くの物を空の色に溶け込ませる距離を、全オブジェクト共通の設定にする
+void GameScene::UpdateSceneDistanceFade(){
+	if(!EditorContext::GetInstance()->IsPlayMode()){
+		object3dCommon_->SetSceneDistanceFade(0.0f,0.0f);
+		return;
+	}
+
+	// カメラの遠平面より先は描画されず、そこで切れて見えるため、溶け込みきる距離は遠平面より遠くしない
+	// (カメラからの距離は、遠平面で切れる位置の奥行きより必ず長いため、遠平面の距離で比べれば足りる)
+	GlobalVariables* gv = GlobalVariables::GetInstance();
+	const float requestedFadeEnd = gv->GetFloatValue(kGameSceneGroup,kObjectFadeEndKey);
+	// カメラが無いときは遠平面が分からないため、調整項目の値をそのまま使う
+	float maxFadeEnd = requestedFadeEnd;
+	if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
+		maxFadeEnd = activeCamera->GetFarClip();
+	}
+	const float fadeEnd = std::clamp(requestedFadeEnd,0.0f,maxFadeEnd);
+	const float fadeStart = std::clamp(gv->GetFloatValue(kGameSceneGroup,kObjectFadeStartKey),0.0f,fadeEnd);
+	object3dCommon_->SetSceneDistanceFade(fadeStart,fadeEnd);
+}
+
+// タイトル・スタート演出を始め、デバッグ用の設定に合わせてレールへ乗せる
+void GameScene::StartPlaySequence(){
+	// 選んだ制御点から始めるときも、タイトル・スタート台を飛ばしてすぐプレイを始める
+	startSequence_->Start(skipTitle_ || isPlayingFromPoint_);
+	if(isPlayingFromPoint_){
+		BoardAtPlayStartPoint();
+	} else if(skipTitle_){
+		// タイトルを飛ばすときはスタート台の上も飛ばし、レールの始点に乗せた状態からすぐ始める
+		player_->BoardRailStart();
+	}
+}
+
+// Playに入ったときに覚えておいた制御点の位置からレールに乗せる
+// ResetPlayState()でレールを0番へ戻しているため、制御点のあるレールへ切り替えてから乗せる
+void GameScene::BoardAtPlayStartPoint(){
+	railEditor_->SwitchActiveRail(editRailIndex_);
+	player_->BoardRailStart(railEditor_->GetTOfControlPoint(editPointIndex_));
 }
 
 // 出発の演出が動かす・参照するものをまとめる
@@ -332,6 +379,10 @@ void GameScene::Update(){
 	// 地面タイルの更新(霧のUVスクロールも行う)
 	ground_->Update(kDeltaTime);
 
+	// Play中だけ、遠くのレール・スタート台・的・敵などを空の色に溶け込ませ、カメラの遠平面で急に現れたり消えたりして見えないようにする
+	// Edit中は俯瞰カメラで遠くの制御点も編集するため、溶け込ませない(地面は独自の距離で溶け込ませる)
+	UpdateSceneDistanceFade();
+
 	// 衝撃の瞬間の画面演出を進める
 	// ヒットストップ中は、出発ゲートとインクの演出の時間を止めて、衝撃の瞬間を強調する
 	screenImpact_->Update(kDeltaTime);
@@ -363,7 +414,15 @@ void GameScene::Update(){
 
 	// レールエディターの更新
 	if(railEditor_){
+		// 走り切るまでの秒数の表示に使う全体の速さを、Playerの調整項目から渡す
+		railEditor_->SetBaseRailSpeed(GlobalVariables::GetInstance()->GetFloatValue(kGameSceneGroup,kRailSpeedKey));
 		railEditor_->Update();
+
+		// Rail Editorの「Focus」・一覧のダブルクリックで、選択中の制御点に俯瞰デバッグカメラを寄せる
+		Vector3 focusPosition{};
+		if(railEditor_->ConsumeFocusRequest(focusPosition)){
+			debugTopCamera_->FocusOnPoint(focusPosition);
+		}
 	}
 
 	// 的・敵の配置エディターの更新(配置モード中のドラッグ移動と、編集結果の反映もここで処理される)
@@ -456,15 +515,22 @@ void GameScene::UpdateGameplay(){
 			isCursorVisible_ = false;
 			::ShowCursor(FALSE);
 		}
+		// Rail Editorで編集していたレールと制御点を覚えておく(ResetPlayState()でレールを0番へ戻すと選択が消えるため、その前に取る)
+		editRailIndex_ = railEditor_->GetActiveRailIndex();
+		editPointIndex_ = railEditor_->GetSelectedPointIndex();
+		// 制御点を選んでいないときは、設定がONでもいつも通り始める
+		isPlayingFromPoint_ = startsFromSelectedPoint_ && editPointIndex_ >= 0;
 		ResetPlayState();
-		startSequence_->Start(skipTitle_);
+		StartPlaySequence();
 	} else if(!isPlayMode && wasPlayMode_){
 		startSequence_->Stop();
 		departureDirector_->Reset();
+		// Play前に編集していたレールと制御点を選び直し、続けて編集できるようにする
+		railEditor_->SelectPoint(editRailIndex_,editPointIndex_);
 	} else if(isPlayMode && input_ && input_->TriggerKey(DIK_R)){
-		// 確認用の一時的な処理:Play中にRキーでタイトルから最初からやり直す
+		// 確認用の一時的な処理:Play中にRキーでタイトルから最初からやり直す(選んだ制御点から始めているときは、その制御点からやり直す)
 		ResetPlayState();
-		startSequence_->Start(skipTitle_);
+		StartPlaySequence();
 	}
 	wasPlayMode_ = isPlayMode;
 
@@ -530,20 +596,6 @@ void GameScene::UpdateGameplay(){
 		// クリアは ImGui で選んだ演出(初期値は黄色いインクが弾けて画面を塗りつぶす InkBurst)で切り替える
 		sceneManager_->ChangeScene("CLEAR",GetTransitionStyle(kClearTransitionKey));
 		return;
-	}
-
-	// 提出用: レールに乗ってプレイが始まってから一定時間たったら、暗転して覆っている間にタイトルからやり直す
-	// 暗転を始めると isGameplayActive が false になるため、暗転は1回だけ始まる
-	if constexpr(kReturnToTitleAfterBoarding){
-		if(isGameplayActive){
-			playTimeSinceBoarded_ += kDeltaTime;
-			if(playTimeSinceBoarded_ >= kReturnToTitleDelay){
-				sceneManager_->StartTransition([this](){
-					ResetPlayState();
-					startSequence_->Start(skipTitle_);
-				},SceneTransition::Style::Fade);
-			}
-		}
 	}
 
 #ifdef USE_IMGUI
@@ -650,6 +702,10 @@ void GameScene::UpdateGameplay(){
 		if(needsRestart){
 			sceneManager_->StartTransition([this](){
 				ResetPlayState();
+				// 選んだ制御点から始めているときは、落ちても同じ制御点から始め直す
+				if(isPlayingFromPoint_){
+					BoardAtPlayStartPoint();
+				}
 			},GetTransitionStyle(kFallTransitionKey));
 		}
 
@@ -761,8 +817,44 @@ void GameScene::ShowEditorPanels(){
 	// デバッグ用のメインウィンドウ(下段・左)
 	EditorWidgets::BeginFixedPanel("GameScene Debug",L.bottomLeft);
 
-	// ONにすると、Playを押したときにタイトル演出を飛ばしてすぐプレイを始める(デバッグ用)
+	// ONにすると、Playを押したときにタイトル・スタート演出を飛ばし、レールの上からすぐプレイを始める(デバッグ用)
 	ImGui::Checkbox("Skip Title",&skipTitle_);
+	// ONにすると、Playを押したときにRail Editorで選んでいる制御点からプレイを始める(タイトル・スタート台も飛ばす。落ちたときも同じ制御点から始め直す)
+	ImGui::Checkbox("Start From Selected Point",&startsFromSelectedPoint_);
+	ImGui::TextDisabled("(未選択ならいつも通り)");
+
+	// レール・的・敵の編集のUndo/Redoと、まとめて保存(Ctrl+Z / Ctrl+Y / Ctrl+Sでも操作できる)
+	EditorDocumentManager* documentManager = EditorDocumentManager::GetInstance();
+	documentManager->HandleShortcuts();
+	ImGui::BeginDisabled(!documentManager->CanUndo());
+	if(ImGui::Button("Undo")){
+		documentManager->Undo();
+	}
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	ImGui::BeginDisabled(!documentManager->CanRedo());
+	if(ImGui::Button("Redo")){
+		documentManager->Redo();
+	}
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	if(ImGui::Button("Save All")){
+		documentManager->SaveAll();
+	}
+
+	// 保存していない変更があるエディターの名前を並べる(保存し忘れに気づけるようにする)
+	bool hasUnsavedDocument = false;
+	for(const IEditorDocument* document : documentManager->GetDocuments()){
+		if(!document->IsModified()){
+			continue;
+		}
+		if(!hasUnsavedDocument){
+			ImGui::TextUnformatted("Unsaved:");
+			hasUnsavedDocument = true;
+		}
+		ImGui::SameLine();
+		ImGui::TextUnformatted(document->GetDocumentName());
+	}
 
 	// 落下リスタートの演出を切り替える。Preview を押すと落ちなくてもその場で演出だけを確認できる
 	// 選んだ演出は調整項目に書き込み、"Global Variables" ウィンドウの Save で JSON に保存する

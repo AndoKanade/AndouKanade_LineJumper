@@ -12,10 +12,11 @@ class CloudWave;
 
 /// <summary>
 /// 雲海の地面
-/// 起伏のある雲の板モデルと、その上に雲と同じ形で重ねた半透明の霧の層を、
-/// レール開始地点を基準に格子状に並べて表現する。
+/// 起伏のある雲の板モデルと、その上に雲と同じ形で重ねた半透明の霧の層を、格子状に並べて表現する。
+/// 格子の向きと位置の基準はレール開始地点に合わせ、タイルはカメラの真下を中心に並べ直すことで、
+/// レールをどこまで進んでも、カメラから kDrawRadius 以内には必ずタイルがあるようにする。
 /// 霧は下ほど濃く上ほど薄い層を何枚も重ね、層ごとに流れ方を変えることで厚みのあるもやに見せる。
-/// 位置・向き・大きさは生成時に決め打ちし、毎フレームは行列の更新・雲の起伏のうねり・霧のUVスクロールを行う。
+/// 向き・大きさは生成時に決め打ちし、毎フレームは並べ直し・行列の更新・雲の起伏のうねり・霧のUVスクロールを行う。
 /// </summary>
 class Ground{
 public:
@@ -26,13 +27,13 @@ public:
 	/// 雲と霧のタイルを生成する
 	/// </summary>
 	/// <param name="objCommon">3Dオブジェクト共通設定</param>
-	/// <param name="startPosition">並べる基準の位置(レール開始地点)</param>
-	/// <param name="forward">並べる基準の進行方向(レール開始地点での向き)</param>
+	/// <param name="startPosition">格子の位置の基準(レール開始地点。この位置にタイルの中心が来るように格子をそろえる)</param>
+	/// <param name="forward">格子の向きの基準(レール開始地点での向き)</param>
 	/// <param name="paramGroup">霧の濃さの調整項目を登録するGlobalVariablesのグループ名</param>
 	void Initialize(Obj3dCommon* objCommon,const Vector3& startPosition,const Vector3& forward,const std::string& paramGroup);
 
 	/// <summary>
-	/// 更新処理(カメラ切り替えへの追従・行列の更新・雲の起伏のうねり・霧のUVスクロール)
+	/// 更新処理(カメラの真下を中心にタイルを並べ直す・カメラ切り替えへの追従・行列の更新・雲の起伏のうねり・霧のUVスクロール)
 	/// </summary>
 	/// <param name="deltaTime">1フレームの経過時間(秒)</param>
 	void Update(float deltaTime);
@@ -48,20 +49,31 @@ public:
 
 private:
 	/// <summary>
-	/// 板モデルのタイルを格子状に並べて生成する(雲と霧で共通の並べ方)
+	/// 板モデルのタイルを、格子1つ分の枚数だけ生成する(雲と霧で共通。並べる位置は PlaceTiles() で決める)
 	/// </summary>
 	/// <param name="objCommon">3Dオブジェクト共通設定</param>
 	/// <param name="modelPath">タイルに使うモデルのパス</param>
-	/// <param name="startPosition">並べる基準の位置</param>
-	/// <param name="forward">並べる基準の進行方向</param>
 	/// <param name="height">タイルを敷くY座標</param>
 	/// <param name="thicknessScale">板の厚み方向(モデルのZ方向)の拡大率</param>
 	/// <param name="tiles">生成したタイルの格納先</param>
-	void CreateTiles(Obj3dCommon* objCommon,const std::string& modelPath,const Vector3& startPosition,const Vector3& forward,
-		float height,float thicknessScale,std::vector<std::unique_ptr<Obj3D>>& tiles);
+	void CreateTiles(Obj3dCommon* objCommon,const std::string& modelPath,float height,float thicknessScale,std::vector<std::unique_ptr<Obj3D>>& tiles);
 
-	// タイルをアクティブなカメラに追従させて行列を更新する
+	/// <summary>
+	/// 指定した格子のマスを中心に、タイルを前後左右へ kTileCountRadius 枚ずつ並べる(高さは生成時のまま変えない)
+	/// </summary>
+	/// <param name="tiles">並べるタイル</param>
+	/// <param name="centerDepthIndex">中心のマスの、基準の位置から進行方向へ何マス目か</param>
+	/// <param name="centerWidthIndex">中心のマスの、基準の位置から右方向へ何マス目か</param>
+	void PlaceTiles(std::vector<std::unique_ptr<Obj3D>>& tiles,int centerDepthIndex,int centerWidthIndex);
+
+	// カメラの真下のマスが変わったら、雲と霧のタイルをそのマスを中心に並べ直す
+	void RecenterTiles(const Vector3& cameraPosition);
+
+	// タイルをアクティブなカメラに追従させる(行列はタイルを並べ直したときだけ PlaceTiles() で更新する)
 	void UpdateTiles(std::vector<std::unique_ptr<Obj3D>>& tiles);
+
+	// アクティブなカメラに映るマスを求めて isTileVisible_ に入れる(映らないマスのタイルは雲も霧も描かない)
+	void UpdateTileVisibility();
 
 	// 起伏のある雲のタイル
 	std::vector<std::unique_ptr<Obj3D>> cloudTiles_;
@@ -81,16 +93,36 @@ private:
 	// 霧の濃さの調整項目を登録したGlobalVariablesのグループ名
 	std::string paramGroup_;
 
+	// 格子の基準の位置(レール開始地点。この位置がマス(0, 0)の中心になる)
+	Vector3 gridOrigin_ = {0.0f, 0.0f, 0.0f};
+	// 格子の進行方向・右方向(どちらも水平な単位ベクトル。タイルはこの2方向へ並べる)
+	Vector3 gridForward_ = {0.0f, 0.0f, 1.0f};
+	Vector3 gridRight_ = {1.0f, 0.0f, 0.0f};
+	// 今タイルを並べている中心のマス(カメラの真下のマスが変わったときだけ並べ直すために覚えておく)
+	int centerDepthIndex_ = 0;
+	int centerWidthIndex_ = 0;
+	// 一度でもタイルを並べたか(最初の Update() では必ず並べる)
+	bool hasPlacedTiles_ = false;
+	// マスごとにカメラに映るかどうか(雲と霧の層で同じマスは同じ添字なので、1回求めて全層で使う)
+	std::vector<bool> isTileVisible_;
+	// 1つのマスを雲と霧の層ごと囲む球の半径(この球が視錐台の外にあるマスは描かない)
+	float tileCullingRadius_ = 0.0f;
+
 	// 板モデル1枚の1辺の長さ(cloudSurface.obj・fogSurface.objは-1〜1の2x2なのでこの値になる)
 	static constexpr float kTilePlaneSize = 2.0f;
 	// 板モデルに掛ける表示スケール(1タイルの1辺はkTilePlaneSize倍された長さになる)
 	static constexpr float kTileScale = 10.0f;
-	// レール開始地点から奥(進行方向)へ並べるタイル数
-	static constexpr int kTileCountForward = 8;
-	// レール開始地点から手前(進行方向の逆)へ並べるタイル数
-	static constexpr int kTileCountBack = 1;
-	// 横方向へ並べるタイル数(左右対称にするため奇数にする)
-	static constexpr int kTileCountWidth = 5;
+	// タイル1枚の1辺の長さ(この間隔で並べると隙間なく敷き詰められる)
+	static constexpr float kTileStep = kTilePlaneSize * kTileScale;
+	// 必ずタイルを敷いておく範囲(カメラからの水平距離)
+	// カメラの遠平面(Camera の farClip の初期値 100)より先は描画されないため、同じ距離まで敷けば見える範囲に抜けが出ない
+	static constexpr float kDrawRadius = 100.0f;
+	// カメラの真下のマスから前後左右へ並べるタイルの枚数
+	// カメラは中心のマスの中(中心から半マス以内)にいるため、端までの距離は最低でも「枚数 × 1辺の長さ」になる
+	static constexpr int kTileCountRadius = 5;
+	static_assert(static_cast<float>(kTileCountRadius) * kTileStep >= kDrawRadius,"タイルを並べる枚数が、必ず敷いておく範囲に足りていない");
+	// 1辺に並べるタイルの枚数(中心のマスと、その前後(左右)に kTileCountRadius 枚ずつ)
+	static constexpr int kTileCountPerSide = kTileCountRadius * 2 + 1;
 	// 地面を敷くY座標(レールの起伏に関係なく一定の高さにする)
 	static constexpr float kGroundHeight = -3.0f;
 	// 板モデルは+Z向きなので、X軸を-90度回して法線を上向き(+Y)にする
@@ -106,6 +138,10 @@ private:
 
 	// 霧の濃さの倍率の初期値(各層の不透明度にまとめて掛ける。保存済みJSONがあればそちらが優先される)
 	static constexpr float kDefaultFogDensity = 1.0f;
+	// 遠くを空の色に溶け込ませ始める距離・溶け込みきる距離の初期値(カメラからの距離。保存済みJSONがあればそちらが優先される)
+	// 溶け込みきる距離は、地面が切れる距離(kDrawRadius)より少し手前にして、切れ目が必ず空の色に隠れるようにする
+	static constexpr float kDefaultHorizonFadeStart = 45.0f;
+	static constexpr float kDefaultHorizonFadeEnd = 95.0f;
 	// 霧の不透明度として使える範囲(倍率を掛けた結果がこの範囲を超えないように制限する)
 	static constexpr float kFogAlphaMin = 0.0f;
 	static constexpr float kFogAlphaMax = 1.0f;
