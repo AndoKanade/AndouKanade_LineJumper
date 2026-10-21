@@ -80,11 +80,6 @@ namespace{
 	constexpr SceneTransition::Style kDefaultFallTransitionStyle = SceneTransition::Style::RailStripes;
 	constexpr SceneTransition::Style kDefaultClearTransitionStyle = SceneTransition::Style::InkBurst;
 
-	// 提出用: レールに乗ってプレイが始まってから、暗転してタイトルへ戻すか(false にすると、そのままプレイを続ける)
-	constexpr bool kReturnToTitleAfterBoarding = true;
-	// レールに乗ってからタイトルへ戻し始めるまでの時間(秒)
-	constexpr float kReturnToTitleDelay = 2.0f;
-
 	// 調整項目に保存した番号から演出の種類を取得する
 	SceneTransition::Style GetTransitionStyle(const char* key){
 		return static_cast<SceneTransition::Style>(GlobalVariables::GetInstance()->GetIntValue(kGameSceneGroup,key));
@@ -280,9 +275,6 @@ void GameScene::ResetPlayState(){
 		player_->StartOnPlatform(startPlatform_->GetSpawnPosition(),railEditor_->GetRotationOnRail(0.0f));
 	}
 
-	// タイトルへ戻すまでの時間も数え直す
-	playTimeSinceBoarded_ = 0.0f;
-
 	// 出ている演出・連鎖数・スピード線・画面の揺れ・出発の演出も消す
 	inkEffect_->Reset();
 	screenImpact_->Reset();
@@ -458,6 +450,10 @@ void GameScene::UpdateGameplay(){
 		}
 		ResetPlayState();
 		startSequence_->Start(skipTitle_);
+		// タイトルを飛ばすときはスタート台の上も飛ばし、レールの始点に乗せた状態からすぐ始める
+		if(skipTitle_){
+			player_->BoardRailStart();
+		}
 	} else if(!isPlayMode && wasPlayMode_){
 		startSequence_->Stop();
 		departureDirector_->Reset();
@@ -465,6 +461,9 @@ void GameScene::UpdateGameplay(){
 		// 確認用の一時的な処理:Play中にRキーでタイトルから最初からやり直す
 		ResetPlayState();
 		startSequence_->Start(skipTitle_);
+		if(skipTitle_){
+			player_->BoardRailStart();
+		}
 	}
 	wasPlayMode_ = isPlayMode;
 
@@ -530,20 +529,6 @@ void GameScene::UpdateGameplay(){
 		// クリアは ImGui で選んだ演出(初期値は黄色いインクが弾けて画面を塗りつぶす InkBurst)で切り替える
 		sceneManager_->ChangeScene("CLEAR",GetTransitionStyle(kClearTransitionKey));
 		return;
-	}
-
-	// 提出用: レールに乗ってプレイが始まってから一定時間たったら、暗転して覆っている間にタイトルからやり直す
-	// 暗転を始めると isGameplayActive が false になるため、暗転は1回だけ始まる
-	if constexpr(kReturnToTitleAfterBoarding){
-		if(isGameplayActive){
-			playTimeSinceBoarded_ += kDeltaTime;
-			if(playTimeSinceBoarded_ >= kReturnToTitleDelay){
-				sceneManager_->StartTransition([this](){
-					ResetPlayState();
-					startSequence_->Start(skipTitle_);
-				},SceneTransition::Style::Fade);
-			}
-		}
 	}
 
 #ifdef USE_IMGUI
@@ -761,7 +746,7 @@ void GameScene::ShowEditorPanels(){
 	// デバッグ用のメインウィンドウ(下段・左)
 	EditorWidgets::BeginFixedPanel("GameScene Debug",L.bottomLeft);
 
-	// ONにすると、Playを押したときにタイトル演出を飛ばしてすぐプレイを始める(デバッグ用)
+	// ONにすると、Playを押したときにタイトル・スタート演出を飛ばし、レールの上からすぐプレイを始める(デバッグ用)
 	ImGui::Checkbox("Skip Title",&skipTitle_);
 
 	// 落下リスタートの演出を切り替える。Preview を押すと落ちなくてもその場で演出だけを確認できる

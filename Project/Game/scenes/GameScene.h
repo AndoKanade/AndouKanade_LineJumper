@@ -152,11 +152,8 @@ private:
 	// マウスカーソルをウィンドウ内に閉じ込めているか(カーソルを隠している間だけ閉じ込め、ウィンドウ外の誤クリックを防ぐ)
 	bool isCursorClipped_ = false;
 
-	// Playに入ったときにタイトル演出を飛ばしてすぐプレイを始めるか(デバッグ用。ImGuiのチェックボックスで切り替える)
+	// Playに入ったときにタイトル・スタート演出を飛ばし、レールの上からすぐプレイを始めるか(デバッグ用。ImGuiのチェックボックスで切り替える)
 	bool skipTitle_ = false;
-
-	// レールに乗ってプレイが始まってからの経過時間(秒。提出用にタイトルへ戻すまでの時間を数える)
-	float playTimeSinceBoarded_ = 0.0f;
 
 	// 1フレームの経過時間(エンジンが固定60fps前提(TimeManagerで60fps固定)なので、そのまま合わせる)
 	static constexpr float kDeltaTime = 1.0f / 60.0f;

@@ -193,7 +193,7 @@ private:
 	// 表示位置(UpdateTransform()で求める)
 	Vector3 position_ = {0.0f, 0.0f, 0.0f};
 
-	// 現在の体力(0になるとそれ以上減らない)
+	// 現在の体力(0になるとそれ以上減らない)	
 	int hp_ = kMaxHp;
 	// 被弾後の無敵時間の残り(秒)。0より大きい間は敵弾が当たっても体力が減らない
 	float invincibleTimer_ = 0.0f;

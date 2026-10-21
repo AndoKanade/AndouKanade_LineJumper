@@ -46,7 +46,6 @@ Game/
 
 - タイトルは独立したシーンではなく、GameScene の中の開始演出（`StartSequence`）として表示する。
 - GAME へ切り替わるたびに GameScene が作り直され、Play モードならタイトルから始まる。
-- 提出用の設定（`GameScene.cpp` の `kReturnToTitleAfterBoarding` が true）の間は、レールに乗って 2 秒たつと暗転してタイトルへ戻る。
 - ESC キーでいつでもゲームを終了する（`Framework::Update()`）。
 
 ### Edit モードと Play モード
@@ -187,12 +186,12 @@ Game/
    - ScreenImpact を進め、ヒットストップ中はスタート台とインクの演出の時間を止める。
    - 遮断棒が跳ね上がった瞬間（`StartPlatform::IsBarBurstTriggered()`）に、ゲートからインクを飛び散らせ、ヒットストップ・画面の揺れ・放射ブラーをかける。出発台を使う演出なら、この瞬間に `DepartureDirector::Prepare()` で使う演出を決める。
 2. `UpdateGameplay()` で次の処理を順番に行う。
-   1. Play に入った瞬間は `ResetPlayState()` と `startSequence_->Start()` を呼ぶ。Edit に戻った瞬間は `startSequence_->Stop()` を呼ぶ。
+   1. Play に入った瞬間は `ResetPlayState()` と `startSequence_->Start()` を呼ぶ。ImGui の「Skip Title」が ON なら、続けて `Player::BoardRailStart()` でレールの始点に乗せ、タイトル・スタート台を飛ばしてすぐプレイを始める。Edit に戻った瞬間は `startSequence_->Stop()` を呼ぶ。
    2. Play 中は `startSequence_->Update()` にプレイヤーの座標を渡して呼び、`isGameplayActive`（Play 中かつ開始演出が終わってプレイ可能）と `isPlayerMovable`（開始演出のうちスタート台の上を動ける段階）を求める。ゲートを開け始めた瞬間に始める出発の演出（CountdownFlip）は、ここで `Prepare()` と `Begin()` を呼んで始める。
    3. マウスカーソルの表示を切り替える（`UpdateCursorVisibility()`）。
    4. `Player::UpdateRailProgress()` でレールを進め、`Player::UpdateBasePose()` で基準位置・基準向きを求める。
    5. `RailCamera::Update()` でカメラをプレイヤーの後ろ上に置き、照準の入力を反映する（スタート台の上を動ける間も照準を動かせる）。
-   6. クリア判定、提出用のタイトルへ戻す判定、状態確認用のデバッグウィンドウ（`ShowStatusWindow()`）。
+   6. クリア判定、状態確認用のデバッグウィンドウ（`ShowStatusWindow()`）。
    7. `Player::UpdateTransform()` でプレイヤーをレールの上に立たせ、照準の方向へ向ける。出発の演出中は `DepartureDirector::Update()` でプレイヤーの表示を上書きする。カメラは「タイトル・回り込み（StartSequence）→ 出発の演出 → ゲートを映すカメラ」の優先順で上書きし、最後に画面の揺れを足す。
    8. 敵の更新、敵弾とプレイヤーの当たり判定、ゲームオーバー判定。
    9. `Player::UpdateMovement()` でジャンプ・WASD 移動・着地判定を行う。地面まで落ちたら `ResetPlayState()` を呼ぶ。`isPlayerMovable` の間も同じく動かす。出発台を使う演出なら、出発台の手前の線を越えたら演出を始める。歩いてレールへ乗ったとき・出発の演出がレールへ乗せ終えたときは `StartSequence::NotifyBoarded()` を呼び、`PlayBoardedEffects()` で足元から輪・インクのしぶき・インクの跡を出す。
@@ -210,7 +209,6 @@ Game/
 | 試し撃ち | スタート台の上（`isPlayerMovable` の間）でも撃てる。この弾は的・敵に当たらず、台に着いたところにインクを塗る |
 | 出発の演出 | ImGui の「Departure」で選んだ演出で、スタート台からレールへ移る（Title の Departure を参照） |
 | 落下リスタート | どのレールにも乗れずに地面の高さまで落ちたら暗転（`SceneManager::StartTransition()`）を始め、画面を覆っている間に `ResetPlayState()` を呼ぶ。開始演出は挟まない |
-| 提出用のタイトルへ戻す | `kReturnToTitleAfterBoarding` が true の間は、レールに乗ってプレイが始まってから `kReturnToTitleDelay`（2 秒）たつと `Fade` で暗転し、覆っている間に `ResetPlayState()` と `StartSequence::Start()` を呼ぶ。落下リスタートしたら数え直す |
 | クリア | オンレール中にレールの終端に着いたら CLEAR へ移る。移る前に壊した的の数・総数・最大連鎖数を StageResult に書き込む（的を全部壊すことはクリアの条件にしない） |
 | ゲームオーバー | プレイヤーの体力が 0 になったら GAMEOVER へ移る |
 | 当たり判定 | すべてモデルの頂点から求めた境界球（`Model::BoundingSphere`）同士の重なりで判定する。プレイヤー・敵本体はワールド行列で変換した球（`Obj3D::GetWorldBoundingSphere()`）、弾・的は現在座標と表示スケールから求めた球を使う |
@@ -308,7 +306,7 @@ GameScene が直接触るのは StartSequence と DepartureDirector で、残り
 | 関数 | 内容 |
 | --- | --- |
 | `Initialize(Obj3dCommon*, SpriteCommon*, Input*, StartPlatform*)` | TitleLogo・TitleUI・StageIntroUI を生成し、出発ゲートを開け閉めするスタート台を受け取る |
-| `Start(skipTitle)` | `Title` から始める。カメラワーク・タイトル表示・出発までの表示・出発ゲートも初期状態に戻す。`skipTitle` が true ならゲートを開けてすぐ `Playing` にする |
+| `Start(skipTitle)` | `Title` から始める。カメラワーク・タイトル表示・出発までの表示・出発ゲートも初期状態に戻す。`skipTitle` が true ならゲートは閉じたまますぐ `Playing` にする（カウントダウン・ゲートが開く演出は出さない。プレイヤーは GameScene 側でレールの始点に乗せる） |
 | `Stop()` | `None` に戻す |
 | `Update(float deltaTime, playerPosition)` | 段階ごとの処理と、次の段階への切り替えを行う。プレイヤーの座標はゲートの前にいるかの判定に使う |
 | `NotifyBoarded()` | `Boarding` / `Departure` 中にプレイヤーがレールに乗ったら呼ぶ。「GO!」を出して `Playing` にする |
