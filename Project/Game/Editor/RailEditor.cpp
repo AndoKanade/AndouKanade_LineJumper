@@ -115,6 +115,30 @@ void RailEditor::EnsureObjectCount(std::vector<std::unique_ptr<Obj3D>>& objects,
 	}
 }
 
+// 制御点数pointCountのレールで、Edit中の曲線の点列に使う点の数を求める
+// 区間数に比例した数の点を並べ、レールを延長しても点の間隔が粗くならないようにする(終点の分だけ1つ多い)
+size_t RailEditor::GetCurveSampleCount(size_t pointCount) const{
+	// Catmull-Romは制御点4つ以上必要なので、それ未満のときは曲線を描かない
+	if(pointCount < 4){
+		return 0;
+	}
+	return (pointCount - kCatmullRomExtraPointCount) * kCurveSamplesPerSegment + 1;
+}
+
+// Edit中の曲線の点列・着地できる範囲の点を描くオブジェクトを、全レール共通の置き場から1つ取り出す
+// 置き場の先頭から順に使い、足りなければ増やす。New Railや制御点の追加で一度にたくさん作ると画面が止まるため、
+// 1フレームに作る数を制限し、作りきれなかった点は描かずに次のフレーム以降に回す(数フレームで全部描かれる)
+Obj3D* RailEditor::AcquireSampleObject(){
+	if(usedSampleObjectCount_ >= sampleObjects_.size()){
+		if(createdSampleObjectCount_ >= kMaxSampleObjectCreatePerFrame){
+			return nullptr;
+		}
+		sampleObjects_.push_back(CreatePointObject(kSampleModelPath));
+		++createdSampleObjectCount_;
+	}
+	return sampleObjects_[usedSampleObjectCount_++].get();
+}
+
 // レールの末尾を延長する位置に置く制御点を求める
 // 末尾2点の差をそのまま末尾に足し、同じ向き・同じ間隔で伸ばす。回転と速度は末尾の制御点を引き継ぐ
 RailEditor::ControlPoint RailEditor::ComputeExtendedPoint(const std::vector<ControlPoint>& controlPoints) const{
@@ -153,14 +177,9 @@ void RailEditor::AddRail(){
 	rail.controlPoints.push_back(kDefaultControlPoint);
 	rail.pointObjects.push_back(CreatePointObject(kControlPointModelPath));
 
-	// 曲線の点列・管は区間数で必要な数が変わるため、ここでは作らずDraw()・BuildTubes()で足りない分だけ生成する
-
-	// 着地できる範囲可視化用のオブジェクトは固定数だけ生成しておく(1サンプルにつき左右2個)
-	const int landingRangeObjectCount = kLandingRangeSampleCount * 2;
-	rail.landingRangeObjects.reserve(landingRangeObjectCount);
-	for(int i = 0; i < landingRangeObjectCount; ++i){
-		rail.landingRangeObjects.push_back(CreatePointObject(kSampleModelPath));
-	}
+	// 曲線の点列・着地できる範囲の点は全レール共通の置き場(sampleObjects_)から使い、
+	// 管は区間数で必要な数が変わるためBuildTubes()で足りない分だけ生成する
+	// (New Railで一度にたくさん作ると画面が止まるため、ここでは制御点の目印1つだけを作る)
 
 	rails_.push_back(std::move(rail));
 	activeRailIndex_ = static_cast<int>(rails_.size()) - 1;
@@ -189,6 +208,17 @@ void RailEditor::Initialize(Obj3dCommon* objCommon){
 
 	// 保存済みのJSONがあれば読み込んで初期状態を上書きする(ホットロードの起動時オート読込)
 	LoadRailsFromFiles();
+
+	// 編集中に描画用オブジェクトを作って画面が止まらないよう、読み込んだレールに必要な分を起動時に作っておく
+	// 曲線の点列は延長に備えて多めに作り、管はPlayに入ったときに作らずに済むよう今の区間数の分だけ作る
+	size_t sampleObjectCount = kSampleObjectHeadroom;
+	for(Rail& rail : rails_){
+		sampleObjectCount += GetCurveSampleCount(rail.controlPoints.size());
+		if(rail.controlPoints.size() >= 4){
+			EnsureObjectCount(rail.tubeObjects,(rail.controlPoints.size() - kCatmullRomExtraPointCount) * kTubeSegmentsPerRailSegment,kTubeModelPath);
+		}
+	}
+	EnsureObjectCount(sampleObjects_,sampleObjectCount,kSampleModelPath);
 
 	// 読み込んだ状態を編集の基準(保存済み)にし、Ctrl+Z・すべて保存の対象に登録する
 	history_.Reset(MakeSnapshot());
@@ -404,6 +434,10 @@ void RailEditor::Draw(){
 	// Edit中はレールが編集されうるため、次にPlayに入ったときに管の行列を求め直す
 	areTubesBuilt_ = false;
 
+	// 曲線の点列・着地できる範囲の点のオブジェクトは、毎フレーム置き場の先頭から使い直す
+	usedSampleObjectCount_ = 0;
+	createdSampleObjectCount_ = 0;
+
 	Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera();
 
 	// レールの乗り換えを目視確認できるよう、アクティブなレールだけでなく全レールを描画する
@@ -441,27 +475,30 @@ void RailEditor::Draw(){
 		// レール曲線をサンプリング点列(小さい球)で可視化する簡易版
 		// Catmull-Romは制御点4つ以上必要なので、それ未満のときは何も描画しない
 		if(rail.showCurve && rail.controlPoints.size() >= 4){
-			// 区間数に比例した数の点を並べ、レールを延長しても点の間隔が粗くならないようにする(終点の分だけ1つ多い)
-			const size_t curveSampleCount = (rail.controlPoints.size() - kCatmullRomExtraPointCount) * kCurveSamplesPerSegment + 1;
-			EnsureObjectCount(rail.curveObjects,curveSampleCount,kSampleModelPath);
-
+			const size_t curveSampleCount = GetCurveSampleCount(rail.controlPoints.size());
 			for(size_t i = 0; i < curveSampleCount; ++i){
+				// オブジェクトを作りきれていなければ、残りの点は次のフレーム以降に描く
+				Obj3D* curveObject = AcquireSampleObject();
+				if(!curveObject){
+					break;
+				}
+
 				float t = static_cast<float>(i) / static_cast<float>(curveSampleCount - 1);
 				Vector3 pos = ComputePositionOnRail(rail.controlPoints,t);
 
-				rail.curveObjects[i]->SetTranslate(pos);
+				curveObject->SetTranslate(pos);
 				// 制御点よりさらに小さくして、線のように見せる
-				rail.curveObjects[i]->SetScale({kCurveScale, kCurveScale, kCurveScale});
-				if(Model::Material* mat = rail.curveObjects[i]->GetMaterial()){
+				curveObject->SetScale({kCurveScale, kCurveScale, kCurveScale});
+				if(Model::Material* mat = curveObject->GetMaterial()){
 					mat->color = railColor;
 				}
 
 				if(activeCamera){
-					rail.curveObjects[i]->SetCamera(activeCamera);
+					curveObject->SetCamera(activeCamera);
 				}
 
-				rail.curveObjects[i]->Update();
-				rail.curveObjects[i]->Draw();
+				curveObject->Update();
+				curveObject->Draw();
 			}
 		}
 
@@ -486,9 +523,12 @@ void RailEditor::Draw(){
 				}
 				horizontalRight = Normalize(horizontalRight) * landingRangeRadius_;
 
-				// 左右1組を、まとめて確保しておいたオブジェクトの連続した2要素に割り当てる
-				Obj3D* rightObject = rail.landingRangeObjects[i * 2].get();
-				Obj3D* leftObject = rail.landingRangeObjects[i * 2 + 1].get();
+				// 左右1組のオブジェクトを取り出す(作りきれていなければ、残りの点は次のフレーム以降に描く)
+				Obj3D* rightObject = AcquireSampleObject();
+				Obj3D* leftObject = AcquireSampleObject();
+				if(!rightObject || !leftObject){
+					break;
+				}
 
 				rightObject->SetTranslate(pos + horizontalRight);
 				leftObject->SetTranslate(pos - horizontalRight);

@@ -143,11 +143,6 @@ private:
 		std::string name;                                   // レール名(UI表示・保存ファイル名の目印用)
 		std::vector<ControlPoint> controlPoints;            // 制御点を保存する配列
 		std::vector<std::unique_ptr<Obj3D>> pointObjects;   // 制御点描画用の3Dオブジェクト群
-		std::vector<std::unique_ptr<Obj3D>> curveObjects;   // レール曲線サンプリング点描画用のオブジェクト群(区間数に合わせて足りない分だけ増やす)
-
-		// 着地できる範囲(レールの左右へ許容距離ぶん離れた位置)を示す点列
-		// 1サンプルにつき左右2個使うため、要素数はkLandingRangeSampleCountの2倍で固定する
-		std::vector<std::unique_ptr<Obj3D>> landingRangeObjects;
 
 		// Play中にレールの本体として描く管(円柱をつないだもの。区間数に合わせて足りない分だけ増やす)
 		std::vector<std::unique_ptr<Obj3D>> tubeObjects;
@@ -175,6 +170,11 @@ private:
 	void SyncPointObjectsToControlPoints(Rail& rail);
 	// 描画用オブジェクトがcount個に満たなければ、足りない分だけmodelPathのモデルで生成する(多い分は削らず、使わないだけにする)
 	void EnsureObjectCount(std::vector<std::unique_ptr<Obj3D>>& objects,size_t count,const std::string& modelPath);
+	// 制御点数pointCountのレールで、Edit中の曲線の点列に使う点の数を求める
+	size_t GetCurveSampleCount(size_t pointCount) const;
+	// Edit中の曲線の点列・着地できる範囲の点を描くオブジェクトを、全レール共通の置き場から1つ取り出す
+	// 足りないときは1フレームに作る数を制限しながら増やし、このフレームに作れる数を使い切ったらnullptrを返す(その点は次のフレーム以降に描く)
+	Obj3D* AcquireSampleObject();
 	// レールの末尾を延長する位置に置く制御点を求める(末尾2点の向きにそのまま伸ばす)
 	ControlPoint ComputeExtendedPoint(const std::vector<ControlPoint>& controlPoints) const;
 	// 指定インデックスの位置に制御点を挿入し、その制御点を選択状態にする
@@ -226,6 +226,14 @@ private:
 	// Play中のレール本体の管の行列を求め終えたか(Edit中はレールが編集されうるためfalseに戻す)
 	bool areTubesBuilt_ = false;
 
+	// Edit中の曲線の点列・着地できる範囲の点を描くオブジェクトの置き場(全レール共通)
+	// 1つ作るごとにGPUのバッファを2つ確保して重いため、レールごとにまとめて作らず、全レールで使い回す
+	std::vector<std::unique_ptr<Obj3D>> sampleObjects_;
+	// このフレームのDraw()で取り出したオブジェクトの数(毎フレーム0に戻し、置き場の先頭から順に使う)
+	size_t usedSampleObjectCount_ = 0;
+	// このフレームに新しく作ったオブジェクトの数(1フレームに作る数を制限して、重さを複数フレームに分ける)
+	size_t createdSampleObjectCount_ = 0;
+
 	// 編集履歴(Undo/Redo)と、保存していない変更があるかの管理
 	EditHistory<RailsSnapshot> history_;
 
@@ -249,6 +257,11 @@ private:
 	static constexpr float kPickRadius = 0.5f;
 	// 走り切るまでの秒数を求めるとき、速さがこれ未満の区間は止まっているとみなして数えない(0除算防止)
 	static constexpr float kMinStatsSpeed = 1e-4f;
+
+	// 曲線の点列・着地できる範囲の点のオブジェクトを、1フレームに新しく作る最大数
+	static constexpr size_t kMaxSampleObjectCreatePerFrame = 8;
+	// 起動時に、今のレールに必要な数より多めに作っておくオブジェクトの数(制御点を足して延長しても、しばらくは新しく作らずに済むようにする)
+	static constexpr size_t kSampleObjectHeadroom = 200;
 
 	// レール曲線可視化の、Catmull-Romの1区間あたりのサンプリング分割数
 	// レールを延長して区間が増えても点の間隔が粗くならないよう、区間数に比例させる
