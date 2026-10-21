@@ -54,6 +54,15 @@ namespace{
 TargetEditor::TargetEditor() = default;
 // 破棄したエディターをCtrl+Zや保存の対象に残さないよう、登録を外す
 TargetEditor::~TargetEditor(){
+	// 保存していない変更があれば、次に作ったエディターで戻せるよう取っておく(変更が無ければ前に取っておいたものも消す)
+	// 操作の途中でまだ履歴に積んでいない変更も含めるため、先に確定してから判定する
+	CommitEditIfChanged();
+	if(history_.IsModified()){
+		unsavedStash_ = targets_;
+	} else{
+		unsavedStash_.reset();
+	}
+
 	EditorDocumentManager::GetInstance()->Unregister(this);
 }
 
@@ -64,6 +73,14 @@ void TargetEditor::Initialize(){
 	// 読み込んだ状態を編集の基準(保存済み)にし、Ctrl+Z・すべて保存の対象に登録する
 	history_.Reset(targets_);
 	EditorDocumentManager::GetInstance()->Register(this);
+
+	// 前のシーンで保存せずに残していた変更があれば戻す
+	// 読み込んだファイルの状態からの1回の編集として積み、未保存のままにする(Ctrl+Zで読み込んだファイルの状態に戻せる)
+	if(unsavedStash_){
+		targets_ = *unsavedStash_;
+		unsavedStash_.reset();
+		CommitEditIfChanged();
+	}
 }
 
 // 更新処理(ImGuiでの編集UIとマウスドラッグによる移動)

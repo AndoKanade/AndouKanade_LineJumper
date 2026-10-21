@@ -2,6 +2,7 @@
 #include "MyMath.h"
 #include "EditHistory.h"
 #include "EditorDocumentManager.h"
+#include <optional>
 #include <vector>
 
 /// <summary>
@@ -91,6 +92,10 @@ private:
 
 	// 編集履歴(Undo/Redo)と、保存していない変更があるかの管理
 	EditHistory<std::vector<EnemyPoint>> history_;
+	// シーンが切り替わってエディターが破棄されたときに、保存していなかった変更を取っておく場所(次に作ったエディターで戻す)
+	// クリア・ゲームオーバーなどでシーンが切り替わると、エディターは作り直されてファイルから読み込み直すため、取っておかないと消えてしまう
+	// ファイルには書き込まず、戻した後も「未保存」のままにして、保存するか(Save)捨てるか(Load・Ctrl+Z)を選べるようにする
+	static inline std::optional<std::vector<EnemyPoint>> unsavedStash_;
 
 	int selectedIndex_ = -1;      // 選択中の敵のインデックス(-1: 未選択)
 	bool isPlacementMode_ = true; // 配置モード(ONの間だけマウスドラッグでの移動を受け付ける)

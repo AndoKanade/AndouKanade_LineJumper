@@ -4,6 +4,7 @@
 #include "EditorDocumentManager.h"
 #include <vector>
 #include <memory>
+#include <optional>
 #include <string>
 
 // クラスの前方宣言
@@ -238,6 +239,10 @@ private:
 
 	// 編集履歴(Undo/Redo)と、保存していない変更があるかの管理
 	EditHistory<RailsSnapshot> history_;
+	// シーンが切り替わってエディターが破棄されたときに、保存していなかった変更を取っておく場所(次に作ったエディターで戻す)
+	// クリア・ゲームオーバーなどでシーンが切り替わると、エディターは作り直されてファイルから読み込み直すため、取っておかないと消えてしまう
+	// ファイルには書き込まず、戻した後も「未保存」のままにして、保存するか(Save)捨てるか(Load・Ctrl+Z)を選べるようにする
+	static inline std::optional<RailsSnapshot> unsavedStash_;
 
 	// 「Focus」で選択中の制御点にカメラを寄せる操作があったか
 	bool hasFocusRequest_ = false;
