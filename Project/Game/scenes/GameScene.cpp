@@ -438,9 +438,6 @@ void GameScene::Update(){
 	// しぶきの着地(UpdateGameplay の中の演出の更新)で塗る分も同じフレームで反映するよう、その後に行う
 	startPlatform_->FlushInk();
 
-	// ImGuiが無い環境でもレールの制御点を確認できるよう、F1キーで俯瞰デバッグカメラを切り替える
-	debugTopCamera_->HandleToggleKey(input_,railEditor_.get());
-
 	// ImGuiが無い環境でも表示切り替えができるよう、キー操作で各種デバッグ表示をトグルする
 	if(input_ && input_->TriggerKey(DIK_F4) && railEditor_){
 		railEditor_->ToggleShowControlPointModels();
@@ -449,7 +446,7 @@ void GameScene::Update(){
 		railEditor_->ToggleShowCurve();
 	}
 
-	// 俯瞰デバッグカメラが有効な間は、ImGui無しでもWASD(平面移動)+QE(高さ)で自由に動かせるようにする
+	// Editモード中は俯瞰デバッグカメラをWASD(平面移動)+QE(高さ)+右ドラッグ(向き)で自由に動かせるようにする
 	debugTopCamera_->UpdateMove(input_);
 
 #ifdef USE_IMGUI
@@ -508,7 +505,7 @@ void GameScene::UpdateGameplay(){
 	// 開始演出もタイトルから始め、Editモードへ戻ったときは止める。
 	// 落下リスタートでは ResetPlayState() だけを呼ぶため、タイトルや出発ゲートを挟まずにスタート台の上からすぐ再開する
 	if(isPlayMode && !wasPlayMode_){
-		// 俯瞰デバッグカメラがONのままだとプレイ用の視点にならないため、Playに入ったら自動でOFFにする
+		// Editモード中は俯瞰デバッグカメラを使っているため、Playに入ったらプレイ用カメラに切り替える
 		debugTopCamera_->Disable();
 		// Playに入ったらカーソルを隠してウィンドウ内に閉じ込め、照準操作中にウィンドウ外をクリックしないようにする(TABで再表示できる)
 		if(isCursorVisible_){
@@ -525,6 +522,8 @@ void GameScene::UpdateGameplay(){
 	} else if(!isPlayMode && wasPlayMode_){
 		startSequence_->Stop();
 		departureDirector_->Reset();
+		// Editモードに戻ったら、Play前に見ていた位置のまま俯瞰デバッグカメラに戻す
+		debugTopCamera_->Enable();
 		// Play前に編集していたレールと制御点を選び直し、続けて編集できるようにする
 		railEditor_->SelectPoint(editRailIndex_,editPointIndex_);
 	} else if(isPlayMode && input_ && input_->TriggerKey(DIK_R)){
@@ -584,6 +583,13 @@ void GameScene::UpdateGameplay(){
 	railCamera_->Update(player_->GetBasePosition(),player_->GetBaseRotation(),isGameplayActive || isPlayerMovable,input_,kDeltaTime);
 	const Vector3& cameraPos = railCamera_->GetPosition();
 	const Vector3& cameraForward = railCamera_->GetForward();
+
+	// Editモードで始まったときは、Playの最初と同じプレイ用カメラの画から俯瞰デバッグカメラを動かし始める
+	// Playから戻ったときは Enable() 済みのため、Play前に見ていた画のまま編集を続けられる
+	if(!isPlayMode && !debugTopCamera_->IsEnabled()){
+		debugTopCamera_->SetPose({cameraPos, railCamera_->GetRotation()});
+		debugTopCamera_->Enable();
+	}
 
 	// クリア判定
 	// アクティブなレールが最後まで到達したらクリアとする(オフレール中は判定しない)
@@ -900,9 +906,6 @@ void GameScene::ShowEditorPanels(){
 		if(ImGui::DragFloat3("Camera Rotate",&camRot.x,0.01f)){
 			activeCamera->SetRotate(camRot);
 		}
-
-		// 俯瞰デバッグカメラの切り替えボタン(ONにした瞬間だけ制御点全体にフィットさせる)
-		debugTopCamera_->ShowToggleCheckbox(railEditor_.get());
 	}
 
 	// ライティング設定のUI

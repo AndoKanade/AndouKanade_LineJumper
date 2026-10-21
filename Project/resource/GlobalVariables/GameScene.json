@@ -17,7 +17,7 @@
         "noseOffset": 2.0,
         "objectFadeEnd": 95.0,
         "objectFadeStart": 60.0,
-        "railSpeed": 6.0,
+        "railSpeed": 10.00000286102295,
         "sunAzimuthDegree": 50.0,
         "sunColor": [
             1.0,

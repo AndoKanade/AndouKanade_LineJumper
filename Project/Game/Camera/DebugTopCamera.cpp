@@ -5,7 +5,6 @@
 #include "Input.h"
 #include "ImGuiManager.h"
 #include "EditorContext.h"
-#include "Editor/RailEditor.h"
 #include <cmath>
 
 namespace{
@@ -27,21 +26,6 @@ void DebugTopCamera::Initialize(Obj3dCommon* objCommon){
 	// 真上から見下ろす位置に配置(X回転90度=pi/2で真下向き)
 	debugTopCamera->SetTranslate({0.0f, kInitialHeight, 0.0f});
 	debugTopCamera->SetRotate({kLookDownRotateX, 0.0f, 0.0f});
-}
-
-// ImGuiが無い環境でもレールの制御点を確認できるよう、F1キーで俯瞰デバッグカメラを切り替える
-void DebugTopCamera::HandleToggleKey(Input* input,const RailEditor* railEditor){
-	if(!input || !input->TriggerKey(DIK_F1)){
-		return;
-	}
-
-	isEnabled_ = !isEnabled_;
-	ApplyActiveCamera();
-
-	// ONにした瞬間だけ、制御点全体を囲むように自動フィットさせる
-	if(isEnabled_){
-		FitToRail(railEditor);
-	}
 }
 
 // 俯瞰デバッグカメラが有効な間は、ImGui無しでもWASD(平面移動)+QE(高さ)+右ドラッグ(向き)で自由に動かせるようにする
@@ -92,6 +76,16 @@ void DebugTopCamera::UpdateMove(Input* input){
 	if(input->PushKey(DIK_E)) debugCameraPos.y += moveDelta;
 	if(input->PushKey(DIK_Q)) debugCameraPos.y -= moveDelta;
 	debugTopCamera->SetTranslate(debugCameraPos);
+}
+
+// 俯瞰デバッグカメラをONにして、アクティブなカメラにする
+// 位置と向きはOFFにする前のまま残しているため、Playから戻るとPlay前に見ていた画から編集を続けられる
+void DebugTopCamera::Enable(){
+	if(isEnabled_){
+		return;
+	}
+	isEnabled_ = true;
+	ApplyActiveCamera();
 }
 
 // 俯瞰デバッグカメラをOFFにして、プレイ用カメラに戻す
@@ -146,42 +140,20 @@ bool DebugTopCamera::IsMouseOnGameView() const{
 #endif
 }
 
-#ifdef USE_IMGUI
-// 俯瞰デバッグカメラの切り替えボタン(ONにした瞬間だけ制御点全体にフィットさせる)
-void DebugTopCamera::ShowToggleCheckbox(const RailEditor* railEditor){
-	if(ImGui::Checkbox("Debug Top-Down View",&isEnabled_)){
-		ApplyActiveCamera();
-
-		// ONにしたときだけ、制御点全体を囲むように自動フィット。以降は手動で自由に調整できる
-		if(isEnabled_){
-			FitToRail(railEditor);
-		}
-	}
-}
-#endif
-
-// 制御点全体を囲むように、カメラの位置と向きを合わせる
-void DebugTopCamera::FitToRail(const RailEditor* railEditor){
-	if(!railEditor){
-		return;
-	}
-
-	Vector3 center = railEditor->GetControlPointsCenter();
-	float radius = railEditor->GetControlPointsRadius();
-	float height = radius * kMarginFactor + kMinHeight;
-
-	// 向きも真下に戻す(右ドラッグで変えた向きはリセットする)
-	pitch_ = kLookDownRotateX;
-	yaw_ = 0.0f;
+// カメラの位置と向きを指定した画に合わせる
+// 傾き(Z軸回転)は右ドラッグで扱わないため、上下・左右の向きだけを使う
+void DebugTopCamera::SetPose(const CameraPose& pose){
+	pitch_ = pose.rotate.x;
+	yaw_ = pose.rotate.y;
 
 	if(Camera* debugTopCamera = CameraManager::GetInstance()->GetCamera(kDebugTopCameraName)){
-		debugTopCamera->SetTranslate({center.x, height, center.z});
+		debugTopCamera->SetTranslate(pose.position);
 		debugTopCamera->SetRotate({pitch_, yaw_, 0.0f});
 	}
 }
 
 // ON/OFFの状態に合わせて、アクティブなカメラを切り替える
-// F1キーとImGuiのチェックボックスのどちらで切り替えても同じ結果になるよう、ここにまとめる
+// Enable()・Disable()・FocusOnPoint()のどれで切り替えても同じ結果になるよう、ここにまとめる
 void DebugTopCamera::ApplyActiveCamera(){
 	const char* cameraName = isEnabled_?kDebugTopCameraName:kDefaultCameraName;
 	CameraManager::GetInstance()->SetActiveCamera(cameraName);
