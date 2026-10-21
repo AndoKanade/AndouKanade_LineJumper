@@ -10,6 +10,9 @@ struct Material
     float32_t shininess;
     float32_t environmentCoefficient;
     int32_t useBlinnPhong;
+    // カメラからの距離がこの間で、色を背景の空の色へ少しずつ近づける(End <= Start のときは近づけない)
+    float32_t distanceFadeStart;
+    float32_t distanceFadeEnd;
 };
 
 struct DirectionalLight
@@ -215,6 +218,19 @@ PixelShaderOutput main(VertexShaderOutput input)
     else
     {
         finalColor = baseColor;
+    }
+
+    // --- 遠くを空に溶け込ませる ---
+    // 地面のように遠くで切れる物の切れ目が見えないよう、遠くほど色を「その方向に見える空(スカイボックス)の色」へ近づける
+    // スカイボックスはカメラを中心に回転させずに描いているため、カメラからこのピクセルへの向きで同じキューブマップを読めば、真後ろに見える空と同じ色になる
+    // 半透明の物も同じ色へ近づければ、空の色の上に空の色を重ねるだけになり、切れ目は見えない
+    // カメラからの距離は奥行き(カメラの遠平面で切れる位置)より必ず長いため、遠平面より手前で溶け込みきるようにすれば、カメラの高さによらず遠平面の切れ目も隠せる
+    if (gMaterial.distanceFadeEnd > gMaterial.distanceFadeStart)
+    {
+        float32_t3 fromCamera = input.worldPosition - gCamera.worldPosition;
+        float32_t fadeRate = smoothstep(gMaterial.distanceFadeStart, gMaterial.distanceFadeEnd, length(fromCamera));
+        float32_t3 skyColor = gEnvironmentTexture.Sample(gSampler, normalize(fromCamera)).rgb;
+        finalColor = lerp(finalColor, skyColor, fadeRate);
     }
 
     // 最終出力の計算

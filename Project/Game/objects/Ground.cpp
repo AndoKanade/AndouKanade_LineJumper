@@ -128,6 +128,9 @@ void Ground::Initialize(Obj3dCommon* objCommon,const Vector3& startPosition,cons
 	// ImGuiの "Global Variables" ウィンドウから実行中に変更でき、次のUpdate()で全層の不透明度に反映される
 	paramGroup_ = paramGroup;
 	GlobalVariables::GetInstance()->AddItem(paramGroup_,"fogDensity",kDefaultFogDensity);
+	// 遠くを空に溶け込ませ始める距離・溶け込みきる距離(カメラからの距離)も調整項目に登録する
+	GlobalVariables::GetInstance()->AddItem(paramGroup_,"horizonFadeStart",kDefaultHorizonFadeStart);
+	GlobalVariables::GetInstance()->AddItem(paramGroup_,"horizonFadeEnd",kDefaultHorizonFadeEnd);
 
 	// 格子の基準の位置と向きを決める
 	// 右方向は進行方向と上方向の外積で水平に求め、進行方向も右方向と上方向から求め直して水平にする
@@ -256,6 +259,17 @@ void Ground::Update(float deltaTime){
 		RecenterTiles(activeCamera->GetTranslate());
 	}
 
+	// 調整項目から、遠くを空に溶け込ませる距離を取得(ImGui編集/ホットリロードが即反映される)
+	// タイルの端やカメラの遠平面で地面が切れる距離(kDrawRadius。どちらもカメラからこれより近くでは切れない)より手前で溶け込みきらないと切れ目が見えるため、それより遠くはしない
+	const float horizonFadeEnd = std::clamp(GlobalVariables::GetInstance()->GetFloatValue(paramGroup_,"horizonFadeEnd"),0.0f,kDrawRadius);
+	const float horizonFadeStart = std::clamp(GlobalVariables::GetInstance()->GetFloatValue(paramGroup_,"horizonFadeStart"),0.0f,horizonFadeEnd);
+	for(auto& tile : cloudTiles_){
+		if(Model::Material* material = tile->GetMaterial()){
+			material->distanceFadeStart = horizonFadeStart;
+			material->distanceFadeEnd = horizonFadeEnd;
+		}
+	}
+
 	UpdateTiles(cloudTiles_);
 
 	// 調整項目から霧の濃さの倍率を取得(ImGui編集/ホットリロードが即反映される)
@@ -283,6 +297,9 @@ void Ground::Update(float deltaTime){
 			if(Model::Material* material = tile->GetMaterial()){
 				material->uvTransform = uvTransform;
 				material->color.w = fogAlpha;
+				// 霧も雲と同じ距離で空の色へ近づける(遠くで霧だけが白く浮いて、切れ目が見えないようにする)
+				material->distanceFadeStart = horizonFadeStart;
+				material->distanceFadeEnd = horizonFadeEnd;
 			}
 		}
 

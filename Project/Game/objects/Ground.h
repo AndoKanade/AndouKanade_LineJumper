@@ -138,6 +138,10 @@ private:
 
 	// 霧の濃さの倍率の初期値(各層の不透明度にまとめて掛ける。保存済みJSONがあればそちらが優先される)
 	static constexpr float kDefaultFogDensity = 1.0f;
+	// 遠くを空の色に溶け込ませ始める距離・溶け込みきる距離の初期値(カメラからの距離。保存済みJSONがあればそちらが優先される)
+	// 溶け込みきる距離は、地面が切れる距離(kDrawRadius)より少し手前にして、切れ目が必ず空の色に隠れるようにする
+	static constexpr float kDefaultHorizonFadeStart = 45.0f;
+	static constexpr float kDefaultHorizonFadeEnd = 95.0f;
 	// 霧の不透明度として使える範囲(倍率を掛けた結果がこの範囲を超えないように制限する)
 	static constexpr float kFogAlphaMin = 0.0f;
 	static constexpr float kFogAlphaMax = 1.0f;
