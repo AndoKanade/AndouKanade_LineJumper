@@ -59,6 +59,36 @@
                 0.0
             ],
             "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                134.90000915527344,
+                26.500001907348633,
+                10.600000381469727
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                141.70001220703125,
+                27.10000228881836,
+                10.600000381469727
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
         }
     ],
     "name": "Rail 5"
