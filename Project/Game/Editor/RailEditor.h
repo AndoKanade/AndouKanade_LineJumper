@@ -6,10 +6,12 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <cstdint>
 
 // クラスの前方宣言
 class Obj3D;
 class Obj3dCommon;
+class Model;
 
 class RailEditor : public IEditorDocument{
 public:
@@ -145,11 +147,16 @@ private:
 		std::vector<ControlPoint> controlPoints;            // 制御点を保存する配列
 		std::vector<std::unique_ptr<Obj3D>> pointObjects;   // 制御点描画用の3Dオブジェクト群
 
-		// Play中にレールの本体として描く管(円柱をつないだもの。区間数に合わせて足りない分だけ増やす)
-		std::vector<std::unique_ptr<Obj3D>> tubeObjects;
-		// 管の区間ごとに描画するかどうか(短すぎて向きが定まらない区間はfalse。BuildTubes()で求める)
-		// 要素数がそのレールで使う管の数になる
-		std::vector<bool> tubeSegmentVisible;
+		// Play中にレールの本体として描く管(レールに沿った1本のモデル。BuildTubes()で頂点から作る)
+		// 管を1区間ずつ別のオブジェクトで描くと描画の命令が区間の数だけ増えて重いため、1本のモデルにまとめる
+		std::unique_ptr<Model> tubeModel;
+		// 管を描くオブジェクト(塗っていない区間用と塗った区間用。同じモデルを、インデックスの範囲を分けて描く)
+		std::unique_ptr<Obj3D> tubeObject;
+		std::unique_ptr<Obj3D> paintedTubeObject;
+		// 管の区間数(区間ごとのインデックスの数は同じため、塗った区間をインデックスの範囲に直すのに使う)
+		uint32_t tubeSegmentCount = 0;
+		// 管を作ったときの制御点(変わっていなければ、Playに入り直しても管を作り直さない)
+		std::vector<ControlPoint> tubeBuiltControlPoints;
 
 		bool showControlPointModels = true;                 // 制御点の球体モデルの描画フラグ
 		bool showCurve = true;                              // 曲線表示フラグ
@@ -162,10 +169,10 @@ private:
 
 	// 制御点・曲線の点列・着地範囲の描画用の3Dオブジェクト生成(modelPathで使うモデルを指定する)
 	std::unique_ptr<Obj3D> CreatePointObject(const std::string& modelPath);
-	// Play中のレール本体の管の位置・向き・大きさを求めて行列を更新する
+	// Play中のレール本体の管のモデルを、レールに沿った頂点から作る(前回作ったときから形が変わったレールだけ作り直す)
 	// Play中はレールの形が変わらないため、Playに入ってから最初の描画で1回だけ呼ぶ
 	void BuildTubes();
-	// Play中のレール本体を、塗った区間とそれ以外で色を分けて管として描画する
+	// Play中のレール本体を、塗った区間とそれ以外で色を分けて管として描画する(1本のレールにつき最大3回の描画で済む)
 	void DrawTubes();
 	// rail.pointObjectsの個数をrail.controlPointsに同期
 	void SyncPointObjectsToControlPoints(Rail& rail);
@@ -295,8 +302,12 @@ private:
 	static constexpr int kTubeSegmentsPerRailSegment = 24;
 	// Play中のレール本体の管の半径
 	static constexpr float kTubeRadius = 0.05f;
-	// 管の1区間の長さがこれ未満なら、向きが定まらないため描画しない
-	static constexpr float kMinTubeSegmentLength = 1e-4f;
+	// 管の輪の周りの分割数(細い管のため、少なめでも丸く見える)
+	static constexpr uint32_t kTubeSideCount = 8;
+	// 四角形1つを三角形2つで描くときのインデックスの数
+	static constexpr uint32_t kTubeIndicesPerQuad = 6;
+	// 管の向きを求めるベクトルの長さがこれ未満なら、向きが定まらないとみなして前の向きを使う
+	static constexpr float kMinTubeDirectionLength = 1e-4f;
 
 	// 着地できる範囲の可視化のサンプリング分割数(左右2列ぶん描くため曲線より粗くする)
 	static constexpr int kLandingRangeSampleCount = 50;

@@ -139,9 +139,9 @@ void Obj3D::Draw(){
     // 描画実行
     if(isSkinning_){
         commandList->SetGraphicsRootShaderResourceView(8,skinCluster_.GetPaletteAddress());
-        model->Draw(skyboxSRVIndex,activeCamera?activeCamera->GetGPUVirtualAddress():0,&skinCluster_);
+        model->Draw(skyboxSRVIndex,activeCamera?activeCamera->GetGPUVirtualAddress():0,&skinCluster_,drawStartIndex_,drawIndexCount_);
     } else{
-        model->Draw(skyboxSRVIndex,activeCamera?activeCamera->GetGPUVirtualAddress():0);
+        model->Draw(skyboxSRVIndex,activeCamera?activeCamera->GetGPUVirtualAddress():0,nullptr,drawStartIndex_,drawIndexCount_);
     }
 }
 
