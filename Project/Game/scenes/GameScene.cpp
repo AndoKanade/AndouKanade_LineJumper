@@ -80,6 +80,8 @@ namespace{
 	constexpr DepartureStyle kDefaultDepartureStyle = DepartureStyle::CountdownFlip;
 	// レールを進む全体の速さの調整項目名(Playerが登録する。Rail Editorで走り切るまでの秒数を出すのに使う)
 	const char* kRailSpeedKey = "railSpeed";
+	// 鍵の的を壊して出たレールの管を伸ばす速さを、レールを進む全体の速さより速くする量(1秒あたりの長さ)
+	constexpr float kRailUnlockExtraSpeed = 3.0f;
 	// Play中に、遠くのレール・スタート台・的・敵などを空の色に溶け込ませ始める距離・溶け込みきる距離の調整項目名と初期値(カメラからの距離)
 	// レールは進む先や飛び移れるレールを見せる道しるべで、敵は25以内でプレイヤーに気づくため、地面(45〜95)より遠くから溶け込ませる
 	const char* kObjectFadeStartKey = "objectFadeStart";
@@ -382,7 +384,9 @@ void GameScene::ApplyRailLocks(bool isInstant){
 	if(isInstant){
 		railEditor_->ResetRailLocks(lockedRails_);
 	} else{
-		railEditor_->UpdateRailLocks(lockedRails_,kDeltaTime);
+		// 出たレールの管は、プレイヤーがレールを進む速さより少し速く伸ばし、追いつかれずに先へ伸びていくように見せる
+		const float growSpeed = GlobalVariables::GetInstance()->GetFloatValue(kGameSceneGroup,kRailSpeedKey) + kRailUnlockExtraSpeed;
+		railEditor_->UpdateRailLocks(lockedRails_,growSpeed,kDeltaTime);
 	}
 }
 

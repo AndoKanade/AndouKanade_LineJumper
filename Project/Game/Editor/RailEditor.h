@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <cstdint>
+#include <limits>
 
 // クラスの前方宣言
 class Obj3D;
@@ -113,8 +114,9 @@ public:
 	/// 出ていないレールは点線で描き、着地・乗り換えの対象から外す。出ていなかったレールが出たときは、始点から終点へ管を伸ばす
 	/// </summary>
 	/// <param name="lockedRails">レールごとに、出ていないか(レールの並びと同じ)</param>
+	/// <param name="growSpeed">管を伸ばす速さ(1秒あたりに伸びるレールに沿った長さ)</param>
 	/// <param name="deltaTime">管を伸ばす演出を進める時間(秒)</param>
-	void UpdateRailLocks(const std::vector<bool>& lockedRails,float deltaTime);
+	void UpdateRailLocks(const std::vector<bool>& lockedRails,float growSpeed,float deltaTime);
 	// 管を伸ばす演出を飛ばして、出ていないレールをすぐに反映する(リスタート・チェックポイントからのやり直しで使う)
 	void ResetRailLocks(const std::vector<bool>& lockedRails);
 
@@ -140,6 +142,9 @@ public:
 	bool RedoEdit() override;
 	// 保存していない変更があるか
 	bool IsModified() const override{ return history_.IsModified(); }
+
+	// Play中のレール本体の管の半径(着地できる範囲も、見た目の管の太さに合わせるために使う)
+	static constexpr float kTubeRadius = 0.05f;
 
 private:
 	// 編集履歴に残す、1本分のレールのデータ(描画用オブジェクトなどを除いた、保存する内容だけ)
@@ -187,8 +192,10 @@ private:
 		std::unique_ptr<Obj3D> dashedTubeObject;
 		// 鍵の的が残っていて、レールが出ていないか(着地・乗り換えの対象から外す)
 		bool isLocked = false;
-		// レールが出てから、管を伸ばし始めてからの経過時間(秒。伸ばし終えたらkRailUnlockDurationで止める)
-		float unlockTimer = kRailUnlockDuration;
+		// レールが出てから、始点から伸ばした管の長さ(レールに沿った長さ。伸ばす演出をしないときはkFullyGrownLength)
+		float unlockGrownLength = kFullyGrownLength;
+		// 管の始点から各輪(区間の境目)までの、レールに沿った長さ(管を伸ばした長さから、描く区間を求めるのに使う)
+		std::vector<float> tubeRingDistances;
 	};
 
 	// 制御点・曲線の点列・着地範囲の描画用の3Dオブジェクト生成(modelPathで使うモデルを指定する)
@@ -326,8 +333,6 @@ private:
 	// Play中のレール本体の管の、Catmull-Romの1区間あたりの分割数(多いほど曲がりがなめらかになる)
 	// 曲線の点列と同じく、レールを延長しても管が角ばらないよう区間数に比例させる
 	static constexpr int kTubeSegmentsPerRailSegment = 24;
-	// Play中のレール本体の管の半径
-	static constexpr float kTubeRadius = 0.05f;
 	// 管の輪の周りの分割数(細い管のため、少なめでも丸く見える)
 	static constexpr uint32_t kTubeSideCount = 8;
 	// 四角形1つを三角形2つで描くときのインデックスの数
@@ -335,8 +340,8 @@ private:
 	// 出ていないレールの点線の、1周期の管の区間数と、そのうち描く区間数(Catmull-Romの1区間に3本の線が入る)
 	static constexpr uint32_t kDashPeriodSegments = 8;
 	static constexpr uint32_t kDashDrawSegments = 4;
-	// レールが出たときに、始点から終点まで管を伸ばしきるまでの時間(秒)
-	static constexpr float kRailUnlockDuration = 0.8f;
+	// 管を伸ばしきった状態として扱う長さ(どのレールの全長よりも長い)
+	static constexpr float kFullyGrownLength = (std::numeric_limits<float>::max)();
 	// 管の向きを求めるベクトルの長さがこれ未満なら、向きが定まらないとみなして前の向きを使う
 	static constexpr float kMinTubeDirectionLength = 1e-4f;
 

@@ -9,7 +9,6 @@
 #include "EditorWidgets.h"
 #include "EditorContext.h"
 #include "EditorPicking.h"
-#include "Easing.h"
 #include "externals/json.hpp"
 #include <algorithm>
 #include <cfloat>
@@ -687,6 +686,7 @@ void RailEditor::BuildTubes(){
 			rail.tubeModel.reset();
 			rail.dashedTubeModel.reset();
 			rail.tubeSegmentCount = 0;
+			rail.tubeRingDistances.clear();
 			rail.tubeBuiltControlPoints.clear();
 			continue;
 		}
@@ -715,6 +715,13 @@ void RailEditor::BuildTubes(){
 		std::vector<Vector3> ringCenters(segmentCount + 1);
 		for(uint32_t i = 0; i <= segmentCount; ++i){
 			ringCenters[i] = ComputePositionOnRail(rail.controlPoints,static_cast<float>(i) / static_cast<float>(segmentCount));
+		}
+
+		// 始点から各輪までの長さを、隣り合う輪の中心の間の距離を足していって求める
+		// 区間は進行度で等分しているため長さがそろっておらず、管を一定の速さで伸ばすには長さで描く区間を決める必要がある
+		rail.tubeRingDistances.assign(segmentCount + 1,0.0f);
+		for(uint32_t i = 1; i <= segmentCount; ++i){
+			rail.tubeRingDistances[i] = rail.tubeRingDistances[i - 1] + Distance(ringCenters[i],ringCenters[i - 1]);
 		}
 
 		Model::ModelData modelData;
@@ -888,10 +895,11 @@ void RailEditor::DrawTubes(){
 		}
 
 		// 管を伸ばし終えた区間の数(出ていないレールは0、伸ばし終えたレールは全区間)
+		// 始点から伸ばした長さより手前で始まる区間を、伸ばし終えた区間とする
 		uint32_t grownEnd = 0;
 		if(!rail.isLocked){
-			const float grownRate = Easing::EaseOutCubic(std::clamp(rail.unlockTimer / kRailUnlockDuration,0.0f,1.0f));
-			grownEnd = (std::min)(segmentCount,static_cast<uint32_t>(std::ceil(grownRate * static_cast<float>(segmentCount))));
+			const auto segmentStarts = rail.tubeRingDistances.begin();
+			grownEnd = static_cast<uint32_t>(std::lower_bound(segmentStarts,segmentStarts + segmentCount,rail.unlockGrownLength) - segmentStarts);
 		}
 
 		drawSegments(rail.tubeObject.get(),0,(std::min)(paintedBegin,grownEnd));
@@ -944,19 +952,23 @@ void RailEditor::ClearPaint(){
 }
 
 // 鍵の的が残っていて出ていないレールを反映する
-// 出ていなかったレールが出たら、管を伸ばす時間を0から数え始める
-void RailEditor::UpdateRailLocks(const std::vector<bool>& lockedRails,float deltaTime){
+// 出ていなかったレールが出たら、始点から一定の速さで管を伸ばし始める
+void RailEditor::UpdateRailLocks(const std::vector<bool>& lockedRails,float growSpeed,float deltaTime){
 	const size_t count = (std::min)(rails_.size(),lockedRails.size());
 	for(size_t i = 0; i < count; ++i){
 		Rail& rail = rails_[i];
 		if(lockedRails[i]){
 			rail.isLocked = true;
-			rail.unlockTimer = 0.0f;
+			rail.unlockGrownLength = 0.0f;
 		} else if(rail.isLocked){
 			rail.isLocked = false;
-			rail.unlockTimer = 0.0f;
-		} else{
-			rail.unlockTimer = (std::min)(rail.unlockTimer + deltaTime,kRailUnlockDuration);
+			rail.unlockGrownLength = 0.0f;
+		} else if(rail.unlockGrownLength < kFullyGrownLength){
+			// 伸ばしきった後も足し続けると値が大きくなり続けるため、全長を超えたら伸ばしきった状態にする
+			rail.unlockGrownLength += growSpeed * deltaTime;
+			if(rail.tubeRingDistances.empty() || rail.unlockGrownLength >= rail.tubeRingDistances.back()){
+				rail.unlockGrownLength = kFullyGrownLength;
+			}
 		}
 	}
 }
@@ -966,7 +978,7 @@ void RailEditor::ResetRailLocks(const std::vector<bool>& lockedRails){
 	const size_t count = (std::min)(rails_.size(),lockedRails.size());
 	for(size_t i = 0; i < count; ++i){
 		rails_[i].isLocked = lockedRails[i];
-		rails_[i].unlockTimer = kRailUnlockDuration;
+		rails_[i].unlockGrownLength = kFullyGrownLength;
 	}
 }
 
