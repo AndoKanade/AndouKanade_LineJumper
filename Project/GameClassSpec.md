@@ -208,7 +208,8 @@ Game/
 | 射撃 | 左クリックで、プレイヤーの手元（`Player::GetMuzzlePosition()`）から、カメラの前方 30.0 の点（レティクルの先）へ向けて弾を発射する |
 | 試し撃ち | スタート台の上（`isPlayerMovable` の間）でも撃てる。この弾は的・敵に当たらず、台に着いたところにインクを塗る |
 | 出発の演出 | ImGui の「Departure」で選んだ演出で、スタート台からレールへ移る（Title の Departure を参照） |
-| 落下リスタート | どのレールにも乗れずに地面の高さまで落ちたら暗転（`SceneManager::StartTransition()`）を始め、画面を覆っている間に `ResetPlayState()` を呼ぶ。開始演出は挟まない |
+| 落下リスタート | どのレールにも乗れずに地面の高さまで落ちたら暗転（`SceneManager::StartTransition()`）を始め、画面を覆っている間に `ResetPlayState()` を呼ぶ。開始演出は挟まない。チェックポイントを通っていれば、続けて `RespawnAtCheckpoint()` でそこから始め直す |
+| チェックポイント | レールを進んでいる間に、チェックポイントにした制御点（`isCheckpoint`）を通ったら、レールと制御点・その時点の的ごとの生存状態を覚える（`UpdateCheckpoint()`）。落ちたらその制御点の位置からレールに乗せ、的を覚えた状態に戻す（チェックポイントより前に壊した的は壊れたまま、後の的は復活する）。体力・敵・連鎖数・レールの塗りは最初の状態に戻る。Play に入り直したときと R キーのやり直しでは忘れる。「Start From Selected Point」で始めたときは、始めた制御点より手前のチェックポイントは通ったものとしない |
 | クリア | オンレール中にレールの終端に着いたら CLEAR へ移る。移る前に壊した的の数・総数・最大連鎖数を StageResult に書き込む（的を全部壊すことはクリアの条件にしない） |
 | ゲームオーバー | プレイヤーの体力が 0 になったら GAMEOVER へ移る |
 | 当たり判定 | すべてモデルの頂点から求めた境界球（`Model::BoundingSphere`）同士の重なりで判定する。プレイヤー・敵本体はワールド行列で変換した球（`Obj3D::GetWorldBoundingSphere()`）、弾・的は現在座標と表示スケールから求めた球を使う |
@@ -220,6 +221,7 @@ Game/
 | 関数 | 内容 |
 | --- | --- |
 | `ResetPlayState()` | Player・RailCamera・TargetManager・EnemyManager を初期状態に戻し、弾を消し、アクティブレールを 0 番にする。演出・画面の揺れ・出発の演出も止める |
+| `UpdateCheckpoint()` / `RespawnAtCheckpoint()` | 通ったチェックポイントを覚える / 覚えたチェックポイントからレールに乗せ、的の生存状態を戻す |
 | `MakeDepartureContext()` | 出発の演出が動かす・参照するもの（DepartureContext）をまとめる |
 | `PlayBoardedEffects(position)` | レールに乗って「GO!」を出す瞬間の演出（輪・しぶき・インクの跡） |
 | `UpdateGameplay()` | レール進行・カメラ・プレイヤー・敵・弾・的・勝敗判定を、決まった順番で呼び出す |
@@ -610,6 +612,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `UpdateEditor()` | TargetEditor を更新し、個数・座標を的のリストに反映する。個数が変わったときだけ生成・削除する |
 | `Update(cameraPosition, cameraForward, bullets)` | 照準判定・弾との当たり判定・行列の更新。いずれかの的を狙えていれば true を返す |
 | `Reset()` / `Draw()` | 全ての的を復活させる / 生存している的を描画する |
+| `GetAliveStates()` / `RestoreAliveStates(aliveStates)` | 的ごとの生存状態を取得する / 取得した状態に戻す（チェックポイント用） |
 | `GetDestroyedPositions()` | 直前の `Update()` で壊れた的の座標の一覧を取得する |
 | `GetTotalCount()` / `GetDestroyedCount()` | 的の総数 / 壊された的の数を取得する |
 | `ShowHierarchy()` / `ShowInspector()` | Hierarchy / Inspector パネルの中身を表示する（ImGui がある構成のみ） |
@@ -855,6 +858,7 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
   - `rotation`：Z だけをロール（バンク）として使う
   - `speed`：その区間の速度倍率
   - 分岐設定：保存はされるが、今の実行時には読まれない
+  - `isCheckpoint`：チェックポイントにするか（通った後に落ちたら、この制御点の位置からやり直す）。延長・螺旋で作った制御点には引き継がない
 - 位置は Catmull-Rom スプラインで補間する。
 - 向き（ピッチ・ヨー）は進行方向から逆算し、ロールは制御点間を線形補間する。ロールと速度は位置と同じ区間分けで補間し、制御点に設定した値がその制御点を通る位置で効く。
 - Edit モードの描画では、アクティブなレールを黄色、それ以外を黒で表示する。
@@ -876,7 +880,7 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | Show Landing Range | 着地できる範囲（レールの左右、緑の点列）の表示切り替え |
 | Drag Points In Scene / Keep Height | ON の間、Scene ビュー上で制御点を左ドラッグして動かせる（初期は OFF。レイから 0.5 以内の制御点を全レールから探し、別のレールの点ならそのレールをアクティブにする）。Keep Height が ON（初期値）なら水平な面の上で動かし高さを変えない。OFF なら画面に平行な面の上で動かす。目印を隠しているレールの制御点は掴まない |
 | Length / Time | アクティブなレールの全長と、走り切るまでの秒数の目安（制御点の Speed × 調整項目 railSpeed で走ったとき。発射直後の加速・空中で遅くなる分は含まない） |
-| 制御点一覧 | クリックで選択し、Position / Rotation / Speed / 分岐設定を編集する。Reset で初期値に戻す。Delete で削除する（最後の 1 点は削除できない）。Insert After で次の制御点との中間に制御点を挿入する（末尾なら延長）。Focus またはダブルクリックで、俯瞰カメラをその制御点へ寄せる。From Start に始点からその制御点までの長さと秒数を出す。一覧は高さ 150 の枠の中だけでスクロールする。選択中の制御点の目印は水色で、他の制御点より大きく（0.2 → 0.35）描く |
+| 制御点一覧 | クリックで選択し、Position / Rotation / Speed / 分岐設定 / Checkpoint を編集する。チェックポイントの制御点は一覧に (Checkpoint) と出し、目印を緑で描く。Reset で初期値に戻す。Delete で削除する（最後の 1 点は削除できない）。Insert After で次の制御点との中間に制御点を挿入する（末尾なら延長）。Focus またはダブルクリックで、俯瞰カメラをその制御点へ寄せる。From Start に始点からその制御点までの長さと秒数を出す。一覧は高さ 150 の枠の中だけでスクロールする。選択中の制御点の目印は水色で、他の制御点より大きく（0.2 → 0.35）描く |
 | Spiral | 選択中の制御点の後ろに、その点から始まる螺旋（らせん階段のような形）の制御点をまとめて挿入する。Radius（半径。下限 1）/ Rise / Turn（1 周で上がる高さ。負なら下がる）/ Turns（周回数。下限 0.25）/ Points / Turn（1 周の制御点数 4〜32）/ Right・Left（回る向き）で形を決める。前の制御点から進んできた向きのまま螺旋に入るよう、円の中心を進む向きの横に置く。末尾に足すときは、螺旋の終わりまで曲線が通るよう向きを決めるだけの点を 1 つ多く足す。後ろの制御点は消さずに残す。作った後は螺旋の終わりの点を選ぶ。Ctrl+Z で戻せる |
 | 未保存の表示 | 保存していない変更があるとき、Save の下に「未保存」と出す（TargetEditor・EnemyEditor も同じ） |
 
@@ -895,6 +899,7 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | `ToggleShowControlPointModels()` / `ToggleShowCurve()` | キー操作用の表示切り替え |
 | `SaveToJson()` / `LoadFromJson()` | 保存・読み込み。起動時は自動で読み込む |
 | `GetTOfControlPoint(index)` / `GetSelectedPointIndex()` / `SelectPoint(rail, point)` | 途中からの Play 用。制御点を通る位置の進行度（両端の制御点は曲線の始点・終点に丸める）/ 選択中の制御点 / Play から戻ったときの選び直し |
+| `FindPassedCheckpoint(t)` | アクティブなレールで、進行度 t までに通ったチェックポイントのうち最も先の制御点を返す（無ければ -1）。途中に着地した場合も、手前のチェックポイントは通ったものとする |
 | `ConsumeFocusRequest(outPos)` / `SetBaseRailSpeed(speed)` | Focus の操作があれば選択中の制御点の位置を返す / 走り切るまでの秒数の計算に使う railSpeed を受け取る |
 
 ### TargetEditor（`Editor/TargetEditor.h/.cpp`）

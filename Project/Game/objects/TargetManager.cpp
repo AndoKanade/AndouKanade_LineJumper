@@ -11,6 +11,7 @@
 #include "EditorWidgets.h"
 #include "Editor/RailEditor.h"
 #include "Editor/TargetEditor.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 
@@ -197,6 +198,25 @@ int TargetManager::GetDestroyedCount() const{
 void TargetManager::Reset(){
 	for(auto& target : targets_){
 		target.isAlive = true;
+	}
+}
+
+// 的ごとに生存しているかを、的のリストと同じ並びで取得する
+std::vector<bool> TargetManager::GetAliveStates() const{
+	std::vector<bool> aliveStates;
+	aliveStates.reserve(targets_.size());
+	for(const auto& target : targets_){
+		aliveStates.push_back(target.isAlive);
+	}
+	return aliveStates;
+}
+
+// 的ごとの生存状態を、GetAliveStates()で取得した状態に戻す
+// 取得した後に的の数が変わっていても範囲外を読まないよう、少ない方の数だけ戻す
+void TargetManager::RestoreAliveStates(const std::vector<bool>& aliveStates){
+	const size_t count = (std::min)(targets_.size(),aliveStates.size());
+	for(size_t i = 0; i < count; ++i){
+		targets_[i].isAlive = aliveStates[i];
 	}
 }
 

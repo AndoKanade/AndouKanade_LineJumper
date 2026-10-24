@@ -25,6 +25,9 @@ public:
 		int branchTargetRailIndex = -1;  // 分岐先レールのインデックス(-1: 分岐なし)
 		int branchTargetPointIndex = -1; // 分岐先レール側の対応する制御点インデックス
 
+		// チェックポイントにするか(この制御点を通った後にレールから落ちたら、この制御点の位置からやり直す)
+		bool isCheckpoint = false;
+
 		// 編集履歴で、変更があったかを比べるのに使う
 		bool operator==(const ControlPoint&) const = default;
 	};
@@ -79,6 +82,8 @@ public:
 	int GetControlPointIndexFromT(float t) const;
 	// アクティブなレールの、指定した制御点を通る位置の進行度を取得(曲線が通らない両端の制御点は、曲線の始点・終点の進行度にする)
 	float GetTOfControlPoint(int index) const;
+	// アクティブなレールで、進行度tまでに通ったチェックポイントのうち、最も先にある制御点のインデックスを取得(-1: まだ通っていない)
+	int FindPassedCheckpoint(float t) const;
 
 	// 一覧で選択中の制御点のインデックスを取得(-1: 未選択。対象はアクティブなレール)
 	int GetSelectedPointIndex() const{ return selectedPointIndex_; }

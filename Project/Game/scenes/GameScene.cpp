@@ -341,6 +341,34 @@ void GameScene::BoardAtPlayStartPoint(){
 	player_->BoardRailStart(railEditor_->GetTOfControlPoint(editPointIndex_));
 }
 
+// レールを進んでいる間に、チェックポイントの制御点を通ったら、その位置と壊した的を覚えておく
+// 同じチェックポイントを通り直したとき(チェックポイントからやり直した直後など)は覚え直さない
+void GameScene::UpdateCheckpoint(){
+	const int pointIndex = railEditor_->FindPassedCheckpoint(player_->GetRailT());
+	if(pointIndex < 0){
+		return;
+	}
+	const int railIndex = railEditor_->GetActiveRailIndex();
+	if(railIndex == checkpoint_.railIndex && pointIndex == checkpoint_.pointIndex){
+		return;
+	}
+	// 選んだ制御点から始めているときは、始めた位置より手前のチェックポイントは通ったものとしない(落ちても選んだ制御点から始め直せるようにする)
+	if(isPlayingFromPoint_ && railIndex == editRailIndex_ && pointIndex <= editPointIndex_){
+		return;
+	}
+	checkpoint_.railIndex = railIndex;
+	checkpoint_.pointIndex = pointIndex;
+	checkpoint_.targetAliveStates = targetManager_->GetAliveStates();
+}
+
+// 最後に通ったチェックポイントの位置からレールに乗せ、壊した的をチェックポイントを通った時点の状態に戻す
+// ResetPlayState()でレールを0番へ戻し、的もすべて復活させているため、その後に呼ぶ
+void GameScene::RespawnAtCheckpoint(){
+	railEditor_->SwitchActiveRail(checkpoint_.railIndex);
+	player_->BoardRailStart(railEditor_->GetTOfControlPoint(checkpoint_.pointIndex));
+	targetManager_->RestoreAliveStates(checkpoint_.targetAliveStates);
+}
+
 // 出発の演出が動かす・参照するものをまとめる
 DepartureContext GameScene::MakeDepartureContext() const{
 	DepartureContext context;
@@ -517,6 +545,8 @@ void GameScene::UpdateGameplay(){
 		editPointIndex_ = railEditor_->GetSelectedPointIndex();
 		// 制御点を選んでいないときは、設定がONでもいつも通り始める
 		isPlayingFromPoint_ = startsFromSelectedPoint_ && editPointIndex_ >= 0;
+		// Playに入り直したら、前回のPlayで通ったチェックポイントは忘れて最初から始める
+		checkpoint_ = Checkpoint{};
 		ResetPlayState();
 		StartPlaySequence();
 	} else if(!isPlayMode && wasPlayMode_){
@@ -528,6 +558,8 @@ void GameScene::UpdateGameplay(){
 		railEditor_->SelectPoint(editRailIndex_,editPointIndex_);
 	} else if(isPlayMode && input_ && input_->TriggerKey(DIK_R)){
 		// 確認用の一時的な処理:Play中にRキーでタイトルから最初からやり直す(選んだ制御点から始めているときは、その制御点からやり直す)
+		// 最初からやり直すため、通ったチェックポイントも忘れる
+		checkpoint_ = Checkpoint{};
 		ResetPlayState();
 		StartPlaySequence();
 	}
@@ -576,6 +608,8 @@ void GameScene::UpdateGameplay(){
 	const bool isRidingRail = isGameplayActive && player_->IsOnRail() && !player_->HasReachedGoal();
 	if(isRidingRail){
 		railEditor_->PaintActiveRail(player_->GetRailT());
+		// チェックポイントの制御点を通ったら、落ちたときにやり直す位置として覚えておく
+		UpdateCheckpoint();
 	}
 
 	// カメラを基準位置の後ろ上に置き、照準の入力を反映する
@@ -708,8 +742,11 @@ void GameScene::UpdateGameplay(){
 		if(needsRestart){
 			sceneManager_->StartTransition([this](){
 				ResetPlayState();
-				// 選んだ制御点から始めているときは、落ちても同じ制御点から始め直す
-				if(isPlayingFromPoint_){
+				// チェックポイントを通っていれば、そこから始め直す
+				// 通っていなくても、選んだ制御点から始めているときは、落ちても同じ制御点から始め直す
+				if(checkpoint_.railIndex >= 0){
+					RespawnAtCheckpoint();
+				} else if(isPlayingFromPoint_){
 					BoardAtPlayStartPoint();
 				}
 			},GetTransitionStyle(kFallTransitionKey));

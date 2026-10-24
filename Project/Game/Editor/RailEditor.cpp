@@ -31,6 +31,8 @@ namespace{
 	constexpr Vector4 kInactiveRailColor = {0.0f, 0.0f, 0.0f, 1.0f};
 	// 一覧で選択中の制御点の色(アクティブなレールの黄色と見分けやすい水色)
 	constexpr Vector4 kSelectedPointColor = {0.1f, 0.9f, 1.0f, 1.0f};
+	// チェックポイントにした制御点の色(どこからやり直すかEdit中に分かるよう、レールの色と違う緑にする)
+	constexpr Vector4 kCheckpointColor = {0.2f, 1.0f, 0.4f, 1.0f};
 
 	// Play中のレール本体の色(インクで塗った区間は自機のインクの黄色、まだ通っていない区間はピンク)
 	constexpr Vector4 kPaintedRailColor = {1.0f, 0.85f, 0.1f, 1.0f};
@@ -173,9 +175,10 @@ RailEditor::ControlPoint RailEditor::ComputeExtendedPoint(const std::vector<Cont
 	}
 
 	ControlPoint point = controlPoints.back();
-	// 分岐設定は延長した制御点には引き継がない
+	// 分岐設定とチェックポイントは延長した制御点には引き継がない
 	point.branchTargetRailIndex = kDefaultControlPoint.branchTargetRailIndex;
 	point.branchTargetPointIndex = kDefaultControlPoint.branchTargetPointIndex;
+	point.isCheckpoint = kDefaultControlPoint.isCheckpoint;
 
 	if(controlPoints.size() < 2){
 		point.position = point.position + kDefaultExtendOffset;
@@ -233,9 +236,10 @@ void RailEditor::GenerateSpiral(Rail& rail,size_t startIndex){
 		ControlPoint point = startPoint;
 		point.position = center - right * (side * spiral_.radius * std::cos(angle)) + forward * (spiral_.radius * std::sin(angle));
 		point.position.y = startPoint.position.y + spiral_.risePerTurn * turnRate;
-		// 分岐設定は引き継がない(速度・回転は指定した制御点のものを引き継ぐ)
+		// 分岐設定とチェックポイントは引き継がない(速度・回転は指定した制御点のものを引き継ぐ)
 		point.branchTargetRailIndex = kDefaultControlPoint.branchTargetRailIndex;
 		point.branchTargetPointIndex = kDefaultControlPoint.branchTargetPointIndex;
+		point.isCheckpoint = kDefaultControlPoint.isCheckpoint;
 		spiralPoints.push_back(point);
 	}
 
@@ -397,10 +401,11 @@ void RailEditor::Update(){
 		// IDの重複を防ぐためPushIDを使用
 		ImGui::PushID(static_cast<int>(i));
 
-		// 分岐先が設定されている制御点には目印を付ける
+		// 分岐先が設定されている制御点と、チェックポイントにした制御点には目印を付ける
 		bool hasBranch = (activeRail.controlPoints[i].branchTargetRailIndex >= 0);
-		char label[32];
-		snprintf(label,sizeof(label),"Point %zu%s",i,hasBranch?" (Branch)":"");
+		bool isCheckpoint = activeRail.controlPoints[i].isCheckpoint;
+		char label[48];
+		snprintf(label,sizeof(label),"Point %zu%s%s",i,hasBranch?" (Branch)":"",isCheckpoint?" (Checkpoint)":"");
 
 		// クリックで選択。選択中の行はハイライトされる
 		if(ImGui::Selectable(label,selectedPointIndex_ == static_cast<int>(i))){
@@ -433,6 +438,9 @@ void RailEditor::Update(){
 		ImGui::InputInt("Branch Target Rail",&selectedPoint.branchTargetRailIndex);
 		ImGui::InputInt("Branch Target Point",&selectedPoint.branchTargetPointIndex);
 		ImGui::TextDisabled("(-1で分岐なし。分岐先レールIndexと対応する制御点Indexを指定)");
+
+		// チェックポイントの設定欄(通った後にレールから落ちたら、この制御点の位置からやり直す)
+		ImGui::Checkbox("Checkpoint",&selectedPoint.isCheckpoint);
 
 		// 制御点のパラメータをデフォルト値に戻すボタン
 		if(ImGui::Button("Reset")){
@@ -564,8 +572,15 @@ void RailEditor::Draw(){
 				rail.pointObjects[i]->SetTranslate(rail.controlPoints[i].position);
 				// 他のオブジェクトを隠さないよう、球はレールの目印として分かる程度の小ささにする
 				rail.pointObjects[i]->SetScale({pointScale, pointScale, pointScale});
+				// 選択中でないチェックポイントは緑で描き、どこからやり直すか分かるようにする
 				if(Model::Material* mat = rail.pointObjects[i]->GetMaterial()){
-					mat->color = isSelectedPoint?kSelectedPointColor:railColor;
+					if(isSelectedPoint){
+						mat->color = kSelectedPointColor;
+					} else if(rail.controlPoints[i].isCheckpoint){
+						mat->color = kCheckpointColor;
+					} else{
+						mat->color = railColor;
+					}
 				}
 
 				// アクティブカメラに毎フレーム同期
@@ -1181,6 +1196,20 @@ float RailEditor::GetTOfControlPoint(int index) const{
 	return std::clamp(t,0.0f,1.0f);
 }
 
+// アクティブなレールで、進行度tまでに通ったチェックポイントのうち、最も先にある制御点のインデックスを取得
+// レールの途中に着地した場合も、着地した位置より手前のチェックポイントは通ったものとして扱う
+int RailEditor::FindPassedCheckpoint(float t) const{
+	const std::vector<ControlPoint>& controlPoints = rails_[activeRailIndex_].controlPoints;
+
+	// 先にある制御点から順に見て、最初に見つかった通過済みのチェックポイントを返す
+	for(int i = static_cast<int>(controlPoints.size()) - 1; i >= 0; --i){
+		if(controlPoints[i].isCheckpoint && GetTOfControlPoint(i) <= t){
+			return i;
+		}
+	}
+	return -1;
+}
+
 // アクティブなレールの全長と走り切るまでの秒数、始点から選択中の制御点までの長さと秒数を求める
 // 曲線の点列と同じ細かさでレールを分け、分けた区間ごとに「長さ÷その区間の速さ」を足していく
 // 速さはPlayerと同じく、制御点のSpeed値に全体の速さ(railSpeed)を掛けたもの
@@ -1305,6 +1334,7 @@ bool RailEditor::SaveRailToFile(int index){
 		// レール間分岐移動用のデータ
 		pj["branchTargetRailIndex"] = cp.branchTargetRailIndex;
 		pj["branchTargetPointIndex"] = cp.branchTargetPointIndex;
+		pj["isCheckpoint"] = cp.isCheckpoint;
 		pointsJson.push_back(pj);
 	}
 	root["control_points"] = pointsJson;
@@ -1363,6 +1393,8 @@ void RailEditor::LoadRailFromFile(int index){
 		// レール間分岐移動用のデータ(旧フォーマットのJSONには無いため、value()で既定値-1を補う)
 		cp.branchTargetRailIndex = pj.value("branchTargetRailIndex",-1);
 		cp.branchTargetPointIndex = pj.value("branchTargetPointIndex",-1);
+		// チェックポイントの設定(旧フォーマットのJSONには無いため、value()で既定値falseを補う)
+		cp.isCheckpoint = pj.value("isCheckpoint",false);
 		rail.controlPoints.push_back(cp);
 	}
 

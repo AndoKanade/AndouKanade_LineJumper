@@ -4,6 +4,7 @@
 #include "systems/SceneTransition.h"
 #include "MyMath.h"
 #include <memory>
+#include <vector>
 
 // 前方宣言
 class Input;
@@ -60,6 +61,10 @@ private:
 	void StartPlaySequence();
 	// Playに入ったときに覚えておいた制御点の位置からレールに乗せる(途中からPlayするとき用)
 	void BoardAtPlayStartPoint();
+	// レールを進んでいる間に、チェックポイントの制御点を通ったら、その位置と壊した的を覚えておく
+	void UpdateCheckpoint();
+	// 最後に通ったチェックポイントの位置からレールに乗せ、壊した的をチェックポイントを通った時点の状態に戻す
+	void RespawnAtCheckpoint();
 	// 遠くの物を空の色に溶け込ませる距離を、全オブジェクト共通の設定にする(Play中だけ溶け込ませ、Edit中は溶け込ませない)
 	void UpdateSceneDistanceFade();
 
@@ -167,6 +172,14 @@ private:
 	int editPointIndex_ = -1;
 	// 今回のPlayを選んだ制御点から始めているか(落下リスタートでも同じ位置から始め直すのに使う)
 	bool isPlayingFromPoint_ = false;
+
+	// 最後に通ったチェックポイント(レールから落ちたら、ここからやり直す)
+	struct Checkpoint{
+		int railIndex = -1;                  // チェックポイントの制御点があるレール(-1: まだ通っていない)
+		int pointIndex = -1;                 // チェックポイントの制御点
+		std::vector<bool> targetAliveStates; // 通った時点での的ごとの生存状態
+	};
+	Checkpoint checkpoint_;
 
 	// 1フレームの経過時間(エンジンが固定60fps前提(TimeManagerで60fps固定)なので、そのまま合わせる)
 	static constexpr float kDeltaTime = 1.0f / 60.0f;

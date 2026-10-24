@@ -46,6 +46,11 @@ public:
 	// すべての的を生存状態に戻す
 	void Reset();
 
+	// 的ごとに生存しているかを取得(チェックポイントを通ったときに、壊した的を覚えておくのに使う)
+	std::vector<bool> GetAliveStates() const;
+	// 的ごとの生存状態を、GetAliveStates()で取得した状態に戻す(チェックポイントからやり直すときに使う)
+	void RestoreAliveStates(const std::vector<bool>& aliveStates);
+
 	// 生存している的を描画する
 	void Draw();
 
