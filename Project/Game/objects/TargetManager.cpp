@@ -120,9 +120,14 @@ void TargetManager::SyncFromEditor(){
 		targets_.pop_back();
 	}
 
-	// 座標をエディターの配置内容で上書きする
+	// 座標と壊すと出るレールをエディターの配置内容で上書きし、鍵の的は色を変えて普通の的と見分けられるようにする
 	for(size_t i = 0; i < targets_.size(); ++i){
-		targets_[i].position = editor_->GetTargetPosition(static_cast<int>(i));
+		Target& target = targets_[i];
+		target.position = editor_->GetTargetPosition(static_cast<int>(i));
+		target.unlockRailIndex = editor_->GetUnlockRailIndex(static_cast<int>(i));
+		if(Model::Material* mat = target.obj->GetMaterial()){
+			mat->color = (target.unlockRailIndex >= 0)?kKeyTargetColor:kNormalTargetColor;
+		}
 	}
 }
 
@@ -220,6 +225,16 @@ void TargetManager::RestoreAliveStates(const std::vector<bool>& aliveStates){
 	}
 }
 
+// 鍵の的が残っていて出ていないレールに true を入れる
+// 範囲外のレールを指定した的は無視する
+void TargetManager::FillLockedRails(std::vector<bool>& lockedRails) const{
+	for(const auto& target : targets_){
+		if(target.isAlive && target.unlockRailIndex >= 0 && target.unlockRailIndex < static_cast<int>(lockedRails.size())){
+			lockedRails[target.unlockRailIndex] = true;
+		}
+	}
+}
+
 // 生存している的だけ描画する
 void TargetManager::Draw(){
 	for(auto& target : targets_){
@@ -237,9 +252,13 @@ void TargetManager::ShowHierarchy(){
 	ImGui::Separator();
 	for(int i = 0; i < static_cast<int>(targets_.size()); ++i){
 		ImGui::PushID(i);
-		// 行ラベル(倒された的は (dead) を付ける)
-		char label[32];
-		snprintf(label,sizeof(label),"Target %d%s",i,targets_[i].isAlive?"":" (dead)");
+		// 行ラベル(鍵の的は出すレールの番号を、倒された的は (dead) を付ける)
+		char label[48];
+		if(targets_[i].unlockRailIndex >= 0){
+			snprintf(label,sizeof(label),"Target %d (Key: Rail %d)%s",i,targets_[i].unlockRailIndex,targets_[i].isAlive?"":" (dead)");
+		} else{
+			snprintf(label,sizeof(label),"Target %d%s",i,targets_[i].isAlive?"":" (dead)");
+		}
 		// クリックで選択。選択中の行はハイライトされる(選択状態は配置エディターが保持する)
 		if(ImGui::Selectable(label,editor_ && editor_->GetSelectedIndex() == i)){
 			if(editor_){
@@ -260,6 +279,9 @@ void TargetManager::ShowInspector(){
 		EditorWidgets::ButtonVector3("Position",editor_->GetTargetPositionRef(selectedTargetIndex),0.1f,1.0f);
 		// 生存フラグ(OFFで非表示、ONで復活)
 		ImGui::Checkbox("Alive",&targets_[selectedTargetIndex].isAlive);
+		// 壊すと出るレール(配置エディターのデータを直接編集する。同じレールを指定した的をすべて壊すとレールが出る)
+		ImGui::InputInt("Unlock Rail",&editor_->GetUnlockRailIndexRef(selectedTargetIndex));
+		ImGui::TextDisabled("(-1で鍵の的ではない。壊すと出るレールのIndexを指定)");
 	} else{
 		ImGui::TextDisabled("Select a target in Hierarchy");
 	}

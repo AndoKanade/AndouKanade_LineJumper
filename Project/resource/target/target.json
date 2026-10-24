@@ -118,6 +118,46 @@
                 4.25,
                 5.999999046325684
             ]
+        },
+        {
+            "position": [
+                34.87,
+                4.99,
+                5.92
+            ],
+            "unlockRailIndex": 1
+        },
+        {
+            "position": [
+                55.39,
+                5.92,
+                8.96
+            ],
+            "unlockRailIndex": 2
+        },
+        {
+            "position": [
+                73.60,
+                7.16,
+                11.70
+            ],
+            "unlockRailIndex": 3
+        },
+        {
+            "position": [
+                90.98,
+                7.84,
+                7.90
+            ],
+            "unlockRailIndex": 4
+        },
+        {
+            "position": [
+                118.63,
+                26.56,
+                10.60
+            ],
+            "unlockRailIndex": 5
         }
     ]
 }

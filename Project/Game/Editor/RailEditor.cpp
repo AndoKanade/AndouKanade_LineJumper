@@ -9,6 +9,7 @@
 #include "EditorWidgets.h"
 #include "EditorContext.h"
 #include "EditorPicking.h"
+#include "Easing.h"
 #include "externals/json.hpp"
 #include <algorithm>
 #include <cfloat>
@@ -37,6 +38,8 @@ namespace{
 	// Play中のレール本体の色(インクで塗った区間は自機のインクの黄色、まだ通っていない区間はピンク)
 	constexpr Vector4 kPaintedRailColor = {1.0f, 0.85f, 0.1f, 1.0f};
 	constexpr Vector4 kUnpaintedRailColor = {1.0f, 0.4f, 0.75f, 1.0f};
+	// 出ていないレールの点線の色(まだ乗れないことが分かるよう、塗っていない区間のピンクより目立たない白)
+	constexpr Vector4 kLockedRailColor = {0.85f, 0.85f, 0.9f, 1.0f};
 	// Play中のレール本体の管に貼るテクスチャ(白一色。色はマテリアルの色で付ける)
 	const std::string kTubeTexturePath = "resource/RailTube/white.png";
 	// 管の1区間の中で、塗ったかどうかを判定する位置(区間の長さに対する割合。中央で判定する)
@@ -682,6 +685,7 @@ void RailEditor::BuildTubes(){
 		// Catmull-Romは制御点4つ以上必要なので、それ未満のときは管を作らない
 		if(rail.controlPoints.size() < 4){
 			rail.tubeModel.reset();
+			rail.dashedTubeModel.reset();
 			rail.tubeSegmentCount = 0;
 			rail.tubeBuiltControlPoints.clear();
 			continue;
@@ -772,8 +776,25 @@ void RailEditor::BuildTubes(){
 			}
 		}
 
+		// 出ていないレールの点線は、管と同じ頂点のうち、点線の区間の三角形だけを持つ別のモデルにする
+		// 点線の区間ごとに描く範囲を分けると描画の命令が線の本数だけ増えるため、点線の区間だけを詰めて1回で描けるようにする
+		constexpr uint32_t kIndicesPerSegment = kTubeSideCount * kTubeIndicesPerQuad;
+		Model::ModelData dashedModelData;
+		dashedModelData.material.textureFilePath = kTubeTexturePath;
+		dashedModelData.vertices = modelData.vertices;
+		dashedModelData.indices.reserve(static_cast<size_t>(CountDashedSegmentsBefore(segmentCount)) * kIndicesPerSegment);
+		for(uint32_t i = 0; i < segmentCount; ++i){
+			if(i % kDashPeriodSegments >= kDashDrawSegments){
+				continue;
+			}
+			const auto segmentBegin = modelData.indices.begin() + static_cast<ptrdiff_t>(i) * kIndicesPerSegment;
+			dashedModelData.indices.insert(dashedModelData.indices.end(),segmentBegin,segmentBegin + kIndicesPerSegment);
+		}
+
 		rail.tubeModel = std::make_unique<Model>();
 		rail.tubeModel->Initialize(modelCommon,std::move(modelData));
+		rail.dashedTubeModel = std::make_unique<Model>();
+		rail.dashedTubeModel->Initialize(modelCommon,std::move(dashedModelData));
 		rail.tubeSegmentCount = segmentCount;
 		rail.tubeBuiltControlPoints = rail.controlPoints;
 
@@ -793,8 +814,16 @@ void RailEditor::BuildTubes(){
 				mat->color = kPaintedRailColor;
 			}
 		}
+		if(!rail.dashedTubeObject){
+			rail.dashedTubeObject = std::make_unique<Obj3D>();
+			rail.dashedTubeObject->Initialize(objCommon_);
+			if(Model::Material* mat = rail.dashedTubeObject->GetMaterial()){
+				mat->color = kLockedRailColor;
+			}
+		}
 		rail.tubeObject->SetModel(rail.tubeModel.get());
 		rail.paintedTubeObject->SetModel(rail.tubeModel.get());
+		rail.dashedTubeObject->SetModel(rail.dashedTubeModel.get());
 	}
 
 	areTubesBuilt_ = true;
@@ -803,6 +832,7 @@ void RailEditor::BuildTubes(){
 // Play中のレール本体を管として描画する
 // 管のモデルはBuildTubes()で作り済みのため、ここでは塗った区間に合わせて描くインデックスの範囲とカメラだけを毎フレーム反映する
 // 塗った区間は連続しているため、「塗っていない区間・塗った区間・塗っていない区間」の最大3回の描画で済む
+// 出ていないレールは点線だけを描き、出ている途中のレールは、伸びた所までを管で、その先を点線で描く
 void RailEditor::DrawTubes(){
 	Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera();
 	// 区間1つ分のインデックスの数(どの区間も同じ数の三角形でできている)
@@ -824,7 +854,8 @@ void RailEditor::DrawTubes(){
 		Rail& rail = rails_[railIndex];
 
 		// 管を作ったレールだけ、レールの始点と終点の制御点の目印を描画する(色はEdit中と同じく今乗っているレールかどうかで分ける)
-		if(rail.controlPoints.size() >= 4){
+		// 出ていないレールは点線だけにして、まだ乗れないことが分かるようにする
+		if(rail.controlPoints.size() >= 4 && !rail.isLocked){
 			Vector4 markerColor = (static_cast<int>(railIndex) == activeRailIndex_)?kActiveRailColor:kInactiveRailColor;
 			for(size_t pointIndex : {kRailStartPointIndex, rail.controlPoints.size() - 1 - kRailStartPointIndex}){
 				Obj3D* marker = rail.pointObjects[pointIndex].get();
@@ -856,10 +887,28 @@ void RailEditor::DrawTubes(){
 			paintedEnd = (std::max)(paintedBegin,static_cast<uint32_t>(std::clamp(lastSegment + 1.0f,0.0f,segmentCountF)));
 		}
 
-		drawSegments(rail.tubeObject.get(),0,paintedBegin);
-		drawSegments(rail.paintedTubeObject.get(),paintedBegin,paintedEnd);
-		drawSegments(rail.tubeObject.get(),paintedEnd,segmentCount);
+		// 管を伸ばし終えた区間の数(出ていないレールは0、伸ばし終えたレールは全区間)
+		uint32_t grownEnd = 0;
+		if(!rail.isLocked){
+			const float grownRate = Easing::EaseOutCubic(std::clamp(rail.unlockTimer / kRailUnlockDuration,0.0f,1.0f));
+			grownEnd = (std::min)(segmentCount,static_cast<uint32_t>(std::ceil(grownRate * static_cast<float>(segmentCount))));
+		}
+
+		drawSegments(rail.tubeObject.get(),0,(std::min)(paintedBegin,grownEnd));
+		drawSegments(rail.paintedTubeObject.get(),paintedBegin,(std::min)(paintedEnd,grownEnd));
+		drawSegments(rail.tubeObject.get(),paintedEnd,grownEnd);
+
+		// まだ管が伸びていない区間は点線で描く(点線のモデルは点線の区間だけを詰めて持つため、区間番号を点線の数に直して描く)
+		if(grownEnd < segmentCount && rail.dashedTubeObject){
+			drawSegments(rail.dashedTubeObject.get(),CountDashedSegmentsBefore(grownEnd),CountDashedSegmentsBefore(segmentCount));
+		}
 	}
+}
+
+// 管の区間番号segmentより手前にある、点線の区間の数を求める
+// 点線は kDashPeriodSegments 区間ごとに、先頭の kDashDrawSegments 区間を描く
+uint32_t RailEditor::CountDashedSegmentsBefore(uint32_t segment){
+	return (segment / kDashPeriodSegments) * kDashDrawSegments + (std::min)(segment % kDashPeriodSegments,kDashDrawSegments);
 }
 
 // アクティブなレールの、進行度tの位置までを塗った区間に含める
@@ -891,6 +940,33 @@ void RailEditor::ClearPaint(){
 		rail.isPainted = false;
 		rail.paintStartT = 0.0f;
 		rail.paintEndT = 0.0f;
+	}
+}
+
+// 鍵の的が残っていて出ていないレールを反映する
+// 出ていなかったレールが出たら、管を伸ばす時間を0から数え始める
+void RailEditor::UpdateRailLocks(const std::vector<bool>& lockedRails,float deltaTime){
+	const size_t count = (std::min)(rails_.size(),lockedRails.size());
+	for(size_t i = 0; i < count; ++i){
+		Rail& rail = rails_[i];
+		if(lockedRails[i]){
+			rail.isLocked = true;
+			rail.unlockTimer = 0.0f;
+		} else if(rail.isLocked){
+			rail.isLocked = false;
+			rail.unlockTimer = 0.0f;
+		} else{
+			rail.unlockTimer = (std::min)(rail.unlockTimer + deltaTime,kRailUnlockDuration);
+		}
+	}
+}
+
+// 管を伸ばす演出を飛ばして、出ていないレールをすぐに反映する
+void RailEditor::ResetRailLocks(const std::vector<bool>& lockedRails){
+	const size_t count = (std::min)(rails_.size(),lockedRails.size());
+	for(size_t i = 0; i < count; ++i){
+		rails_[i].isLocked = lockedRails[i];
+		rails_[i].unlockTimer = kRailUnlockDuration;
 	}
 }
 
@@ -979,8 +1055,8 @@ RailEditor::NearestRailResult RailEditor::FindNearestRail(const Vector3& worldPo
 	float bestDistance = -1.0f;
 
 	for(size_t i = 0; i < rails_.size(); ++i){
-		// 除外指定されたレールは探索しない
-		if(static_cast<int>(i) == excludeRailIndex){
+		// 除外指定されたレールと、鍵の的が残っていて出ていないレールは探索しない
+		if(static_cast<int>(i) == excludeRailIndex || rails_[i].isLocked){
 			continue;
 		}
 

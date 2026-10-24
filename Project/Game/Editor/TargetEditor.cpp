@@ -348,6 +348,19 @@ Vector3& TargetEditor::GetTargetPositionRef(int index){
 	return targets_[index].position;
 }
 
+// 指定インデックスの的を壊すと出るレールのインデックスを取得
+int TargetEditor::GetUnlockRailIndex(int index) const{
+	if(index < 0 || index >= static_cast<int>(targets_.size())){
+		return -1;
+	}
+	return targets_[index].unlockRailIndex;
+}
+
+// 指定インデックスの的を壊すと出るレールのインデックスへの参照を取得(Inspectorからの編集用)
+int& TargetEditor::GetUnlockRailIndexRef(int index){
+	return targets_[index].unlockRailIndex;
+}
+
 // 選択中の的のインデックスを取得(-1は未選択)
 int TargetEditor::GetSelectedIndex() const{
 	return selectedIndex_;
@@ -373,6 +386,7 @@ void TargetEditor::SaveToJson(){
 	for(const auto& target : targets_){
 		nlohmann::json tj;
 		tj["position"] = {target.position.x, target.position.y, target.position.z};
+		tj["unlockRailIndex"] = target.unlockRailIndex;
 		targetsJson.push_back(tj);
 	}
 	root["targets"] = targetsJson;
@@ -425,6 +439,8 @@ bool TargetEditor::LoadTargetsFromFile(){
 		point.position.x = tj["position"][0].get<float>();
 		point.position.y = tj["position"][1].get<float>();
 		point.position.z = tj["position"][2].get<float>();
+		// 壊すと出るレール(旧フォーマットのJSONには無いため、value()で既定値-1を補う)
+		point.unlockRailIndex = tj.value("unlockRailIndex",-1);
 		targets_.push_back(point);
 	}
 

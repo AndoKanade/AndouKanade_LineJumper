@@ -288,6 +288,9 @@ void GameScene::ResetPlayState(){
 		// Edit中にレールを動かしても反映されるよう、始め直すたびに置き直す
 		startPlatform_->Place(railEditor_->GetPositionOnRail(0.0f),railEditor_->GetForwardOnRail(0.0f));
 		player_->StartOnPlatform(startPlatform_->GetSpawnPosition(),railEditor_->GetRotationOnRail(0.0f));
+
+		// 的をすべて復活させたため、鍵の的があるレールは出ていない状態にすぐ戻す
+		ApplyRailLocks(true);
 	}
 
 	// 出ている演出・連鎖数・スピード線・画面の揺れ・出発の演出も消す
@@ -367,6 +370,20 @@ void GameScene::RespawnAtCheckpoint(){
 	railEditor_->SwitchActiveRail(checkpoint_.railIndex);
 	player_->BoardRailStart(railEditor_->GetTOfControlPoint(checkpoint_.pointIndex));
 	targetManager_->RestoreAliveStates(checkpoint_.targetAliveStates);
+	// チェックポイントを通った時点で出ていたレールは出たまま、出ていなかったレールは出ていない状態にすぐ戻す
+	ApplyRailLocks(true);
+}
+
+// 鍵の的が残っていて出ていないレールを求め、レールの描き方と着地できるレールに反映する
+// レールが出ているかは的が壊れているかから毎回求めるため、チェックポイントで的を戻すとレールも一緒に戻る
+void GameScene::ApplyRailLocks(bool isInstant){
+	lockedRails_.assign(static_cast<size_t>(railEditor_->GetRailCount()),false);
+	targetManager_->FillLockedRails(lockedRails_);
+	if(isInstant){
+		railEditor_->ResetRailLocks(lockedRails_);
+	} else{
+		railEditor_->UpdateRailLocks(lockedRails_,kDeltaTime);
+	}
 }
 
 // 出発の演出が動かす・参照するものをまとめる
@@ -801,6 +818,9 @@ void GameScene::UpdateGameplay(){
 		inkEffect_->EmitTargetBreak(destroyedPos);
 		comboCounter_->AddHit();
 	}
+
+	// 鍵の的を壊したら、そのレールを出す(始点から終点へ管を伸ばす)
+	ApplyRailLocks(false);
 
 	// 雑魚敵への被弾判定
 	enemyManager_->CheckHitByBullets(*bulletManager_);

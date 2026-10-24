@@ -65,6 +65,11 @@ private:
 	void UpdateCheckpoint();
 	// 最後に通ったチェックポイントの位置からレールに乗せ、壊した的をチェックポイントを通った時点の状態に戻す
 	void RespawnAtCheckpoint();
+	/// <summary>
+	/// 鍵の的が残っていて出ていないレールを求め、レールの描き方と着地できるレールに反映する
+	/// </summary>
+	/// <param name="isInstant">true なら管を伸ばす演出を飛ばしてすぐに反映する(リスタート・チェックポイントからのやり直し用)</param>
+	void ApplyRailLocks(bool isInstant);
 	// 遠くの物を空の色に溶け込ませる距離を、全オブジェクト共通の設定にする(Play中だけ溶け込ませ、Edit中は溶け込ませない)
 	void UpdateSceneDistanceFade();
 
@@ -180,6 +185,9 @@ private:
 		std::vector<bool> targetAliveStates; // 通った時点での的ごとの生存状態
 	};
 	Checkpoint checkpoint_;
+
+	// レールごとに、鍵の的が残っていて出ていないか(毎フレーム求め直す。配列を作り直さないようメンバーに持つ)
+	std::vector<bool> lockedRails_;
 
 	// 1フレームの経過時間(エンジンが固定60fps前提(TimeManagerで60fps固定)なので、そのまま合わせる)
 	static constexpr float kDeltaTime = 1.0f / 60.0f;

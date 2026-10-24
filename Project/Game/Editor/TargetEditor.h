@@ -16,6 +16,8 @@ public:
 	// 配置された的1個分のデータ
 	struct TargetPoint{
 		Vector3 position; // 的のワールド座標
+		// 壊すと出るレールのインデックス(-1: 鍵の的ではない。同じレールを指定した的をすべて壊すとレールが出る)
+		int unlockRailIndex = -1;
 
 		// 編集履歴で、変更があったかを比べるのに使う
 		bool operator==(const TargetPoint&) const = default;
@@ -35,6 +37,10 @@ public:
 	Vector3 GetTargetPosition(int index) const;
 	// 指定インデックスの的の座標への参照を取得(Inspectorからの編集用)
 	Vector3& GetTargetPositionRef(int index);
+	// 指定インデックスの的を壊すと出るレールのインデックスを取得(-1: 鍵の的ではない)
+	int GetUnlockRailIndex(int index) const;
+	// 指定インデックスの的を壊すと出るレールのインデックスへの参照を取得(Inspectorからの編集用)
+	int& GetUnlockRailIndexRef(int index);
 
 	// 指定座標に的を1個追加する(初回起動時の初期配置生成用)
 	void AddTargetAt(const Vector3& position);

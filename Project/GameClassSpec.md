@@ -222,6 +222,7 @@ Game/
 | --- | --- |
 | `ResetPlayState()` | Player・RailCamera・TargetManager・EnemyManager を初期状態に戻し、弾を消し、アクティブレールを 0 番にする。演出・画面の揺れ・出発の演出も止める |
 | `UpdateCheckpoint()` / `RespawnAtCheckpoint()` | 通ったチェックポイントを覚える / 覚えたチェックポイントからレールに乗せ、的の生存状態を戻す |
+| `ApplyRailLocks(isInstant)` | 鍵の的が残っているレールを TargetManager から求め、RailEditor に渡す。毎フレームは的の判定の後に演出つきで、`ResetPlayState()` と `RespawnAtCheckpoint()` ではすぐに反映する。出ているかは的の状態から毎回求めるため、チェックポイントで的を戻すとレールも戻る |
 | `MakeDepartureContext()` | 出発の演出が動かす・参照するもの（DepartureContext）をまとめる |
 | `PlayBoardedEffects(position)` | レールに乗って「GO!」を出す瞬間の演出（輪・しぶき・インクの跡） |
 | `UpdateGameplay()` | レール進行・カメラ・プレイヤー・敵・弾・的・勝敗判定を、決まった順番で呼び出す |
@@ -605,6 +606,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | 照準判定 | 「カメラ → 的」の向きとカメラの前方ベクトルのなす角が `aimHitAngle` 以内なら狙えている。的が大きくなり、レティクルの中心ドットが赤くなる |
 | 命中 | 弾と的の境界球が重なったら撃破し、火花パーティクルを出す。壊れた位置は `GetDestroyedPositions()` で受け取れる（GameScene が破片・しぶきの演出と連鎖数の加算に使う） |
 | 初回の自動配置 | 保存データが無いとき、レール上の 16 か所に左右交互・上下・奥行きをずらして配置する |
+| 鍵の的 | 壊すと出るレール（`unlockRailIndex`）を持つ的。水色（0.3, 0.85, 1.0）で描き、Hierarchy に (Key: Rail N) と出す。同じレールを指定した的をすべて壊すとそのレールが出る |
 
 | 関数 | 内容 |
 | --- | --- |
@@ -613,6 +615,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Update(cameraPosition, cameraForward, bullets)` | 照準判定・弾との当たり判定・行列の更新。いずれかの的を狙えていれば true を返す |
 | `Reset()` / `Draw()` | 全ての的を復活させる / 生存している的を描画する |
 | `GetAliveStates()` / `RestoreAliveStates(aliveStates)` | 的ごとの生存状態を取得する / 取得した状態に戻す（チェックポイント用） |
+| `FillLockedRails(lockedRails)` | 生きている鍵の的が指定しているレールに true を入れる（範囲外のレールの指定は無視する） |
 | `GetDestroyedPositions()` | 直前の `Update()` で壊れた的の座標の一覧を取得する |
 | `GetTotalCount()` / `GetDestroyedCount()` | 的の総数 / 壊された的の数を取得する |
 | `ShowHierarchy()` / `ShowInspector()` | Hierarchy / Inspector パネルの中身を表示する（ImGui がある構成のみ） |
@@ -866,6 +869,8 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
   - 管はレール 1 本につき 1 つのモデルで、Play に入った最初の描画で `BuildTubes()` が頂点から作る。Catmull-Rom の 1 区間を 24 に分け、区間の境目ごとに 8 角形の輪を置いて隣どうしを三角形でつなぐ。輪の横向きは前の輪から引き継ぎ、螺旋でも管がねじれないようにする。前回作ったときから制御点が変わっていないレールは作り直さない。
   - インクで塗った区間（`PaintActiveRail(t)` で広げ、`ClearPaint()` で消す）は黄色、それ以外はピンクにする。同じモデルを色違いの 2 つの Obj3D で共有し、`Obj3D::SetDrawIndexRange()` でそれぞれの区間のインデックスだけを描く。描画命令はレール 1 本につき最大 3 回（塗っていない区間・塗った区間・塗っていない区間）。
   - レールの始点と終点には制御点の目印を出す（今乗っているレールは黄色、それ以外は黒）。
+  - 鍵の的が残っていて出ていないレールは、白い点線で描き、始点と終点の目印も出さない。点線は管と同じ頂点のうち、8 区間ごとに先頭 4 区間の三角形だけを詰めた別のモデル（`dashedTubeModel`）で、1 回の描画で済む。鍵の的をすべて壊したら、0.8 秒かけて始点から終点へ管を伸ばす（`EaseOutCubic`）。伸びていない区間は点線のまま描く。
+  - 出ていないレールは `FindNearestRail()` の探索から外し、着地も並走レールへの乗り換えもできない。管を伸ばしている途中から乗れる。
 - Edit 中の曲線の点列は 1 区間あたり 20 点。曲線の点列と着地範囲の点は全レール共通の置き場（`sampleObjects_`）のオブジェクトを使い回し、起動時に読み込んだレールに必要な数＋200 個を作っておく。足りなくなったら 1 フレームに 8 個まで作り、作りきれなかった点は次のフレーム以降に描く（Obj3D は 1 つ作るごとに GPU のバッファを 2 つ確保して重いため、一度にたくさん作って画面が止まらないようにする）。
 
 #### ImGui パネル「Rail Editor」
@@ -899,6 +904,7 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | `ToggleShowControlPointModels()` / `ToggleShowCurve()` | キー操作用の表示切り替え |
 | `SaveToJson()` / `LoadFromJson()` | 保存・読み込み。起動時は自動で読み込む |
 | `GetTOfControlPoint(index)` / `GetSelectedPointIndex()` / `SelectPoint(rail, point)` | 途中からの Play 用。制御点を通る位置の進行度（両端の制御点は曲線の始点・終点に丸める）/ 選択中の制御点 / Play から戻ったときの選び直し |
+| `UpdateRailLocks(lockedRails, deltaTime)` / `ResetRailLocks(lockedRails)` | 出ていないレールを反映し、出たレールの管を伸ばす / 管を伸ばす演出を飛ばしてすぐ反映する（リスタート・チェックポイント用） |
 | `FindPassedCheckpoint(t)` | アクティブなレールで、進行度 t までに通ったチェックポイントのうち最も先の制御点を返す（無ければ -1）。途中に着地した場合も、手前のチェックポイントは通ったものとする |
 | `ConsumeFocusRequest(outPos)` / `SetBaseRailSpeed(speed)` | Focus の操作があれば選択中の制御点の位置を返す / 走り切るまでの秒数の計算に使う railSpeed を受け取る |
 
@@ -917,6 +923,7 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | マウスドラッグ | Scene ビュー上で的を左ドラッグして動かす。レイから 1.0 以内の的を掴み、画面に平行な面の上で動かす |
 
 - 選択中の的の座標は、GameScene の Inspector パネルからも編集できる（`GetTargetPositionRef()`）。
+- 的ごとに、壊すと出るレール（`unlockRailIndex`、-1 は鍵の的ではない）を持つ。Inspector パネルの「Unlock Rail」で編集し、JSON に保存する（無い古いデータは -1 として読む）。
 - 起動時に保存データを自動で読み込む。
 
 ### EnemyEditor（`Editor/EnemyEditor.h/.cpp`）
@@ -966,7 +973,7 @@ Scene ビュー上のマウス位置から画面奥へ伸びるレイを求め�
 | ファイル | 保存するクラス | 内容 | 反映のしかた |
 | --- | --- | --- | --- |
 | `resource/rail/rail.json`、`rail1.json`、`rail2.json` … | RailEditor | レールごとの制御点 | 起動時に自動で読み込む。以降は Save / Load ボタン |
-| `resource/target/target.json` | TargetEditor | 的の座標 | 同上 |
+| `resource/target/target.json` | TargetEditor | 的の座標・壊すと出るレール | 同上 |
 | `resource/enemy/enemy.json` | EnemyEditor | 敵の座標・往復方向・最大 HP | 同上 |
 | `resource/GlobalVariables/GameScene.json` | GlobalVariables（エンジン） | GameScene の調整項目 | 実行中の変更が自動で反映される |
 | `resource/GlobalVariables/Title.json` | GlobalVariables（エンジン） | タイトルロゴの位置・大きさ・消え方、BGM・効果音の音量、ゲートを映す画の位置 | 同上 |

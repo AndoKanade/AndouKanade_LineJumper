@@ -67,6 +67,7 @@ public:
 
 	// 全レールの中から、指定したワールド座標に最も近いレール・進行度・距離を求める(着地先レールの探索用)
 	// excludeRailIndexに指定したレールは探索対象から外す(-1: 除外なし。並走レールへの乗り換えで今のレールを外すのに使う)
+	// 鍵の的が残っていて出ていないレールも探索対象から外す
 	NearestRailResult FindNearestRail(const Vector3& worldPos,int excludeRailIndex = -1) const;
 
 	// 指定インデックスのレールをアクティブなレールとして切り替える(Playモードでのレール乗り換えにも使用)
@@ -106,6 +107,16 @@ public:
 	void PaintActiveRail(float t);
 	// 全レールの塗った区間を消す(リスタート時に呼ぶ)
 	void ClearPaint();
+
+	/// <summary>
+	/// 鍵の的が残っていて出ていないレールを反映する(Play中に毎フレーム呼ぶ)
+	/// 出ていないレールは点線で描き、着地・乗り換えの対象から外す。出ていなかったレールが出たときは、始点から終点へ管を伸ばす
+	/// </summary>
+	/// <param name="lockedRails">レールごとに、出ていないか(レールの並びと同じ)</param>
+	/// <param name="deltaTime">管を伸ばす演出を進める時間(秒)</param>
+	void UpdateRailLocks(const std::vector<bool>& lockedRails,float deltaTime);
+	// 管を伸ばす演出を飛ばして、出ていないレールをすぐに反映する(リスタート・チェックポイントからのやり直しで使う)
+	void ResetRailLocks(const std::vector<bool>& lockedRails);
 
 	// 着地できる範囲の描画に使う水平方向の許容距離を設定する
 	// 判定値そのものはGameScene側が持っているため、同じ値を二重に持たないよう外から渡してもらう
@@ -170,6 +181,14 @@ private:
 		bool isPainted = false;
 		float paintStartT = 0.0f;
 		float paintEndT = 0.0f;
+
+		// 出ていないレールとして描く点線(管と同じ頂点のうち、点線の区間の三角形だけを持つモデルと、それを描くオブジェクト)
+		std::unique_ptr<Model> dashedTubeModel;
+		std::unique_ptr<Obj3D> dashedTubeObject;
+		// 鍵の的が残っていて、レールが出ていないか(着地・乗り換えの対象から外す)
+		bool isLocked = false;
+		// レールが出てから、管を伸ばし始めてからの経過時間(秒。伸ばし終えたらkRailUnlockDurationで止める)
+		float unlockTimer = kRailUnlockDuration;
 	};
 
 	// 制御点・曲線の点列・着地範囲の描画用の3Dオブジェクト生成(modelPathで使うモデルを指定する)
@@ -177,8 +196,10 @@ private:
 	// Play中のレール本体の管のモデルを、レールに沿った頂点から作る(前回作ったときから形が変わったレールだけ作り直す)
 	// Play中はレールの形が変わらないため、Playに入ってから最初の描画で1回だけ呼ぶ
 	void BuildTubes();
-	// Play中のレール本体を、塗った区間とそれ以外で色を分けて管として描画する(1本のレールにつき最大3回の描画で済む)
+	// Play中のレール本体を、塗った区間とそれ以外で色を分けて管として描画する(1本のレールにつき最大3回の描画で済む。出ている途中のレールは点線の分で1回増える)
 	void DrawTubes();
+	// 管の区間番号segmentより手前にある、点線の区間の数を求める(点線のモデルの中で描き始める位置を求めるのに使う)
+	static uint32_t CountDashedSegmentsBefore(uint32_t segment);
 	// rail.pointObjectsの個数をrail.controlPointsに同期
 	void SyncPointObjectsToControlPoints(Rail& rail);
 	// 描画用オブジェクトがcount個に満たなければ、足りない分だけmodelPathのモデルで生成する(多い分は削らず、使わないだけにする)
@@ -311,6 +332,11 @@ private:
 	static constexpr uint32_t kTubeSideCount = 8;
 	// 四角形1つを三角形2つで描くときのインデックスの数
 	static constexpr uint32_t kTubeIndicesPerQuad = 6;
+	// 出ていないレールの点線の、1周期の管の区間数と、そのうち描く区間数(Catmull-Romの1区間に3本の線が入る)
+	static constexpr uint32_t kDashPeriodSegments = 8;
+	static constexpr uint32_t kDashDrawSegments = 4;
+	// レールが出たときに、始点から終点まで管を伸ばしきるまでの時間(秒)
+	static constexpr float kRailUnlockDuration = 0.8f;
 	// 管の向きを求めるベクトルの長さがこれ未満なら、向きが定まらないとみなして前の向きを使う
 	static constexpr float kMinTubeDirectionLength = 1e-4f;
 
