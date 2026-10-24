@@ -113,7 +113,7 @@ public:
 	// 弾を撃ち出す位置を取得(足元から構えた手元の高さまで上げた位置)
 	Vector3 GetMuzzlePosition() const{ return {position_.x, position_.y + kMuzzleHeight, position_.z}; }
 
-	// レールの終点に着いたかどうか(オンレール中に終端まで進んだらtrue)
+	// ゴールのレールの終点に着いたかどうか(オンレール中に終端まで進んだらtrue。ゴール以外のレールは終点でレールから外れるためtrueにならない)
 	bool HasReachedGoal() const{ return isOnRail_ && isRailFinished_; }
 	// 体力が尽きたかどうか
 	bool IsDead() const{ return hp_ <= 0; }
@@ -224,6 +224,8 @@ private:
 	static constexpr float kMoveSpeed = 5.0f;
 	// レールの終端の進行度
 	static constexpr float kRailEndT = 1.0f;
+	// 終点に着いたらクリアにするレールのインデックス(rail5。ほかのレールは終点でレールから外れる)
+	static constexpr int kGoalRailIndex = 5;
 	// 並走レールへの乗り換えができる水平方向(XZ平面)の最大距離
 	static constexpr float kSideRailSwitchMaxDistance = 8.0f;
 	// 並走レールへの乗り換えができる高さの差の最大値

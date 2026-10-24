@@ -143,6 +143,19 @@ void Player::UpdateRailProgress(const RailEditor* railEditor,bool isGameplayActi
 	if(railT_ >= kRailEndT){
 		railT_ = kRailEndT; // 終端で固定する
 		isRailFinished_ = true;
+
+		// ゴールのレール以外は、終点に着いたらレールから外れて落とす(どのレールにも乗れずに落ちたらリスタートになる)
+		// 跳ねている途中・飛び移っている途中の状態を残すと、離れた直後に同じレールへ着地し直してしまうため、ここで消しておく
+		if(railEditor->GetActiveRailIndex() != kGoalRailIndex){
+			isOnRail_ = false;
+			isRailHopping_ = false;
+			railHopHeight_ = 0.0f;
+			railHopVelocityY_ = 0.0f;
+			isSwitchingRail_ = false;
+			freePosition_ = railEditor->GetPositionOnRail(railT_);
+			freeBaseRotation_ = railEditor->GetRotationOnRail(railT_);
+			freeVelocityY_ = 0.0f;
+		}
 	}
 }
 
