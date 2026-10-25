@@ -188,6 +188,29 @@ bool TargetManager::Update(const Vector3& cameraPosition,const Vector3& cameraFo
 	return isAimingAtAnyTarget;
 }
 
+// レティクルで狙えている的のうち、カメラに一番近いものを探す
+// 狙えているかは Update() の照準判定と同じく、「カメラ→的」の方向とカメラ前方ベクトルのなす角で決める
+bool TargetManager::FindAimedTarget(const Vector3& cameraPosition,const Vector3& cameraForward,Vector3& outPosition,float& outDistance) const{
+	float aimHitAngle = GlobalVariables::GetInstance()->GetFloatValue(paramGroup_,"aimHitAngle");
+
+	bool isFound = false;
+	for(const auto& target : targets_){
+		if(!target.isAlive) continue;
+
+		Vector3 toTarget = target.position - cameraPosition;
+		float distance = Length(toTarget);
+		if(distance < kMinAimDistance) continue; // カメラと的が重なっている異常値は無視
+
+		// 狙えている的のうち、手前にあるものを優先する(奥の的を狙って手前の的に遮られないようにする)
+		if(AngleBetween(cameraForward,toTarget) <= aimHitAngle && (!isFound || distance < outDistance)){
+			outPosition = target.position;
+			outDistance = distance;
+			isFound = true;
+		}
+	}
+	return isFound;
+}
+
 // 壊された的の数を数える
 int TargetManager::GetDestroyedCount() const{
 	int count = 0;

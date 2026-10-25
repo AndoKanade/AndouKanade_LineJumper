@@ -1218,3 +1218,26 @@ Visual Studio（Debug / Development / Release、x64）でビルドが通るこ�
 ### ビルド確認（6.）
 
 未確認（Visual Studio でのビルドと実機での手触りの確認が必要）。
+
+### 7. 弾がレティクルの通りに飛ぶようにし、弾を細くした
+
+対象ファイル: `Game/scenes/GameScene.cpp`、`Game/objects/TargetManager.h/.cpp`、`Game/objects/EnemyManager.h/.cpp`、`Game/objects/PlayerBulletManager.h`
+
+- 原因：弾はカメラの前方 30 の点へ向けて撃っていたが、手元（カメラの前下 3 ほど）とカメラの位置がずれているため、それより手前の的ではレティクルとずれていた。さらに射程を 20 にしたことで、弾が 30 の点に着く前に落ちていた。ばらつき（横 0.05 ラジアン）も、射程の先で 1 ずれるほど大きかった。
+- 的をレティクルで狙えている（レティクルの中心が赤い）ときは、その的の中心へ向けて撃つようにした（`TargetManager::FindAimedTarget()`）。
+- レティクルの方向が敵の当たり判定の球を通るときは、その敵の中心へ向けて撃つようにした（`EnemyManager::FindAimedEnemy()`）。的と敵の両方を狙えているときは手前のほうを狙う。
+- どちらも狙えていないときに狙う点を、カメラの前方 30 から 18 にした（射程 20 より手前にして、落ち始める前に通るようにした）。
+- ばらつきを小さくした（射程の先で横に最大 0.3、縦に最大 0.1 ずれる。的の当たり判定の半径 0.6 より小さい）。
+- 弾の見た目を細く短くした（当たり判定の大きさはそのまま）。
+
+| 定数 | 値 | 内容 |
+| --- | --- | --- |
+| `GameScene.cpp::kAimConvergeDistance` | 30.0 → 18.0 | 何も狙えていないときに狙う、カメラの前方の点までの距離 |
+| `PlayerBulletManager.h::kSpreadAngleHorizontal` | 0.05 → 0.015 | 横にずらす最大の角度（ラジアン） |
+| `PlayerBulletManager.h::kSpreadAngleVertical` | 0.02 → 0.005 | 縦にずらす最大の角度（ラジアン） |
+| `PlayerBulletManager.h::kStreakWidthRate` | 0.6 → 0.35 | 弾の見た目の太さの割合 |
+| `PlayerBulletManager.h::kStreakLengthRate` | 5.0 → 3.0 | 弾の見た目の長さの割合 |
+
+### ビルド確認（7.）
+
+未確認（Visual Studio でのビルドと実機での手触りの確認が必要）。

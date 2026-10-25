@@ -118,6 +118,32 @@ void EnemyManager::CheckHitByBullets(PlayerBulletManager& bullets){
 	}
 }
 
+// レティクルの方向が当たり判定の球を通る敵のうち、カメラに一番近いものを探す
+bool EnemyManager::FindAimedEnemy(const Vector3& cameraPosition,const Vector3& cameraForward,Vector3& outPosition,float& outDistance) const{
+	bool isFound = false;
+	for(const auto& enemy : enemies_){
+		if(!enemy->IsAlive()) continue;
+
+		// 球の中心からカメラの前方の線へ下ろした垂線の足までの距離(カメラより後ろの敵は狙えない)
+		const Model::BoundingSphere sphere = enemy->GetHitSphere();
+		const Vector3 toCenter = sphere.center - cameraPosition;
+		const float alongDistance = Dot(toCenter,cameraForward);
+		if(alongDistance < 0.0f) continue;
+
+		// 線と球の中心の距離が半径以内なら、線が球を通っている(平方のまま比べて平方根を省く)
+		const float distanceSquaredToLine = Dot(toCenter,toCenter) - alongDistance * alongDistance;
+		if(distanceSquaredToLine > sphere.radius * sphere.radius) continue;
+
+		// 狙えている敵のうち、手前にいるものを優先する
+		if(!isFound || alongDistance < outDistance){
+			outPosition = sphere.center;
+			outDistance = alongDistance;
+			isFound = true;
+		}
+	}
+	return isFound;
+}
+
 // 全ての敵を初期状態に戻す
 void EnemyManager::Reset(){
 	for(auto& enemy : enemies_){

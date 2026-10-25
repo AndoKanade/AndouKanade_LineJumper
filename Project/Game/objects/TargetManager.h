@@ -43,6 +43,17 @@ public:
 	/// <returns>いずれかの的をレティクルで狙えているときtrue</returns>
 	bool Update(const Vector3& cameraPosition,const Vector3& cameraForward,PlayerBulletManager& bullets);
 
+	/// <summary>
+	/// レティクルで狙えている(レティクルの中心が赤くなる)的のうち、カメラに一番近いものを探す
+	/// 弾をその的の中心へ向けて撃ち、レティクルが赤いときは狙った的へ飛ぶようにするのに使う
+	/// </summary>
+	/// <param name="cameraPosition">カメラの位置</param>
+	/// <param name="cameraForward">カメラの前方ベクトル(画面中央のレティクルの方向)</param>
+	/// <param name="outPosition">見つかった的の中心の座標</param>
+	/// <param name="outDistance">カメラから見つかった的までの距離</param>
+	/// <returns>狙えている的があるときtrue</returns>
+	bool FindAimedTarget(const Vector3& cameraPosition,const Vector3& cameraForward,Vector3& outPosition,float& outDistance) const;
+
 	// すべての的を生存状態に戻す
 	void Reset();
 

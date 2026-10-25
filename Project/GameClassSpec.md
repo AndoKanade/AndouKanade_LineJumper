@@ -205,7 +205,7 @@ Game/
 
 | 項目 | 内容 |
 | --- | --- |
-| 射撃 | 左クリックを押している間、0.1 秒ごとに連射する（押した瞬間に 1 発目を撃つ）。プレイヤーの手元（`Player::GetMuzzlePosition()`）から、カメラの前方 30.0 の点（レティクルの先）へ向けて弾を発射する |
+| 射撃 | 左クリックを押している間、0.1 秒ごとに連射する（押した瞬間に 1 発目を撃つ）。プレイヤーの手元（`Player::GetMuzzlePosition()`）から弾を発射する。的をレティクルで狙えている（レティクルの中心が赤い）とき、またはレティクルの方向が敵の当たり判定の球を通るときは、一番手前のものの中心へ向けて撃つ。どちらも無いときは、カメラの前方 18.0 の点（レティクルの先。射程 20 より手前）へ向けて撃つ |
 | 試し撃ち | スタート台の上（`isPlayerMovable` の間）でも撃てる。この弾は的・敵に当たらず、台に着いたところにインクを塗る |
 | 出発の演出 | ImGui の「Departure」で選んだ演出で、スタート台からレールへ移る（Title の Departure を参照） |
 | 落下リスタート | どのレールにも乗れずに地面の高さまで落ちたら暗転（`SceneManager::StartTransition()`）を始め、画面を覆っている間に `ResetPlayState()` を呼ぶ。開始演出は挟まない。チェックポイントを通っていれば、続けて `RespawnAtCheckpoint()` でそこから始め直す |
@@ -577,9 +577,9 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 
 | 項目 | 内容 |
 | --- | --- |
-| 見た目 | `Sphere/sphere.obj`（インクの黄色・ライティングなし）。飛ぶ向きへ伸ばし、太さ 0.15×0.6・長さ 0.15×5.0 の筋にする（当たり判定はスケール 0.15 の球のまま） |
+| 見た目 | `Sphere/sphere.obj`（インクの黄色・ライティングなし）。飛ぶ向きへ伸ばし、太さ 0.15×0.35・長さ 0.15×3.0 の筋にする（当たり判定はスケール 0.15 の球のまま） |
 | 弾道 | 速度 40、寿命 2 秒。射程 20 まではまっすぐ飛び、重力を受けない。射程を過ぎると、勢いを 1 秒あたり 4 の割合で落としながら重力 40 で落ちる |
-| ばらつき | 撃つたびに狙う方向を、横に最大 0.05、縦に最大 0.02 ラジアンだけランダムにずらす |
+| ばらつき | 撃つたびに狙う方向を、横に最大 0.015、縦に最大 0.005 ラジアンだけランダムにずらす |
 | ダメージ | 敵 1 体に 1 発あたり 1 |
 | 生成 | 初期化時に 24 発まとめて生成し、使い回す（連射 0.1 秒間隔・寿命 2 秒で同時に飛ぶのは最大 20 発）。命中・寿命切れ・着地した弾は未使用に戻る。未使用の弾が無いときは撃たない |
 | 試し撃ち | `canHit` を false にして撃った弾は、的・敵に当たらない |
@@ -613,6 +613,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Initialize(Obj3dCommon*, railEditor, paramGroup)` | 調整項目 `aimHitAngle` の登録、TargetEditor の生成、初回の自動配置 |
 | `UpdateEditor()` | TargetEditor を更新し、個数・座標を的のリストに反映する。個数が変わったときだけ生成・削除する |
 | `Update(cameraPosition, cameraForward, bullets)` | 照準判定・弾との当たり判定・行列の更新。いずれかの的を狙えていれば true を返す |
+| `FindAimedTarget(cameraPosition, cameraForward, outPosition, outDistance)` | レティクルで狙えている的のうち、カメラに一番近いものの位置と距離を返す（弾をその的へ向けて撃つのに使う） |
 | `Reset()` / `Draw()` | 全ての的を復活させる / 生存している的を描画する |
 | `GetAliveStates()` / `RestoreAliveStates(aliveStates)` | 的ごとの生存状態を取得する / 取得した状態に戻す（チェックポイント用） |
 | `FillLockedRails(lockedRails)` | 生きている鍵の的が指定しているレールに true を入れる（範囲外のレールの指定は無視する） |
@@ -631,6 +632,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Update(playerPosition, deltaTime)` | 全ての敵を更新する |
 | `CheckHitToPlayer(playerSphere)` | 全ての敵の弾とプレイヤーの当たり判定。命中した弾の合計数を返す |
 | `CheckHitByBullets(bullets)` | プレイヤーの弾と敵本体の当たり判定。当たった敵の体力を減らし、火花パーティクルを出す |
+| `FindAimedEnemy(cameraPosition, cameraForward, outPosition, outDistance)` | カメラの前方へ伸ばした線が当たり判定の球を通る敵のうち、一番手前のものの中心と距離を返す（弾をその敵へ向けて撃つのに使う） |
 | `Reset()` / `Draw()` | 全ての敵を初期状態に戻す / 描画する |
 | `ShowDebugInfo()` | 生存数・弾の数・体ごとの体力を表示する（ImGui がある構成のみ） |
 

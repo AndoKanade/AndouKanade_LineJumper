@@ -105,8 +105,8 @@ private:
 	// 弾の表示スケール(当たり判定の大きさにも使う)
 	static constexpr float kScale = 0.15f;
 	// 見た目を筋にするための、表示スケールに掛ける太さと長さの割合(当たり判定には使わない)
-	static constexpr float kStreakWidthRate = 0.6f;
-	static constexpr float kStreakLengthRate = 5.0f;
+	static constexpr float kStreakWidthRate = 0.35f;
+	static constexpr float kStreakLengthRate = 3.0f;
 	// 弾が的に当たらなかった場合に消滅するまでの生存時間(秒)
 	static constexpr float kLifeTime = 2.0f;
 	// 射程(この距離まではまっすぐ飛び、重力も受けない)
@@ -116,8 +116,9 @@ private:
 	// 射程を過ぎた弾の勢いの落ち方(1秒あたりに速度が減る割合。大きいほど射程の先へ伸びずに落ちる)
 	static constexpr float kFallDrag = 4.0f;
 	// 撃つたびに向きをずらす最大の角度(ラジアン)。横には大きく、縦には小さくばらけさせる
-	static constexpr float kSpreadAngleHorizontal = 0.05f;
-	static constexpr float kSpreadAngleVertical = 0.02f;
+	// (射程 20 の先で横に最大 0.3、縦に最大 0.1 ずれる。的の当たり判定の半径より小さくして、狙った的から外れないようにする)
+	static constexpr float kSpreadAngleHorizontal = 0.015f;
+	static constexpr float kSpreadAngleVertical = 0.005f;
 	// 使い回す弾の最大数(連射の間隔 0.1 秒・生存時間 2 秒で同時に飛ぶ最大 20 発に余裕を持たせた数)
 	static constexpr size_t kMaxBulletCount = 24;
 	// 弾1発が敵に与えるダメージ量
