@@ -4,6 +4,7 @@
 #include "systems/SceneTransition.h"
 #include "MyMath.h"
 #include <memory>
+#include <vector>
 
 // 前方宣言
 class Input;
@@ -60,6 +61,15 @@ private:
 	void StartPlaySequence();
 	// Playに入ったときに覚えておいた制御点の位置からレールに乗せる(途中からPlayするとき用)
 	void BoardAtPlayStartPoint();
+	// レールを進んでいる間に、チェックポイントの制御点を通ったら、その位置と壊した的を覚えておく
+	void UpdateCheckpoint();
+	// 最後に通ったチェックポイントの位置からレールに乗せ、壊した的をチェックポイントを通った時点の状態に戻す
+	void RespawnAtCheckpoint();
+	/// <summary>
+	/// 鍵の的が残っていて出ていないレールを求め、レールの描き方と着地できるレールに反映する
+	/// </summary>
+	/// <param name="isInstant">true なら管を伸ばす演出を飛ばしてすぐに反映する(リスタート・チェックポイントからのやり直し用)</param>
+	void ApplyRailLocks(bool isInstant);
 	// 遠くの物を空の色に溶け込ませる距離を、全オブジェクト共通の設定にする(Play中だけ溶け込ませ、Edit中は溶け込ませない)
 	void UpdateSceneDistanceFade();
 
@@ -167,11 +177,28 @@ private:
 	int editPointIndex_ = -1;
 	// 今回のPlayを選んだ制御点から始めているか(落下リスタートでも同じ位置から始め直すのに使う)
 	bool isPlayingFromPoint_ = false;
+	// 次の弾を撃てるようになるまでの残り時間(秒。押しっぱなしの連射の間隔に使う)
+	float fireCooldown_ = 0.0f;
+
+	// 最後に通ったチェックポイント(レールから落ちたら、ここからやり直す)
+	struct Checkpoint{
+		int railIndex = -1;                  // チェックポイントの制御点があるレール(-1: まだ通っていない)
+		int pointIndex = -1;                 // チェックポイントの制御点
+		std::vector<bool> targetAliveStates; // 通った時点での的ごとの生存状態
+	};
+	Checkpoint checkpoint_;
+
+	// レールごとに、鍵の的が残っていて出ていないか(毎フレーム求め直す。配列を作り直さないようメンバーに持つ)
+	std::vector<bool> lockedRails_;
 
 	// 1フレームの経過時間(エンジンが固定60fps前提(TimeManagerで60fps固定)なので、そのまま合わせる)
 	static constexpr float kDeltaTime = 1.0f / 60.0f;
 	// 射撃に使うマウスボタン(左ボタン)
 	static constexpr int kShootMouseButton = 0;
+	// 押しっぱなしで連射するときの弾の発射間隔(秒)
+	static constexpr float kFireInterval = 0.1f;
+	// 残り時間がこれ以下なら撃てるとみなす(小数の誤差で残り時間がわずかに残り、発射が1フレーム遅れないよう半フレーム分の余裕を持たせる)
+	static constexpr float kFireIntervalTolerance = kDeltaTime * 0.5f;
 	// 弾を撃ったときに手元から飛び散らせるインクのしぶきの数
 	static constexpr int kMuzzleSplashCount = 3;
 	// レールに乗り込んで出発した瞬間に、足元から飛び散らせるインクのしぶきの数

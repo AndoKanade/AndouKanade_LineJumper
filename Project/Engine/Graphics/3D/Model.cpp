@@ -22,10 +22,13 @@ namespace{
 //=============================================================================
 
 void Model::Initialize(ModelCommon* modelCommon,const std::string& directorypath,const std::string& filename){
-    this->modelCommon_ = modelCommon;
+    // ファイルからモデルデータを読み込み、読み込んだデータで初期化する
+    Initialize(modelCommon,LoadModelFile(directorypath,filename));
+}
 
-    // ファイルからモデルデータの読み込み
-    modelData = LoadModelFile(directorypath,filename);
+void Model::Initialize(ModelCommon* modelCommon,ModelData data){
+    this->modelCommon_ = modelCommon;
+    modelData = std::move(data);
 
     // 当たり判定用の境界球を頂点データから求める
     CalculateBoundingSphere();
@@ -254,7 +257,14 @@ Node Model::ReadNode(aiNode* node){
 // 描画・更新処理
 //=============================================================================
 
-void Model::Draw(uint32_t skyboxSRVIndex,D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,SkinCluster* skinCluster){
+void Model::Draw(uint32_t skyboxSRVIndex,D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,SkinCluster* skinCluster,uint32_t startIndex,uint32_t indexCount){
+    // 開始位置がモデルのインデックスの範囲外なら描くものが無い
+    const uint32_t totalIndexCount = static_cast<uint32_t>(modelData.indices.size());
+    if(startIndex >= totalIndexCount){
+        return;
+    }
+
+
     auto* commandList = modelCommon_->GetDxCommon()->GetCommandList();
 
     if(skinCluster){
@@ -274,8 +284,9 @@ void Model::Draw(uint32_t skyboxSRVIndex,D3D12_GPU_VIRTUAL_ADDRESS cameraAddress
     // インデックスバッファの設定
     commandList->IASetIndexBuffer(&indexBufferView);
 
-    // 描画実行
-    commandList->DrawIndexedInstanced(UINT(modelData.indices.size()),1,0,0,0);
+    // 描画実行(指定した数がモデルの最後を超える分は描かない)
+    const uint32_t drawIndexCount = (std::min)(indexCount,totalIndexCount - startIndex);
+    commandList->DrawIndexedInstanced(drawIndexCount,1,startIndex,0,0);
 }
 
 void Model::SetTexture(const std::string& texturefilePath){

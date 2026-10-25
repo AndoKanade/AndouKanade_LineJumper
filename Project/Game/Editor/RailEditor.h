@@ -6,10 +6,13 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <cstdint>
+#include <limits>
 
 // クラスの前方宣言
 class Obj3D;
 class Obj3dCommon;
+class Model;
 
 class RailEditor : public IEditorDocument{
 public:
@@ -22,6 +25,9 @@ public:
 		// レール間分岐移動用のデータ
 		int branchTargetRailIndex = -1;  // 分岐先レールのインデックス(-1: 分岐なし)
 		int branchTargetPointIndex = -1; // 分岐先レール側の対応する制御点インデックス
+
+		// チェックポイントにするか(この制御点を通った後にレールから落ちたら、この制御点の位置からやり直す)
+		bool isCheckpoint = false;
 
 		// 編集履歴で、変更があったかを比べるのに使う
 		bool operator==(const ControlPoint&) const = default;
@@ -62,6 +68,7 @@ public:
 
 	// 全レールの中から、指定したワールド座標に最も近いレール・進行度・距離を求める(着地先レールの探索用)
 	// excludeRailIndexに指定したレールは探索対象から外す(-1: 除外なし。並走レールへの乗り換えで今のレールを外すのに使う)
+	// 鍵の的が残っていて出ていないレールも探索対象から外す
 	NearestRailResult FindNearestRail(const Vector3& worldPos,int excludeRailIndex = -1) const;
 
 	// 指定インデックスのレールをアクティブなレールとして切り替える(Playモードでのレール乗り換えにも使用)
@@ -77,6 +84,8 @@ public:
 	int GetControlPointIndexFromT(float t) const;
 	// アクティブなレールの、指定した制御点を通る位置の進行度を取得(曲線が通らない両端の制御点は、曲線の始点・終点の進行度にする)
 	float GetTOfControlPoint(int index) const;
+	// アクティブなレールで、進行度tまでに通ったチェックポイントのうち、最も先にある制御点のインデックスを取得(-1: まだ通っていない)
+	int FindPassedCheckpoint(float t) const;
 
 	// 一覧で選択中の制御点のインデックスを取得(-1: 未選択。対象はアクティブなレール)
 	int GetSelectedPointIndex() const{ return selectedPointIndex_; }
@@ -99,6 +108,17 @@ public:
 	void PaintActiveRail(float t);
 	// 全レールの塗った区間を消す(リスタート時に呼ぶ)
 	void ClearPaint();
+
+	/// <summary>
+	/// 鍵の的が残っていて出ていないレールを反映する(Play中に毎フレーム呼ぶ)
+	/// 出ていないレールは点線で描き、着地・乗り換えの対象から外す。出ていなかったレールが出たときは、始点から終点へ管を伸ばす
+	/// </summary>
+	/// <param name="lockedRails">レールごとに、出ていないか(レールの並びと同じ)</param>
+	/// <param name="growSpeed">管を伸ばす速さ(1秒あたりに伸びるレールに沿った長さ)</param>
+	/// <param name="deltaTime">管を伸ばす演出を進める時間(秒)</param>
+	void UpdateRailLocks(const std::vector<bool>& lockedRails,float growSpeed,float deltaTime);
+	// 管を伸ばす演出を飛ばして、出ていないレールをすぐに反映する(リスタート・チェックポイントからのやり直しで使う)
+	void ResetRailLocks(const std::vector<bool>& lockedRails);
 
 	// 着地できる範囲の描画に使う水平方向の許容距離を設定する
 	// 判定値そのものはGameScene側が持っているため、同じ値を二重に持たないよう外から渡してもらう
@@ -123,6 +143,9 @@ public:
 	// 保存していない変更があるか
 	bool IsModified() const override{ return history_.IsModified(); }
 
+	// Play中のレール本体の管の半径(着地できる範囲も、見た目の管の太さに合わせるために使う)
+	static constexpr float kTubeRadius = 0.05f;
+
 private:
 	// 編集履歴に残す、1本分のレールのデータ(描画用オブジェクトなどを除いた、保存する内容だけ)
 	struct RailSnapshot{
@@ -145,11 +168,16 @@ private:
 		std::vector<ControlPoint> controlPoints;            // 制御点を保存する配列
 		std::vector<std::unique_ptr<Obj3D>> pointObjects;   // 制御点描画用の3Dオブジェクト群
 
-		// Play中にレールの本体として描く管(円柱をつないだもの。区間数に合わせて足りない分だけ増やす)
-		std::vector<std::unique_ptr<Obj3D>> tubeObjects;
-		// 管の区間ごとに描画するかどうか(短すぎて向きが定まらない区間はfalse。BuildTubes()で求める)
-		// 要素数がそのレールで使う管の数になる
-		std::vector<bool> tubeSegmentVisible;
+		// Play中にレールの本体として描く管(レールに沿った1本のモデル。BuildTubes()で頂点から作る)
+		// 管を1区間ずつ別のオブジェクトで描くと描画の命令が区間の数だけ増えて重いため、1本のモデルにまとめる
+		std::unique_ptr<Model> tubeModel;
+		// 管を描くオブジェクト(塗っていない区間用と塗った区間用。同じモデルを、インデックスの範囲を分けて描く)
+		std::unique_ptr<Obj3D> tubeObject;
+		std::unique_ptr<Obj3D> paintedTubeObject;
+		// 管の区間数(区間ごとのインデックスの数は同じため、塗った区間をインデックスの範囲に直すのに使う)
+		uint32_t tubeSegmentCount = 0;
+		// 管を作ったときの制御点(変わっていなければ、Playに入り直しても管を作り直さない)
+		std::vector<ControlPoint> tubeBuiltControlPoints;
 
 		bool showControlPointModels = true;                 // 制御点の球体モデルの描画フラグ
 		bool showCurve = true;                              // 曲線表示フラグ
@@ -158,15 +186,27 @@ private:
 		bool isPainted = false;
 		float paintStartT = 0.0f;
 		float paintEndT = 0.0f;
+
+		// 出ていないレールとして描く点線(管と同じ頂点のうち、点線の区間の三角形だけを持つモデルと、それを描くオブジェクト)
+		std::unique_ptr<Model> dashedTubeModel;
+		std::unique_ptr<Obj3D> dashedTubeObject;
+		// 鍵の的が残っていて、レールが出ていないか(着地・乗り換えの対象から外す)
+		bool isLocked = false;
+		// レールが出てから、始点から伸ばした管の長さ(レールに沿った長さ。伸ばす演出をしないときはkFullyGrownLength)
+		float unlockGrownLength = kFullyGrownLength;
+		// 管の始点から各輪(区間の境目)までの、レールに沿った長さ(管を伸ばした長さから、描く区間を求めるのに使う)
+		std::vector<float> tubeRingDistances;
 	};
 
 	// 制御点・曲線の点列・着地範囲の描画用の3Dオブジェクト生成(modelPathで使うモデルを指定する)
 	std::unique_ptr<Obj3D> CreatePointObject(const std::string& modelPath);
-	// Play中のレール本体の管の位置・向き・大きさを求めて行列を更新する
+	// Play中のレール本体の管のモデルを、レールに沿った頂点から作る(前回作ったときから形が変わったレールだけ作り直す)
 	// Play中はレールの形が変わらないため、Playに入ってから最初の描画で1回だけ呼ぶ
 	void BuildTubes();
-	// Play中のレール本体を、塗った区間とそれ以外で色を分けて管として描画する
+	// Play中のレール本体を、塗った区間とそれ以外で色を分けて管として描画する(1本のレールにつき最大3回の描画で済む。出ている途中のレールは点線の分で1回増える)
 	void DrawTubes();
+	// 管の区間番号segmentより手前にある、点線の区間の数を求める(点線のモデルの中で描き始める位置を求めるのに使う)
+	static uint32_t CountDashedSegmentsBefore(uint32_t segment);
 	// rail.pointObjectsの個数をrail.controlPointsに同期
 	void SyncPointObjectsToControlPoints(Rail& rail);
 	// 描画用オブジェクトがcount個に満たなければ、足りない分だけmodelPathのモデルで生成する(多い分は削らず、使わないだけにする)
@@ -293,10 +333,17 @@ private:
 	// Play中のレール本体の管の、Catmull-Romの1区間あたりの分割数(多いほど曲がりがなめらかになる)
 	// 曲線の点列と同じく、レールを延長しても管が角ばらないよう区間数に比例させる
 	static constexpr int kTubeSegmentsPerRailSegment = 24;
-	// Play中のレール本体の管の半径
-	static constexpr float kTubeRadius = 0.05f;
-	// 管の1区間の長さがこれ未満なら、向きが定まらないため描画しない
-	static constexpr float kMinTubeSegmentLength = 1e-4f;
+	// 管の輪の周りの分割数(細い管のため、少なめでも丸く見える)
+	static constexpr uint32_t kTubeSideCount = 8;
+	// 四角形1つを三角形2つで描くときのインデックスの数
+	static constexpr uint32_t kTubeIndicesPerQuad = 6;
+	// 出ていないレールの点線の、1周期の管の区間数と、そのうち描く区間数(Catmull-Romの1区間に3本の線が入る)
+	static constexpr uint32_t kDashPeriodSegments = 8;
+	static constexpr uint32_t kDashDrawSegments = 4;
+	// 管を伸ばしきった状態として扱う長さ(どのレールの全長よりも長い)
+	static constexpr float kFullyGrownLength = (std::numeric_limits<float>::max)();
+	// 管の向きを求めるベクトルの長さがこれ未満なら、向きが定まらないとみなして前の向きを使う
+	static constexpr float kMinTubeDirectionLength = 1e-4f;
 
 	// 着地できる範囲の可視化のサンプリング分割数(左右2列ぶん描くため曲線より粗くする)
 	static constexpr int kLandingRangeSampleCount = 50;

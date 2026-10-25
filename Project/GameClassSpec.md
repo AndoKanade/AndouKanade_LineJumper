@@ -195,7 +195,7 @@ Game/
    7. `Player::UpdateTransform()` でプレイヤーをレールの上に立たせ、照準の方向へ向ける。出発の演出中は `DepartureDirector::Update()` でプレイヤーの表示を上書きする。カメラは「タイトル・回り込み（StartSequence）→ 出発の演出 → ゲートを映すカメラ」の優先順で上書きし、最後に画面の揺れを足す。
    8. 敵の更新、敵弾とプレイヤーの当たり判定、ゲームオーバー判定。
    9. `Player::UpdateMovement()` でジャンプ・WASD 移動・着地判定を行う。地面まで落ちたら `ResetPlayState()` を呼ぶ。`isPlayerMovable` の間も同じく動かす。出発台を使う演出なら、出発台の手前の線を越えたら演出を始める。歩いてレールへ乗ったとき・出発の演出がレールへ乗せ終えたときは `StartSequence::NotifyBoarded()` を呼び、`PlayBoardedEffects()` で足元から輪・インクのしぶき・インクの跡を出す。
-   10. 射撃（手元からインクのしぶきも出す。スタート台の上では的・敵に当たらない試し撃ち）、弾の移動、的・敵と弾の当たり判定、壊れた的ごとの演出と連鎖数の加算、弾の削除と行列の更新、レティクルの色の更新。
+   10. 射撃（手元からインクのしぶきも出す。スタート台の上では的・敵に当たらない試し撃ち）、弾の移動、的・敵と弾の当たり判定、壊れた的ごとの演出と連鎖数の加算、弾の行列の更新、レティクルの色の更新。
    11. 演出・スピード線・HUD の更新。レールを進んでいる間は、通った区間を塗り、足元から後ろへしぶきを飛ばし、スピード線を出す。
 3. デバッグ用のキー操作（F4 / F5）と、Edit モード中の ImGui パネル（`ShowEditorPanels()`）を処理する。
 
@@ -205,11 +205,12 @@ Game/
 
 | 項目 | 内容 |
 | --- | --- |
-| 射撃 | 左クリックで、プレイヤーの手元（`Player::GetMuzzlePosition()`）から、カメラの前方 30.0 の点（レティクルの先）へ向けて弾を発射する |
+| 射撃 | 左クリックを押している間、0.1 秒ごとに連射する（押した瞬間に 1 発目を撃つ）。プレイヤーの手元（`Player::GetMuzzlePosition()`）から弾を発射する。的をレティクルで狙えている（レティクルの中心が赤い）とき、またはレティクルの方向が敵の当たり判定の球を通るときは、レティクルの線（カメラの前方へ伸ばした線）の上の、一番手前のものと同じ奥行きの点へ向けて撃つ（中心そのものは狙わず、弾はいつもレティクルの通りに飛ぶ。手元から前方へ 1.0 より手前にあるものは狙わない）。どちらも無いときは、カメラの前方 12.0 の点（レティクルの先。手元からはおよそ 9 先で、射程 10 より手前）へ向けて撃つ |
 | 試し撃ち | スタート台の上（`isPlayerMovable` の間）でも撃てる。この弾は的・敵に当たらず、台に着いたところにインクを塗る |
 | 出発の演出 | ImGui の「Departure」で選んだ演出で、スタート台からレールへ移る（Title の Departure を参照） |
-| 落下リスタート | どのレールにも乗れずに地面の高さまで落ちたら暗転（`SceneManager::StartTransition()`）を始め、画面を覆っている間に `ResetPlayState()` を呼ぶ。開始演出は挟まない |
-| クリア | オンレール中にレールの終端に着いたら CLEAR へ移る。移る前に壊した的の数・総数・最大連鎖数を StageResult に書き込む（的を全部壊すことはクリアの条件にしない） |
+| 落下リスタート | どのレールにも乗れずに地面の高さまで落ちたら暗転（`SceneManager::StartTransition()`）を始め、画面を覆っている間に `ResetPlayState()` を呼ぶ。開始演出は挟まない。チェックポイントを通っていれば、続けて `RespawnAtCheckpoint()` でそこから始め直す |
+| チェックポイント | レールを進んでいる間に、チェックポイントにした制御点（`isCheckpoint`）を通ったら、レールと制御点・その時点の的ごとの生存状態を覚える（`UpdateCheckpoint()`）。落ちたらその制御点の位置からレールに乗せ、的を覚えた状態に戻す（チェックポイントより前に壊した的は壊れたまま、後の的は復活する）。体力・敵・連鎖数・レールの塗りは最初の状態に戻る。Play に入り直したときと R キーのやり直しでは忘れる。「Start From Selected Point」で始めたときは、始めた制御点より手前のチェックポイントは通ったものとしない |
+| クリア | オンレール中にゴールのレール（`Player::kGoalRailIndex`、今は Rail 5）の終端に着いたら CLEAR へ移る。ほかのレールの終端ではレールから外れて落ちる。移る前に壊した的の数・総数・最大連鎖数を StageResult に書き込む（的を全部壊すことはクリアの条件にしない） |
 | ゲームオーバー | プレイヤーの体力が 0 になったら GAMEOVER へ移る |
 | 当たり判定 | すべてモデルの頂点から求めた境界球（`Model::BoundingSphere`）同士の重なりで判定する。プレイヤー・敵本体はワールド行列で変換した球（`Obj3D::GetWorldBoundingSphere()`）、弾・的は現在座標と表示スケールから求めた球を使う |
 
@@ -220,6 +221,8 @@ Game/
 | 関数 | 内容 |
 | --- | --- |
 | `ResetPlayState()` | Player・RailCamera・TargetManager・EnemyManager を初期状態に戻し、弾を消し、アクティブレールを 0 番にする。演出・画面の揺れ・出発の演出も止める |
+| `UpdateCheckpoint()` / `RespawnAtCheckpoint()` | 通ったチェックポイントを覚える / 覚えたチェックポイントからレールに乗せ、的の生存状態を戻す |
+| `ApplyRailLocks(isInstant)` | 鍵の的が残っているレールを TargetManager から求め、RailEditor に渡す。毎フレームは的の判定の後に演出つきで、`ResetPlayState()` と `RespawnAtCheckpoint()` ではすぐに反映する。出ているかは的の状態から毎回求めるため、チェックポイントで的を戻すとレールも戻る |
 | `MakeDepartureContext()` | 出発の演出が動かす・参照するもの（DepartureContext）をまとめる |
 | `PlayBoardedEffects(position)` | レールに乗って「GO!」を出す瞬間の演出（輪・しぶき・インクの跡） |
 | `UpdateGameplay()` | レール進行・カメラ・プレイヤー・敵・弾・的・勝敗判定を、決まった順番で呼び出す |
@@ -564,7 +567,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `GetHitSphere()` | モデルから求めたワールド座標系の境界球を取得する（当たり判定用） |
 | `GetPosition` / `GetBasePosition` / `GetBaseRotation` | 表示位置・基準位置・基準向きの取得 |
 | `GetMuzzlePosition()` | 弾を撃ち出す位置の取得 |
-| `HasReachedGoal` / `IsDead` | クリア・ゲームオーバーの判定用 |
+| `HasReachedGoal` / `IsDead` | クリア・ゲームオーバーの判定用（ゴール以外のレールは終点で `UpdateRailProgress` がレールから外すため、`HasReachedGoal` はゴールのレールでだけ true になる） |
 | `IsGroundedOnRail()` | オンレールで足がレールに着いているか（跳ねている・飛び移っている途中は false。足元のしぶきに使う） |
 | `GetRailT` / `IsOnRail` / `GetFreeVelocityY` / `GetHp` / `GetMaxHp` / `GetInvincibleTimer` | デバッグ表示用の取得 |
 
@@ -574,24 +577,25 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 
 | 項目 | 内容 |
 | --- | --- |
-| 見た目 | `Sphere/sphere.obj`（インクの黄色・ライティングなし）。飛ぶ向きへ伸ばし、太さ 0.15×0.6・長さ 0.15×5.0 の筋にする（当たり判定はスケール 0.15 の球のまま） |
-| 弾道 | 速度 40、重力 9.8、寿命 2 秒 |
+| 見た目 | `Sphere/sphere.obj`（インクの黄色・ライティングなし）。飛ぶ向きへ伸ばし、太さ 0.15×0.35・長さ 0.15×3.0 の筋にする（当たり判定はスケール 0.15 の球のまま） |
+| 弾道 | 速度 40、寿命 2 秒。射程 10 まではまっすぐ飛び、重力を受けない。射程を過ぎると、勢いを 1 秒あたり 8 の割合で落としながら重力 40 で落ちる（射程の先へ進むのは最大 5 まで） |
+| ばらつき | 撃つたびに狙う方向を、横に最大 0.008、縦に最大 0.003 ラジアンだけランダムにずらす |
 | ダメージ | 敵 1 体に 1 発あたり 1 |
-| 生成 | 発射のたびに `make_unique<Obj3D>` で生成している（使い回しは未対応） |
+| 生成 | 初期化時に 24 発まとめて生成し、使い回す（連射 0.1 秒間隔・寿命 2 秒で同時に飛ぶのは最大 20 発）。命中・寿命切れ・着地した弾は未使用に戻る。未使用の弾が無いときは、撃つのが止まらないよう一番長く飛んでいる弾を使い回す |
 | 試し撃ち | `canHit` を false にして撃った弾は、的・敵に当たらない |
 | 着地 | 着地の処理（`SetLandingHandler()`）を渡しておくと、弾が面に着いたときに半径 0.5 のインクを塗り、弾を消す（GameScene はスタート台に塗り、しぶきを出す） |
 
 | 関数 | 内容 |
 | --- | --- |
-| `Initialize(Obj3dCommon*)` | 弾のモデルを読み込む |
-| `Fire(position, direction, canHit)` | 弾を 1 発発射する |
+| `Initialize(Obj3dCommon*)` | 弾のモデルを読み込み、使い回す弾 24 発を生成する |
+| `Fire(position, direction, canHit)` | 未使用の弾（無ければ一番長く飛んでいる弾）を使い、狙う方向を少しずらして 1 発発射する |
 | `SetLandingHandler(handler)` | 弾が面に着いたかを調べてインクを塗る処理を渡す |
 | `Move(deltaTime)` | 移動と生存時間の更新 |
 | `CheckHit(sphere)` | 指定した境界球に重なる弾を 1 発探し、見つかればその弾を消して true を返す |
-| `RemoveDeadBullets()` | 命中・寿命切れの弾をリストから削除する |
-| `UpdateTransforms()` | 描画用の行列を更新する |
-| `Draw()` / `Clear()` | 描画 / すべての弾を消す |
+| `UpdateTransforms()` | 飛んでいる弾の描画用の行列を更新する |
+| `Draw()` / `Clear()` | 描画 / すべての弾を未使用に戻す |
 | `GetDamage()` | 弾 1 発のダメージ量を取得する |
+| `GetAliveCount()` / `GetMaxCount()` / `GetPoolFullCount()` | 飛んでいる弾の数 / 使い回す弾の最大数 / 未使用の弾が無く飛んでいる弾を使い回して撃った回数を取得する（デバッグ表示用） |
 
 ### TargetManager（`objects/TargetManager.h/.cpp`）
 
@@ -603,13 +607,17 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | 照準判定 | 「カメラ → 的」の向きとカメラの前方ベクトルのなす角が `aimHitAngle` 以内なら狙えている。的が大きくなり、レティクルの中心ドットが赤くなる |
 | 命中 | 弾と的の境界球が重なったら撃破し、火花パーティクルを出す。壊れた位置は `GetDestroyedPositions()` で受け取れる（GameScene が破片・しぶきの演出と連鎖数の加算に使う） |
 | 初回の自動配置 | 保存データが無いとき、レール上の 16 か所に左右交互・上下・奥行きをずらして配置する |
+| 鍵の的 | 壊すと出るレール（`unlockRailIndex`）を持つ的。水色（0.3, 0.85, 1.0）で描き、Hierarchy に (Key: Rail N) と出す。同じレールを指定した的をすべて壊すとそのレールが出る |
 
 | 関数 | 内容 |
 | --- | --- |
 | `Initialize(Obj3dCommon*, railEditor, paramGroup)` | 調整項目 `aimHitAngle` の登録、TargetEditor の生成、初回の自動配置 |
 | `UpdateEditor()` | TargetEditor を更新し、個数・座標を的のリストに反映する。個数が変わったときだけ生成・削除する |
 | `Update(cameraPosition, cameraForward, bullets)` | 照準判定・弾との当たり判定・行列の更新。いずれかの的を狙えていれば true を返す |
+| `FindAimedTarget(cameraPosition, cameraForward, minDistance, outPosition, outDistance)` | レティクルで狙えている的のうち、カメラの前方に沿った距離が `minDistance` 以上で一番近いものの位置と距離を返す（弾を撃つ点の奥行きを、その的に合わせるのに使う） |
 | `Reset()` / `Draw()` | 全ての的を復活させる / 生存している的を描画する |
+| `GetAliveStates()` / `RestoreAliveStates(aliveStates)` | 的ごとの生存状態を取得する / 取得した状態に戻す（チェックポイント用） |
+| `FillLockedRails(lockedRails)` | 生きている鍵の的が指定しているレールに true を入れる（範囲外のレールの指定は無視する） |
 | `GetDestroyedPositions()` | 直前の `Update()` で壊れた的の座標の一覧を取得する |
 | `GetTotalCount()` / `GetDestroyedCount()` | 的の総数 / 壊された的の数を取得する |
 | `ShowHierarchy()` / `ShowInspector()` | Hierarchy / Inspector パネルの中身を表示する（ImGui がある構成のみ） |
@@ -625,6 +633,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Update(playerPosition, deltaTime)` | 全ての敵を更新する |
 | `CheckHitToPlayer(playerSphere)` | 全ての敵の弾とプレイヤーの当たり判定。命中した弾の合計数を返す |
 | `CheckHitByBullets(bullets)` | プレイヤーの弾と敵本体の当たり判定。当たった敵の体力を減らし、火花パーティクルを出す |
+| `FindAimedEnemy(cameraPosition, cameraForward, minDistance, outPosition, outDistance)` | カメラの前方へ伸ばした線が当たり判定の球を通る敵のうち、カメラの前方に沿った距離が `minDistance` 以上で一番手前のものの中心と距離を返す（弾を撃つ点の奥行きを、その敵に合わせるのに使う） |
 | `Reset()` / `Draw()` | 全ての敵を初期状態に戻す / 描画する |
 | `ShowDebugInfo()` | 生存数・弾の数・体ごとの体力を表示する（ImGui がある構成のみ） |
 
@@ -855,10 +864,17 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
   - `rotation`：Z だけをロール（バンク）として使う
   - `speed`：その区間の速度倍率
   - 分岐設定：保存はされるが、今の実行時には読まれない
+  - `isCheckpoint`：チェックポイントにするか（通った後に落ちたら、この制御点の位置からやり直す）。延長・螺旋で作った制御点には引き継がない
 - 位置は Catmull-Rom スプラインで補間する。
 - 向き（ピッチ・ヨー）は進行方向から逆算し、ロールは制御点間を線形補間する。ロールと速度は位置と同じ区間分けで補間し、制御点に設定した値がその制御点を通る位置で効く。
 - Edit モードの描画では、アクティブなレールを黄色、それ以外を黒で表示する。
-- Play モードの描画では、編集用の目印（制御点の目印・曲線の点列・着地範囲）は出さず、レール本体を管（`RailTube/railTube.obj` を Catmull-Rom の 1 区間あたり 24 本つないだもの、半径 0.05）で描く。Edit 中の曲線の点列も 1 区間あたり 20 点。曲線の点列と着地範囲の点は全レール共通の置き場（`sampleObjects_`）のオブジェクトを使い回し、起動時に読み込んだレールに必要な数＋200 個を作っておく。足りなくなったら 1 フレームに 8 個まで作り、作りきれなかった点は次のフレーム以降に描く（Obj3D は 1 つ作るごとに GPU のバッファを 2 つ確保して重いため、一度にたくさん作って画面が止まらないようにする）。管は起動時に今の区間数の分を作り、延長して足りなくなった分は Play に入ったときに作る。インクで塗った区間（`PaintActiveRail(t)` で広げ、`ClearPaint()` で消す）は黄色、それ以外はピンクにする。
+- Play モードの描画では、編集用の目印（曲線の点列・着地範囲、始点と終点以外の制御点の目印）は出さず、レール本体を管（半径 0.05）で描く。
+  - 管はレール 1 本につき 1 つのモデルで、Play に入った最初の描画で `BuildTubes()` が頂点から作る。Catmull-Rom の 1 区間を 24 に分け、区間の境目ごとに 8 角形の輪を置いて隣どうしを三角形でつなぐ。輪の横向きは前の輪から引き継ぎ、螺旋でも管がねじれないようにする。前回作ったときから制御点が変わっていないレールは作り直さない。
+  - インクで塗った区間（`PaintActiveRail(t)` で広げ、`ClearPaint()` で消す）は黄色、それ以外はピンクにする。同じモデルを色違いの 2 つの Obj3D で共有し、`Obj3D::SetDrawIndexRange()` でそれぞれの区間のインデックスだけを描く。描画命令はレール 1 本につき最大 3 回（塗っていない区間・塗った区間・塗っていない区間）。
+  - レールの始点と終点には制御点の目印を出す（今乗っているレールは黄色、それ以外は黒）。
+  - 鍵の的が残っていて出ていないレールは、白い点線で描き、始点と終点の目印も出さない。点線は管と同じ頂点のうち、8 区間ごとに先頭 4 区間の三角形だけを詰めた別のモデル（`dashedTubeModel`）で、1 回の描画で済む。鍵の的をすべて壊したら、0.8 秒かけて始点から終点へ管を伸ばす（`EaseOutCubic`）。伸びていない区間は点線のまま描く。
+  - 出ていないレールは `FindNearestRail()` の探索から外し、着地も並走レールへの乗り換えもできない。管を伸ばしている途中から乗れる。
+- Edit 中の曲線の点列は 1 区間あたり 20 点。曲線の点列と着地範囲の点は全レール共通の置き場（`sampleObjects_`）のオブジェクトを使い回し、起動時に読み込んだレールに必要な数＋200 個を作っておく。足りなくなったら 1 フレームに 8 個まで作り、作りきれなかった点は次のフレーム以降に描く（Obj3D は 1 つ作るごとに GPU のバッファを 2 つ確保して重いため、一度にたくさん作って画面が止まらないようにする）。
 
 #### ImGui パネル「Rail Editor」
 
@@ -872,7 +888,7 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | Show Landing Range | 着地できる範囲（レールの左右、緑の点列）の表示切り替え |
 | Drag Points In Scene / Keep Height | ON の間、Scene ビュー上で制御点を左ドラッグして動かせる（初期は OFF。レイから 0.5 以内の制御点を全レールから探し、別のレールの点ならそのレールをアクティブにする）。Keep Height が ON（初期値）なら水平な面の上で動かし高さを変えない。OFF なら画面に平行な面の上で動かす。目印を隠しているレールの制御点は掴まない |
 | Length / Time | アクティブなレールの全長と、走り切るまでの秒数の目安（制御点の Speed × 調整項目 railSpeed で走ったとき。発射直後の加速・空中で遅くなる分は含まない） |
-| 制御点一覧 | クリックで選択し、Position / Rotation / Speed / 分岐設定を編集する。Reset で初期値に戻す。Delete で削除する（最後の 1 点は削除できない）。Insert After で次の制御点との中間に制御点を挿入する（末尾なら延長）。Focus またはダブルクリックで、俯瞰カメラをその制御点へ寄せる。From Start に始点からその制御点までの長さと秒数を出す。一覧は高さ 150 の枠の中だけでスクロールする。選択中の制御点の目印は水色で、他の制御点より大きく（0.2 → 0.35）描く |
+| 制御点一覧 | クリックで選択し、Position / Rotation / Speed / 分岐設定 / Checkpoint を編集する。チェックポイントの制御点は一覧に (Checkpoint) と出し、目印を緑で描く。Reset で初期値に戻す。Delete で削除する（最後の 1 点は削除できない）。Insert After で次の制御点との中間に制御点を挿入する（末尾なら延長）。Focus またはダブルクリックで、俯瞰カメラをその制御点へ寄せる。From Start に始点からその制御点までの長さと秒数を出す。一覧は高さ 150 の枠の中だけでスクロールする。選択中の制御点の目印は水色で、他の制御点より大きく（0.2 → 0.35）描く |
 | Spiral | 選択中の制御点の後ろに、その点から始まる螺旋（らせん階段のような形）の制御点をまとめて挿入する。Radius（半径。下限 1）/ Rise / Turn（1 周で上がる高さ。負なら下がる）/ Turns（周回数。下限 0.25）/ Points / Turn（1 周の制御点数 4〜32）/ Right・Left（回る向き）で形を決める。前の制御点から進んできた向きのまま螺旋に入るよう、円の中心を進む向きの横に置く。末尾に足すときは、螺旋の終わりまで曲線が通るよう向きを決めるだけの点を 1 つ多く足す。後ろの制御点は消さずに残す。作った後は螺旋の終わりの点を選ぶ。Ctrl+Z で戻せる |
 | 未保存の表示 | 保存していない変更があるとき、Save の下に「未保存」と出す（TargetEditor・EnemyEditor も同じ） |
 
@@ -891,6 +907,8 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | `ToggleShowControlPointModels()` / `ToggleShowCurve()` | キー操作用の表示切り替え |
 | `SaveToJson()` / `LoadFromJson()` | 保存・読み込み。起動時は自動で読み込む |
 | `GetTOfControlPoint(index)` / `GetSelectedPointIndex()` / `SelectPoint(rail, point)` | 途中からの Play 用。制御点を通る位置の進行度（両端の制御点は曲線の始点・終点に丸める）/ 選択中の制御点 / Play から戻ったときの選び直し |
+| `UpdateRailLocks(lockedRails, deltaTime)` / `ResetRailLocks(lockedRails)` | 出ていないレールを反映し、出たレールの管を伸ばす / 管を伸ばす演出を飛ばしてすぐ反映する（リスタート・チェックポイント用） |
+| `FindPassedCheckpoint(t)` | アクティブなレールで、進行度 t までに通ったチェックポイントのうち最も先の制御点を返す（無ければ -1）。途中に着地した場合も、手前のチェックポイントは通ったものとする |
 | `ConsumeFocusRequest(outPos)` / `SetBaseRailSpeed(speed)` | Focus の操作があれば選択中の制御点の位置を返す / 走り切るまでの秒数の計算に使う railSpeed を受け取る |
 
 ### TargetEditor（`Editor/TargetEditor.h/.cpp`）
@@ -908,6 +926,7 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | マウスドラッグ | Scene ビュー上で的を左ドラッグして動かす。レイから 1.0 以内の的を掴み、画面に平行な面の上で動かす |
 
 - 選択中の的の座標は、GameScene の Inspector パネルからも編集できる（`GetTargetPositionRef()`）。
+- 的ごとに、壊すと出るレール（`unlockRailIndex`、-1 は鍵の的ではない）を持つ。Inspector パネルの「Unlock Rail」で編集し、JSON に保存する（無い古いデータは -1 として読む）。
 - 起動時に保存データを自動で読み込む。
 
 ### EnemyEditor（`Editor/EnemyEditor.h/.cpp`）
@@ -957,7 +976,7 @@ Scene ビュー上のマウス位置から画面奥へ伸びるレイを求め�
 | ファイル | 保存するクラス | 内容 | 反映のしかた |
 | --- | --- | --- | --- |
 | `resource/rail/rail.json`、`rail1.json`、`rail2.json` … | RailEditor | レールごとの制御点 | 起動時に自動で読み込む。以降は Save / Load ボタン |
-| `resource/target/target.json` | TargetEditor | 的の座標 | 同上 |
+| `resource/target/target.json` | TargetEditor | 的の座標・壊すと出るレール | 同上 |
 | `resource/enemy/enemy.json` | EnemyEditor | 敵の座標・往復方向・最大 HP | 同上 |
 | `resource/GlobalVariables/GameScene.json` | GlobalVariables（エンジン） | GameScene の調整項目 | 実行中の変更が自動で反映される |
 | `resource/GlobalVariables/Title.json` | GlobalVariables（エンジン） | タイトルロゴの位置・大きさ・消え方、BGM・効果音の音量、ゲートを映す画の位置 | 同上 |
@@ -979,7 +998,7 @@ Scene ビュー上のマウス位置から画面奥へ伸びるレイを求め�
 | --- | --- |
 | WASD | 台の上を動く |
 | マウス移動 | 周りを見回す |
-| 左クリック | 試し撃ち（的・敵には当たらず、台にインクを塗る） |
+| 左クリック（押しっぱなしで連射） | 試し撃ち（的・敵には当たらず、台にインクを塗る） |
 | SPACE | ジャンプ。出発ゲートの前の目印の上で押すと、ゲートが開く |
 
 ### プレイ中
@@ -987,7 +1006,7 @@ Scene ビュー上のマウス位置から画面奥へ伸びるレイを求め�
 | キー | 内容 |
 | --- | --- |
 | マウス移動 | 照準 |
-| 左クリック | 射撃 |
+| 左クリック（押しっぱなしで連射） | 射撃 |
 | SPACE | レールに沿って進みながらその場で跳ねる |
 | A / D ＋ SPACE | 押した方向の並走レールへ飛び移る |
 | TAB | マウスカーソルの表示切り替え |

@@ -43,8 +43,31 @@ public:
 	/// <returns>いずれかの的をレティクルで狙えているときtrue</returns>
 	bool Update(const Vector3& cameraPosition,const Vector3& cameraForward,PlayerBulletManager& bullets);
 
+	/// <summary>
+	/// レティクルで狙えている(レティクルの中心が赤くなる)的のうち、カメラに一番近いものを探す
+	/// 弾をその的の中心へ向けて撃ち、レティクルが赤いときは狙った的へ飛ぶようにするのに使う
+	/// </summary>
+	/// <param name="cameraPosition">カメラの位置</param>
+	/// <param name="cameraForward">カメラの前方ベクトル(正規化済み。画面中央のレティクルの方向)</param>
+	/// <param name="minDistance">探す的の、カメラからの前方ベクトルに沿った距離の下限(これより手前の的は無視する)</param>
+	/// <param name="outPosition">見つかった的の中心の座標</param>
+	/// <param name="outDistance">カメラから見つかった的までの、前方ベクトルに沿った距離</param>
+	/// <returns>狙えている的があるときtrue</returns>
+	bool FindAimedTarget(const Vector3& cameraPosition,const Vector3& cameraForward,float minDistance,Vector3& outPosition,float& outDistance) const;
+
 	// すべての的を生存状態に戻す
 	void Reset();
+
+	// 的ごとに生存しているかを取得(チェックポイントを通ったときに、壊した的を覚えておくのに使う)
+	std::vector<bool> GetAliveStates() const;
+	// 的ごとの生存状態を、GetAliveStates()で取得した状態に戻す(チェックポイントからやり直すときに使う)
+	void RestoreAliveStates(const std::vector<bool>& aliveStates);
+
+	/// <summary>
+	/// 鍵の的が残っていて出ていないレールに true を入れる(鍵の的が無いレールと、鍵の的をすべて壊したレールはそのまま)
+	/// </summary>
+	/// <param name="lockedRails">レールごとに、出ていないかを受け取る配列(呼び出し側でレールの本数分を false で用意しておく)</param>
+	void FillLockedRails(std::vector<bool>& lockedRails) const;
 
 	// 生存している的を描画する
 	void Draw();
@@ -69,6 +92,8 @@ private:
 		std::unique_ptr<Obj3D> obj;
 		Vector3 position;
 		bool isAlive = true;
+		// 壊すと出るレールのインデックス(-1: 鍵の的ではない)
+		int unlockRailIndex = -1;
 	};
 
 	// 保存済みの配置が無いときに、レール沿いへ自動配置した初期データを作る
@@ -100,6 +125,9 @@ private:
 	static constexpr float kAimedScale = 0.6f;
 	// 狙えていないときの表示スケール
 	static constexpr float kNormalScale = 0.4f;
+	// 普通の的と、鍵の的(壊すとレールが出る的)の色(モデルの模様に掛ける色。鍵の的は出ていないレールの点線と見比べやすい水色にする)
+	static constexpr Vector4 kNormalTargetColor = {1.0f, 1.0f, 1.0f, 1.0f};
+	static constexpr Vector4 kKeyTargetColor = {0.3f, 0.85f, 1.0f, 1.0f};
 	// カメラと的が重なっているとみなす距離(向きが定まらないため照準判定をしない)
 	static constexpr float kMinAimDistance = 0.001f;
 };

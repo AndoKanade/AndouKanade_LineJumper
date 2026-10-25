@@ -59,6 +59,666 @@
                 0.0
             ],
             "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                134.90000915527344,
+                26.500001907348633,
+                10.600000381469727
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                136.3849334716797,
+                25.887502670288086,
+                11.215076446533203
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                137.00001525878906,
+                25.275001525878906,
+                12.700000762939453
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                136.3849334716797,
+                24.66250228881836,
+                14.184925079345703
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                134.90000915527344,
+                24.05000114440918,
+                14.80000114440918
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                133.4150848388672,
+                23.437501907348633,
+                14.184925079345703
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                132.8000030517578,
+                22.825000762939453,
+                12.700000762939453
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                133.4150848388672,
+                22.212501525878906,
+                11.215076446533203
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                134.90000915527344,
+                21.60000228881836,
+                10.600000381469727
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                136.3849334716797,
+                20.98750114440918,
+                11.215076446533203
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                137.00001525878906,
+                20.375001907348633,
+                12.70000171661377
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                136.3849334716797,
+                19.762500762939453,
+                14.18492603302002
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                134.90000915527344,
+                19.150001525878906,
+                14.80000114440918
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                133.4150848388672,
+                18.53750228881836,
+                14.184924125671387
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                132.8000030517578,
+                17.925003051757813,
+                12.699999809265137
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                133.4150848388672,
+                17.312501907348633,
+                11.215076446533203
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                134.90000915527344,
+                16.700000762939453,
+                10.600000381469727
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                136.3849334716797,
+                16.087501525878906,
+                11.21507740020752
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                137.00001525878906,
+                15.475001335144043,
+                12.700000762939453
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                136.3849334716797,
+                14.862502098083496,
+                14.184925079345703
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                134.90000915527344,
+                14.250001907348633,
+                14.80000114440918
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                133.4150848388672,
+                13.63750171661377,
+                14.18492317199707
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                132.8000030517578,
+                13.025001525878906,
+                12.699997901916504
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                133.4150848388672,
+                12.412501335144043,
+                11.21507740020752
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                134.90000915527344,
+                11.80000114440918,
+                10.600000381469727
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                136.3849334716797,
+                11.187501907348633,
+                11.21507740020752
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                137.00001525878906,
+                10.57500171661377,
+                12.700002670288086
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                136.3849334716797,
+                9.962501525878906,
+                14.18492603302002
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                134.90000915527344,
+                9.35000228881836,
+                14.80000114440918
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                133.4150848388672,
+                8.73750114440918,
+                14.184925079345703
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                132.8000030517578,
+                8.125001907348633,
+                12.700000762939453
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                133.4150848388672,
+                7.512500762939453,
+                11.215076446533203
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                134.90000915527344,
+                6.900001525878906,
+                10.600000381469727
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                136.3849334716797,
+                6.287502288818359,
+                11.215078353881836
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                137.00001525878906,
+                5.67500114440918,
+                12.700003623962402
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                136.3849334716797,
+                5.062501907348633,
+                14.184926986694336
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                134.90000915527344,
+                4.450000762939453,
+                14.80000114440918
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                133.4150848388672,
+                3.8375015258789063,
+                14.184924125671387
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                132.8000030517578,
+                3.2250022888183594,
+                12.69999885559082
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                133.4150848388672,
+                2.6125011444091797,
+                11.215075492858887
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                138.0,
+                2.000001907348633,
+                10.600000381469727
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                141.89999389648438,
+                1.5,
+                11.699999809265137
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                147.8000030517578,
+                0.9999980926513672,
+                14.899999618530273
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "position": [
+                153.70001220703125,
+                0.4999961853027344,
+                18.099998474121094
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
         }
     ],
     "name": "Rail 5"

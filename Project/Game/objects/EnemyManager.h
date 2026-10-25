@@ -49,6 +49,18 @@ public:
 	// プレイヤーの弾と敵本体の当たり判定(当たった敵の体力を減らす)
 	void CheckHitByBullets(PlayerBulletManager& bullets);
 
+	/// <summary>
+	/// レティクルの方向(カメラの前方へ伸ばした線)が当たり判定の球を通る敵のうち、カメラに一番近いものを探す
+	/// 弾をその敵の中心へ向けて撃ち、レティクルを敵に重ねたときは狙った敵へ飛ぶようにするのに使う
+	/// </summary>
+	/// <param name="cameraPosition">カメラの位置</param>
+	/// <param name="cameraForward">カメラの前方ベクトル(正規化済み。画面中央のレティクルの方向)</param>
+	/// <param name="minDistance">探す敵の、カメラからの前方ベクトルに沿った距離の下限(これより手前の敵は無視する)</param>
+	/// <param name="outPosition">見つかった敵の当たり判定の球の中心</param>
+	/// <param name="outDistance">カメラから見つかった敵までの、前方ベクトルに沿った距離</param>
+	/// <returns>狙えている敵がいるときtrue</returns>
+	bool FindAimedEnemy(const Vector3& cameraPosition,const Vector3& cameraForward,float minDistance,Vector3& outPosition,float& outDistance) const;
+
 	// 全ての敵を初期状態(体力満タン)に戻す
 	void Reset();
 

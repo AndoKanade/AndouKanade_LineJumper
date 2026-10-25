@@ -64,9 +64,13 @@ namespace{
 	// ParticleManager::EmitSpark()が内部で使用するグループ名と合わせる必要がある
 	const char* kHitParticleGroupName = "Spark";
 
-	// 弾が画面中央のレティクルへ向かって飛ぶよう、カメラの前方のこの距離の点を狙って撃ち出す
+	// 的・敵を狙えていないときに、弾が画面中央のレティクルへ向かって飛ぶよう、カメラの前方のこの距離の点を狙って撃ち出す
 	// (カメラはプレイヤーの後ろ上にあるため、カメラと同じ向きで平行に撃つとレティクルより下にずれる)
-	constexpr float kAimConvergeDistance = 30.0f;
+	// 弾の射程(PlayerBulletManager::kRange)より手前にして、弾が落ち始める前にこの点を通るようにする
+	// (手元はカメラの前方およそ 3 にあるため、手元からはおよそ 9 先の点になる)
+	constexpr float kAimConvergeDistance = 12.0f;
+	// 弾を向ける的・敵は、手元からカメラの前方へこの距離より先にあるものに限る(すぐ近くや後ろのものへ向けて、弾が横や後ろへ飛ばないようにする)
+	constexpr float kMinAimAheadOfMuzzle = 1.0f;
 
 	// レールに乗り込んで出発した瞬間のインクのしぶきを飛ばす向き(真上)
 	constexpr Vector3 kWorldUp = {0.0f, 1.0f, 0.0f};
@@ -80,6 +84,8 @@ namespace{
 	constexpr DepartureStyle kDefaultDepartureStyle = DepartureStyle::CountdownFlip;
 	// レールを進む全体の速さの調整項目名(Playerが登録する。Rail Editorで走り切るまでの秒数を出すのに使う)
 	const char* kRailSpeedKey = "railSpeed";
+	// 鍵の的を壊して出たレールの管を伸ばす速さを、レールを進む全体の速さより速くする量(1秒あたりの長さ)
+	constexpr float kRailUnlockExtraSpeed = 3.0f;
 	// Play中に、遠くのレール・スタート台・的・敵などを空の色に溶け込ませ始める距離・溶け込みきる距離の調整項目名と初期値(カメラからの距離)
 	// レールは進む先や飛び移れるレールを見せる道しるべで、敵は25以内でプレイヤーに気づくため、地面(45〜95)より遠くから溶け込ませる
 	const char* kObjectFadeStartKey = "objectFadeStart";
@@ -276,8 +282,9 @@ void GameScene::ResetPlayState(){
 	railCamera_->Reset();
 	// 的を復活させる
 	targetManager_->Reset();
-	// 開始時に残っている弾もリセットする
+	// 開始時に残っている弾もリセットし、次に押したときすぐ撃てるようにする
 	bulletManager_->Clear();
+	fireCooldown_ = 0.0f;
 
 	// レールを0番へ戻し、インクで塗った区間も消す
 	if(railEditor_){
@@ -288,6 +295,9 @@ void GameScene::ResetPlayState(){
 		// Edit中にレールを動かしても反映されるよう、始め直すたびに置き直す
 		startPlatform_->Place(railEditor_->GetPositionOnRail(0.0f),railEditor_->GetForwardOnRail(0.0f));
 		player_->StartOnPlatform(startPlatform_->GetSpawnPosition(),railEditor_->GetRotationOnRail(0.0f));
+
+		// 的をすべて復活させたため、鍵の的があるレールは出ていない状態にすぐ戻す
+		ApplyRailLocks(true);
 	}
 
 	// 出ている演出・連鎖数・スピード線・画面の揺れ・出発の演出も消す
@@ -339,6 +349,50 @@ void GameScene::StartPlaySequence(){
 void GameScene::BoardAtPlayStartPoint(){
 	railEditor_->SwitchActiveRail(editRailIndex_);
 	player_->BoardRailStart(railEditor_->GetTOfControlPoint(editPointIndex_));
+}
+
+// レールを進んでいる間に、チェックポイントの制御点を通ったら、その位置と壊した的を覚えておく
+// 同じチェックポイントを通り直したとき(チェックポイントからやり直した直後など)は覚え直さない
+void GameScene::UpdateCheckpoint(){
+	const int pointIndex = railEditor_->FindPassedCheckpoint(player_->GetRailT());
+	if(pointIndex < 0){
+		return;
+	}
+	const int railIndex = railEditor_->GetActiveRailIndex();
+	if(railIndex == checkpoint_.railIndex && pointIndex == checkpoint_.pointIndex){
+		return;
+	}
+	// 選んだ制御点から始めているときは、始めた位置より手前のチェックポイントは通ったものとしない(落ちても選んだ制御点から始め直せるようにする)
+	if(isPlayingFromPoint_ && railIndex == editRailIndex_ && pointIndex <= editPointIndex_){
+		return;
+	}
+	checkpoint_.railIndex = railIndex;
+	checkpoint_.pointIndex = pointIndex;
+	checkpoint_.targetAliveStates = targetManager_->GetAliveStates();
+}
+
+// 最後に通ったチェックポイントの位置からレールに乗せ、壊した的をチェックポイントを通った時点の状態に戻す
+// ResetPlayState()でレールを0番へ戻し、的もすべて復活させているため、その後に呼ぶ
+void GameScene::RespawnAtCheckpoint(){
+	railEditor_->SwitchActiveRail(checkpoint_.railIndex);
+	player_->BoardRailStart(railEditor_->GetTOfControlPoint(checkpoint_.pointIndex));
+	targetManager_->RestoreAliveStates(checkpoint_.targetAliveStates);
+	// チェックポイントを通った時点で出ていたレールは出たまま、出ていなかったレールは出ていない状態にすぐ戻す
+	ApplyRailLocks(true);
+}
+
+// 鍵の的が残っていて出ていないレールを求め、レールの描き方と着地できるレールに反映する
+// レールが出ているかは的が壊れているかから毎回求めるため、チェックポイントで的を戻すとレールも一緒に戻る
+void GameScene::ApplyRailLocks(bool isInstant){
+	lockedRails_.assign(static_cast<size_t>(railEditor_->GetRailCount()),false);
+	targetManager_->FillLockedRails(lockedRails_);
+	if(isInstant){
+		railEditor_->ResetRailLocks(lockedRails_);
+	} else{
+		// 出たレールの管は、プレイヤーがレールを進む速さより少し速く伸ばし、追いつかれずに先へ伸びていくように見せる
+		const float growSpeed = GlobalVariables::GetInstance()->GetFloatValue(kGameSceneGroup,kRailSpeedKey) + kRailUnlockExtraSpeed;
+		railEditor_->UpdateRailLocks(lockedRails_,growSpeed,kDeltaTime);
+	}
 }
 
 // 出発の演出が動かす・参照するものをまとめる
@@ -477,7 +531,7 @@ void GameScene::UpdateCursorVisibility(bool isPlayMode){
 	// (GetActiveWindowは自分のウィンドウがアクティブでない間はnullptrを返す)
 	HWND activeWindow = ::GetActiveWindow();
 	const bool shouldClip = !isCursorVisible_ && activeWindow != nullptr;
-	if(shouldClip && !isCursorClipped_){
+	if(shouldClip){
 		// クライアント領域をスクリーン座標に変換して閉じ込める範囲にする
 		RECT clientRect{};
 		::GetClientRect(activeWindow,&clientRect);
@@ -486,9 +540,16 @@ void GameScene::UpdateCursorVisibility(bool isPlayMode){
 		::ClientToScreen(activeWindow,&topLeft);
 		::ClientToScreen(activeWindow,&bottomRight);
 		RECT clipRect{topLeft.x,topLeft.y,bottomRight.x,bottomRight.y};
-		::ClipCursor(&clipRect);
+
+		// 閉じ込めはウィンドウの移動や他のアプリの操作などで Windows 側から外されることがあるため、
+		// 一度かけて終わりにせず毎フレーム今の範囲と比べ、外れていたり範囲がずれていたりしたらかけ直す
+		RECT currentClipRect{};
+		::GetClipCursor(&currentClipRect);
+		if(!::EqualRect(&currentClipRect,&clipRect)){
+			::ClipCursor(&clipRect);
+		}
 		isCursorClipped_ = true;
-	} else if(!shouldClip && isCursorClipped_){
+	} else if(isCursorClipped_){
 		::ClipCursor(nullptr);
 		isCursorClipped_ = false;
 	}
@@ -517,6 +578,8 @@ void GameScene::UpdateGameplay(){
 		editPointIndex_ = railEditor_->GetSelectedPointIndex();
 		// 制御点を選んでいないときは、設定がONでもいつも通り始める
 		isPlayingFromPoint_ = startsFromSelectedPoint_ && editPointIndex_ >= 0;
+		// Playに入り直したら、前回のPlayで通ったチェックポイントは忘れて最初から始める
+		checkpoint_ = Checkpoint{};
 		ResetPlayState();
 		StartPlaySequence();
 	} else if(!isPlayMode && wasPlayMode_){
@@ -528,6 +591,8 @@ void GameScene::UpdateGameplay(){
 		railEditor_->SelectPoint(editRailIndex_,editPointIndex_);
 	} else if(isPlayMode && input_ && input_->TriggerKey(DIK_R)){
 		// 確認用の一時的な処理:Play中にRキーでタイトルから最初からやり直す(選んだ制御点から始めているときは、その制御点からやり直す)
+		// 最初からやり直すため、通ったチェックポイントも忘れる
+		checkpoint_ = Checkpoint{};
 		ResetPlayState();
 		StartPlaySequence();
 	}
@@ -576,6 +641,8 @@ void GameScene::UpdateGameplay(){
 	const bool isRidingRail = isGameplayActive && player_->IsOnRail() && !player_->HasReachedGoal();
 	if(isRidingRail){
 		railEditor_->PaintActiveRail(player_->GetRailT());
+		// チェックポイントの制御点を通ったら、落ちたときにやり直す位置として覚えておく
+		UpdateCheckpoint();
 	}
 
 	// カメラを基準位置の後ろ上に置き、照準の入力を反映する
@@ -708,8 +775,11 @@ void GameScene::UpdateGameplay(){
 		if(needsRestart){
 			sceneManager_->StartTransition([this](){
 				ResetPlayState();
-				// 選んだ制御点から始めているときは、落ちても同じ制御点から始め直す
-				if(isPlayingFromPoint_){
+				// チェックポイントを通っていれば、そこから始め直す
+				// 通っていなくても、選んだ制御点から始めているときは、落ちても同じ制御点から始め直す
+				if(checkpoint_.railIndex >= 0){
+					RespawnAtCheckpoint();
+				} else if(isPlayingFromPoint_){
 					BoardAtPlayStartPoint();
 				}
 			},GetTransitionStyle(kFallTransitionKey));
@@ -735,14 +805,34 @@ void GameScene::UpdateGameplay(){
 		}
 	}
 
-	// 弾の発射処理(左クリックした瞬間に1発だけ発射する)
+	// 弾の発射処理(左クリックを押している間、決まった間隔で撃ち続ける。押した瞬間はすぐに1発目を撃つ)
 	// スタート台の上を動ける間も試し撃ちとして撃てるようにし、台に当たったところを塗れるようにする
 	// 試し撃ちの弾は的・敵には当たらないようにして、プレイが始まる前に的を壊したり敵を倒したりしないようにする
-	bool shootTriggered = (isGameplayActive || isPlayerMovable) && input_ && input_->TriggerMouseButton(kShootMouseButton);
+	fireCooldown_ = (std::max)(fireCooldown_ - kDeltaTime,0.0f);
+	bool shootTriggered = (isGameplayActive || isPlayerMovable) && input_ && input_->PushMouseButton(kShootMouseButton) && fireCooldown_ <= kFireIntervalTolerance;
 	if(shootTriggered){
-		// プレイヤーの手元から、レティクルの先の点へ向けて撃ち出す
+		fireCooldown_ = kFireInterval;
+
+		// プレイヤーの手元から、レティクルの線(カメラの前方へ伸ばした線)の上の点へ向けて撃ち出す
+		// 手元とカメラの位置がずれているため、決まった距離の点を狙うだけだと、それより手前や奥の的ではレティクルとずれる
+		// そこで、的・敵をレティクルで狙えているときは、レティクルの線の上の、一番手前のものと同じ奥行きの点を狙う
+		// (的・敵の中心そのものを狙うと、レティクルが少し外れているときに弾がそちらへ曲がり、レティクルの通りに飛ばなくなる)
+		// ただし手元より手前(カメラとプレイヤーの間)にあるものを狙うと弾が後ろへ飛ぶため、手元より少し先にあるものだけを狙う
 		Vector3 muzzlePos = player_->GetMuzzlePosition();
-		Vector3 aimPoint = cameraPos + cameraForward * kAimConvergeDistance;
+		float aimDistance = kAimConvergeDistance;
+		const float minAimDistance = Dot(muzzlePos - cameraPos,cameraForward) + kMinAimAheadOfMuzzle;
+		Vector3 aimedTargetPos;
+		float aimedTargetDistance = 0.0f;
+		const bool isAimingTarget = targetManager_->FindAimedTarget(cameraPos,cameraForward,minAimDistance,aimedTargetPos,aimedTargetDistance);
+		if(isAimingTarget){
+			aimDistance = aimedTargetDistance;
+		}
+		Vector3 aimedEnemyPos;
+		float aimedEnemyDistance = 0.0f;
+		if(enemyManager_->FindAimedEnemy(cameraPos,cameraForward,minAimDistance,aimedEnemyPos,aimedEnemyDistance) && (!isAimingTarget || aimedEnemyDistance < aimedTargetDistance)){
+			aimDistance = aimedEnemyDistance;
+		}
+		Vector3 aimPoint = cameraPos + cameraForward * aimDistance;
 		Vector3 shootDirection = Normalize(aimPoint - muzzlePos);
 		bulletManager_->Fire(muzzlePos,shootDirection,isGameplayActive);
 
@@ -765,11 +855,13 @@ void GameScene::UpdateGameplay(){
 		comboCounter_->AddHit();
 	}
 
+	// 鍵の的を壊したら、そのレールを出す(始点から終点へ管を伸ばす)
+	ApplyRailLocks(false);
+
 	// 雑魚敵への被弾判定
 	enemyManager_->CheckHitByBullets(*bulletManager_);
 
-	// 命中または生存時間切れで消えた弾をリストから削除し、残った弾の描画用の行列を更新する
-	bulletManager_->RemoveDeadBullets();
+	// 飛んでいる弾の描画用の行列を更新する(命中・生存時間切れの弾は未使用に戻り、次の発射で使い回す)
 	bulletManager_->UpdateTransforms();
 
 	// 狙えているときはレティクル中心を赤くする
@@ -802,6 +894,11 @@ void GameScene::ShowStatusWindow(){
 		ImGui::Text("Free Velocity Y: %.2f",player_->GetFreeVelocityY());
 	}
 	ImGui::Text("Jump Key: SPACE");
+
+	// 射撃のデバッグ表示(撃てなくなったときに、左クリックが届いているか・弾の数が足りているかを確かめる)
+	ImGui::Text("Mouse Left: %s",(input_ && input_->PushMouseButton(kShootMouseButton))?"pressed":"released");
+	ImGui::Text("Player Bullets: %d / %d",bulletManager_->GetAliveCount(),bulletManager_->GetMaxCount());
+	ImGui::Text("Bullet Pool Full: %d",bulletManager_->GetPoolFullCount());
 
 	// 雑魚敵のデバッグ表示
 	enemyManager_->ShowDebugInfo();

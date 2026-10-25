@@ -48,6 +48,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": true,
             "position": [
                 106.69999694824219,
                 8.399999618530273,

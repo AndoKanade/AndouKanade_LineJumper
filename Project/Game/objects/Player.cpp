@@ -49,6 +49,7 @@ void Player::Reset(){
 	// オンレール/オフレールの状態もリセットし、必ずオンレールから開始する
 	isOnRail_ = true;
 	freeVelocityY_ = 0.0f;
+	freeVelocityXZ_ = {0.0f, 0.0f, 0.0f};
 	isOnPlatform_ = false;
 
 	// レール上でのジャンプ・並走レールへの乗り換えの途中状態も消す
@@ -57,6 +58,8 @@ void Player::Reset(){
 	railHopVelocityY_ = 0.0f;
 	isSwitchingRail_ = false;
 	railSwitchTimer_ = 0.0f;
+	// 終点で外れたレールも覚えていない状態に戻す
+	endedRailIndex_ = -1;
 
 	// 体力・無敵時間も初期状態に戻す
 	hp_ = kMaxHp;
@@ -74,6 +77,7 @@ void Player::StartOnPlatform(const Vector3& startPosition,const Vector3& startRo
 	isOnPlatform_ = true;
 	freePosition_ = startPosition;
 	freeVelocityY_ = 0.0f;
+	freeVelocityXZ_ = {0.0f, 0.0f, 0.0f};
 	// カメラはレールの始点の向きを正面にする
 	freeBaseRotation_ = startRotation;
 }
@@ -86,11 +90,13 @@ void Player::BoardRailStart(float startT){
 	isOnRail_ = true;
 	isOnPlatform_ = false;
 	freeVelocityY_ = 0.0f;
+	freeVelocityXZ_ = {0.0f, 0.0f, 0.0f};
 	isRailHopping_ = false;
 	railHopHeight_ = 0.0f;
 	railHopVelocityY_ = 0.0f;
 	isSwitchingRail_ = false;
 	railSwitchTimer_ = 0.0f;
+	endedRailIndex_ = -1;
 }
 
 // 出発の演出中に、プレイヤーの表示を演出側で決めた位置・向き・大きさにする
@@ -139,10 +145,31 @@ void Player::UpdateRailProgress(const RailEditor* railEditor,bool isGameplayActi
 		railSpeed *= Lerp(railBoostRate_,1.0f,Easing::EaseOutCubic(railBoostTimer_ / railBoostDuration_));
 	}
 
-	railT_ = railEditor->AdvanceTByDistance(railT_,pointSpeed * railSpeed * deltaTime);
+	const float railMoveSpeed = pointSpeed * railSpeed;
+	railT_ = railEditor->AdvanceTByDistance(railT_,railMoveSpeed * deltaTime);
 	if(railT_ >= kRailEndT){
 		railT_ = kRailEndT; // 終端で固定する
 		isRailFinished_ = true;
+
+		// ゴールのレール以外は、終点に着いたらレールから外れ、進んでいた勢いのまま前へジャンプさせる(どのレールにも乗れずに落ちたらリスタートになる)
+		// その場で真下に落としたり別の場所へ移したりすると不具合に見えるため、レールの続きのように前へ飛ばす
+		// 跳ねている途中・飛び移っている途中の状態を残すと、離れた直後に同じレールへ着地し直してしまうため、ここで消しておく
+		// 上り坂で終わるレールでは、外れた位置が終点の少し手前のレールより上になり、そこへ着地し直してしまうため、外れたレールを覚えて着地先から外す
+		if(railEditor->GetActiveRailIndex() != kGoalRailIndex){
+			endedRailIndex_ = railEditor->GetActiveRailIndex();
+			isOnRail_ = false;
+			isRailHopping_ = false;
+			railHopHeight_ = 0.0f;
+			railHopVelocityY_ = 0.0f;
+			isSwitchingRail_ = false;
+			freePosition_ = railEditor->GetPositionOnRail(railT_);
+			freeBaseRotation_ = railEditor->GetRotationOnRail(railT_);
+
+			// 終点での進行方向へ、レールを進んでいた速さを弱めた勢いで飛び出し、小さなジャンプの初速を上向きに足す
+			const Vector3 launchVelocity = railEditor->GetForwardOnRail(railT_) * (railMoveSpeed * kRailEndLaunchSpeedRate);
+			freeVelocityXZ_ = {launchVelocity.x, 0.0f, launchVelocity.z};
+			freeVelocityY_ = launchVelocity.y + kRailEndJumpSpeed;
+		}
 	}
 }
 
@@ -275,6 +302,8 @@ bool Player::UpdateMovement(Input* input,RailEditor* railEditor,const StartPlatf
 	moveDir = Normalize(moveDir);
 
 	freePosition_ += moveDir * kMoveSpeed * deltaTime;
+	// レールの終点から飛び出した勢いで、着地するか落ちきるまで前へ進み続ける
+	freePosition_ += freeVelocityXZ_ * deltaTime;
 
 	// スタート台の出発ゲートが閉じている間は、ゲートより先へ進めない(ジャンプで飛び越えることもできない)
 	if(startPlatform){
@@ -305,11 +334,13 @@ bool Player::UpdateMovement(Input* input,RailEditor* railEditor,const StartPlatf
 		if(previousPositionY >= topHeight && freePosition_.y <= topHeight){
 			freePosition_.y = topHeight;
 			freeVelocityY_ = 0.0f;
+			freeVelocityXZ_ = {0.0f, 0.0f, 0.0f};
 			isOnPlatform_ = true;
 		}
 	}
 
-	RailEditor::NearestRailResult nearest = railEditor->FindNearestRail(freePosition_);
+	// 終点で外れて落ちている間は、外れたレールには着地させない
+	RailEditor::NearestRailResult nearest = railEditor->FindNearestRail(freePosition_,endedRailIndex_);
 	// 距離1つ(球状の判定)だとレールの横や上にいるだけで乗ってしまうため、
 	// 「水平方向でレールの真上にいる」ことと「落下でレールの高さを跨いだ」ことの両方を条件にする
 	if(nearest.railIndex >= 0){
@@ -327,9 +358,11 @@ bool Player::UpdateMovement(Input* input,RailEditor* railEditor,const StartPlatf
 			railEditor->SwitchActiveRail(nearest.railIndex);
 			railT_ = nearest.t;
 			isRailFinished_ = false; // 着地先レールを最後まで進めるようにする
+			endedRailIndex_ = -1;
 			isOnRail_ = true;
 			isOnPlatform_ = false;
 			freeVelocityY_ = 0.0f;
+			freeVelocityXZ_ = {0.0f, 0.0f, 0.0f};
 		}
 	}
 

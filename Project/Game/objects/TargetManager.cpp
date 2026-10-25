@@ -11,6 +11,7 @@
 #include "EditorWidgets.h"
 #include "Editor/RailEditor.h"
 #include "Editor/TargetEditor.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 
@@ -119,9 +120,14 @@ void TargetManager::SyncFromEditor(){
 		targets_.pop_back();
 	}
 
-	// 座標をエディターの配置内容で上書きする
+	// 座標と壊すと出るレールをエディターの配置内容で上書きし、鍵の的は色を変えて普通の的と見分けられるようにする
 	for(size_t i = 0; i < targets_.size(); ++i){
-		targets_[i].position = editor_->GetTargetPosition(static_cast<int>(i));
+		Target& target = targets_[i];
+		target.position = editor_->GetTargetPosition(static_cast<int>(i));
+		target.unlockRailIndex = editor_->GetUnlockRailIndex(static_cast<int>(i));
+		if(Model::Material* mat = target.obj->GetMaterial()){
+			mat->color = (target.unlockRailIndex >= 0)?kKeyTargetColor:kNormalTargetColor;
+		}
 	}
 }
 
@@ -182,6 +188,32 @@ bool TargetManager::Update(const Vector3& cameraPosition,const Vector3& cameraFo
 	return isAimingAtAnyTarget;
 }
 
+// レティクルで狙えている的のうち、カメラに一番近いものを探す
+// 狙えているかは Update() の照準判定と同じく、「カメラ→的」の方向とカメラ前方ベクトルのなす角で決める
+bool TargetManager::FindAimedTarget(const Vector3& cameraPosition,const Vector3& cameraForward,float minDistance,Vector3& outPosition,float& outDistance) const{
+	float aimHitAngle = GlobalVariables::GetInstance()->GetFloatValue(paramGroup_,"aimHitAngle");
+
+	bool isFound = false;
+	for(const auto& target : targets_){
+		if(!target.isAlive) continue;
+
+		Vector3 toTarget = target.position - cameraPosition;
+		if(Length(toTarget) < kMinAimDistance) continue; // カメラと的が重なっている異常値は無視
+
+		// 下限より手前の的(カメラとプレイヤーの間にある的など)は、手元から撃つと後ろへ飛んでしまうため狙わない
+		float alongDistance = Dot(toTarget,cameraForward);
+		if(alongDistance < minDistance) continue;
+
+		// 狙えている的のうち、手前にあるものを優先する(奥の的を狙って手前の的に遮られないようにする)
+		if(AngleBetween(cameraForward,toTarget) <= aimHitAngle && (!isFound || alongDistance < outDistance)){
+			outPosition = target.position;
+			outDistance = alongDistance;
+			isFound = true;
+		}
+	}
+	return isFound;
+}
+
 // 壊された的の数を数える
 int TargetManager::GetDestroyedCount() const{
 	int count = 0;
@@ -197,6 +229,35 @@ int TargetManager::GetDestroyedCount() const{
 void TargetManager::Reset(){
 	for(auto& target : targets_){
 		target.isAlive = true;
+	}
+}
+
+// 的ごとに生存しているかを、的のリストと同じ並びで取得する
+std::vector<bool> TargetManager::GetAliveStates() const{
+	std::vector<bool> aliveStates;
+	aliveStates.reserve(targets_.size());
+	for(const auto& target : targets_){
+		aliveStates.push_back(target.isAlive);
+	}
+	return aliveStates;
+}
+
+// 的ごとの生存状態を、GetAliveStates()で取得した状態に戻す
+// 取得した後に的の数が変わっていても範囲外を読まないよう、少ない方の数だけ戻す
+void TargetManager::RestoreAliveStates(const std::vector<bool>& aliveStates){
+	const size_t count = (std::min)(targets_.size(),aliveStates.size());
+	for(size_t i = 0; i < count; ++i){
+		targets_[i].isAlive = aliveStates[i];
+	}
+}
+
+// 鍵の的が残っていて出ていないレールに true を入れる
+// 範囲外のレールを指定した的は無視する
+void TargetManager::FillLockedRails(std::vector<bool>& lockedRails) const{
+	for(const auto& target : targets_){
+		if(target.isAlive && target.unlockRailIndex >= 0 && target.unlockRailIndex < static_cast<int>(lockedRails.size())){
+			lockedRails[target.unlockRailIndex] = true;
+		}
 	}
 }
 
@@ -217,9 +278,13 @@ void TargetManager::ShowHierarchy(){
 	ImGui::Separator();
 	for(int i = 0; i < static_cast<int>(targets_.size()); ++i){
 		ImGui::PushID(i);
-		// 行ラベル(倒された的は (dead) を付ける)
-		char label[32];
-		snprintf(label,sizeof(label),"Target %d%s",i,targets_[i].isAlive?"":" (dead)");
+		// 行ラベル(鍵の的は出すレールの番号を、倒された的は (dead) を付ける)
+		char label[48];
+		if(targets_[i].unlockRailIndex >= 0){
+			snprintf(label,sizeof(label),"Target %d (Key: Rail %d)%s",i,targets_[i].unlockRailIndex,targets_[i].isAlive?"":" (dead)");
+		} else{
+			snprintf(label,sizeof(label),"Target %d%s",i,targets_[i].isAlive?"":" (dead)");
+		}
 		// クリックで選択。選択中の行はハイライトされる(選択状態は配置エディターが保持する)
 		if(ImGui::Selectable(label,editor_ && editor_->GetSelectedIndex() == i)){
 			if(editor_){
@@ -240,6 +305,9 @@ void TargetManager::ShowInspector(){
 		EditorWidgets::ButtonVector3("Position",editor_->GetTargetPositionRef(selectedTargetIndex),0.1f,1.0f);
 		// 生存フラグ(OFFで非表示、ONで復活)
 		ImGui::Checkbox("Alive",&targets_[selectedTargetIndex].isAlive);
+		// 壊すと出るレール(配置エディターのデータを直接編集する。同じレールを指定した的をすべて壊すとレールが出る)
+		ImGui::InputInt("Unlock Rail",&editor_->GetUnlockRailIndexRef(selectedTargetIndex));
+		ImGui::TextDisabled("(-1で鍵の的ではない。壊すと出るレールのIndexを指定)");
 	} else{
 		ImGui::TextDisabled("Select a target in Hierarchy");
 	}

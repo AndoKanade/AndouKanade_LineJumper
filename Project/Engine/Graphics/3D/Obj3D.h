@@ -39,6 +39,8 @@ public:
 	// インクの塗りテクスチャを設定する(nullptr なら塗られていない見た目で描く)
 	// モデルの UV が面どうしで重ならないように展開されていること
 	void SetPaintCanvas(const PaintCanvas* paintCanvas){ paintCanvas_ = paintCanvas; }
+	// 描画するインデックスの範囲を指定する(1つのモデルの一部だけを描くときに使う。既定はモデル全体)
+	void SetDrawIndexRange(uint32_t startIndex,uint32_t indexCount){ drawStartIndex_ = startIndex; drawIndexCount_ = indexCount; }
 	void SetTexture(const std::string& filePath){
 		if(model){
 			model->SetTexture(filePath);
@@ -98,4 +100,8 @@ private:
 
 	// インクの塗りテクスチャ(持ち主は PaintManager)
 	const PaintCanvas* paintCanvas_ = nullptr;
+
+	// 描画するインデックスの範囲(既定はモデル全体)
+	uint32_t drawStartIndex_ = 0;
+	uint32_t drawIndexCount_ = Model::kDrawAllIndices;
 };

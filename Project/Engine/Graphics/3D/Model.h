@@ -5,6 +5,7 @@ class SkinCluster;
 #include "ModelCommon.h"
 #include <string>
 #include <vector>
+#include <cstdint>
 #include <d3d12.h>
 #include <wrl.h>
 #include <map>
@@ -69,6 +70,8 @@ public:
 
 	// アルファテストの既定のしきい値(半分以上透けているピクセルは描画しない)
 	static constexpr float kDefaultAlphaCutoff = 0.5f;
+	// 描画するインデックスの数に指定すると、開始位置からモデルの最後のインデックスまでを描く
+	static constexpr uint32_t kDrawAllIndices = UINT32_MAX;
 
 	// 当たり判定用の境界球(モデルの全頂点を包む球)
 	struct BoundingSphere{
@@ -87,9 +90,11 @@ public:
 public:
 	// 初期化
 	void Initialize(ModelCommon* modelCommon,const std::string& directorypath,const std::string& filename);
+	// ファイルを読まずに、コードで作った頂点・インデックスから初期化する(テクスチャはdata.material.textureFilePathのものを使う)
+	void Initialize(ModelCommon* modelCommon,ModelData data);
 
-	// 描画
-	void Draw(uint32_t skyboxTextureIndex,D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,SkinCluster* skinCluster = nullptr);
+	// 描画(startIndexから indexCount 個のインデックスだけを描く。既定はモデル全体)
+	void Draw(uint32_t skyboxTextureIndex,D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,SkinCluster* skinCluster = nullptr,uint32_t startIndex = 0,uint32_t indexCount = kDrawAllIndices);
 	// テクスチャのセット
 	void SetTexture(const std::string& texturefilePath);
 

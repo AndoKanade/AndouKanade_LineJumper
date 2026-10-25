@@ -2,6 +2,7 @@
 
 #include "MyMath.h"
 #include "Model.h"
+#include "RailEditor.h"
 #include <memory>
 #include <string>
 
@@ -9,7 +10,6 @@
 class Input;
 class Obj3D;
 class Obj3dCommon;
-class RailEditor;
 class StartPlatform;
 
 /// <summary>
@@ -113,7 +113,7 @@ public:
 	// 弾を撃ち出す位置を取得(足元から構えた手元の高さまで上げた位置)
 	Vector3 GetMuzzlePosition() const{ return {position_.x, position_.y + kMuzzleHeight, position_.z}; }
 
-	// レールの終点に着いたかどうか(オンレール中に終端まで進んだらtrue)
+	// ゴールのレールの終点に着いたかどうか(オンレール中に終端まで進んだらtrue。ゴール以外のレールは終点でレールから外れるためtrueにならない)
 	bool HasReachedGoal() const{ return isOnRail_ && isRailFinished_; }
 	// 体力が尽きたかどうか
 	bool IsDead() const{ return hp_ <= 0; }
@@ -128,9 +128,12 @@ public:
 	int GetMaxHp() const{ return kMaxHp; }
 	float GetInvincibleTimer() const{ return invincibleTimer_; }
 
-	// 着地判定で使う水平方向(XZ平面)の許容距離(小さくすると真上を通らないと乗れなくなる)
+	// 足の裏の左右の幅の半分(モデルの足の裏の幅0.5の半分0.25に、表示スケール0.3を掛けた値)
+	static constexpr float kFootHalfWidth = 0.075f;
+	// 着地判定で使う水平方向(XZ平面)の許容距離
+	// 見た目どおりに、足の裏が管に少しでも掛かっていれば乗れるよう、管の半径と足の裏の幅の半分を足した距離にする
 	// レールエディターで着地できる範囲を可視化するのにも使う
-	static constexpr float kOnRailHorizontalThreshold = 1.0f;
+	static constexpr float kOnRailHorizontalThreshold = RailEditor::kTubeRadius + kFootHalfWidth;
 
 private:
 	/// <summary>
@@ -157,6 +160,8 @@ private:
 	float railT_ = 0.0f;
 	// レール終端(railT_=1.0)に到達したかどうか(到達後はループせず停止させる)
 	bool isRailFinished_ = false;
+	// 終点に着いてレールから外れたレールのインデックス(-1: なし)。落ちている間はこのレールに着地させない
+	int endedRailIndex_ = -1;
 
 	// レール座標によるオンレール判定
 	// レール上でのジャンプ・並走レールへの乗り換え中もオンレールのままにし、レールに沿った進行を止めない
@@ -183,6 +188,8 @@ private:
 	Vector3 freePosition_ = {0.0f, 0.0f, 0.0f};
 	// オフレール中のY方向の速度(ジャンプ初速・重力の適用に使用)
 	float freeVelocityY_ = 0.0f;
+	// オフレール中の水平方向(XZ平面)の速度(レールの終点から飛び出した勢い。着地・リスタートで0に戻す)
+	Vector3 freeVelocityXZ_ = {0.0f, 0.0f, 0.0f};
 	// オフレール中の基準向き(レールを離れた瞬間の向きを固定して保持する)
 	Vector3 freeBaseRotation_ = {0.0f, 0.0f, 0.0f};
 	// スタート台の上に立っているか(立っている間はジャンプでき、重なったレールへ歩いて乗れる)
@@ -224,6 +231,12 @@ private:
 	static constexpr float kMoveSpeed = 5.0f;
 	// レールの終端の進行度
 	static constexpr float kRailEndT = 1.0f;
+	// 終点に着いたらクリアにするレールのインデックス(rail5。ほかのレールは終点でレールから外れる)
+	static constexpr int kGoalRailIndex = 5;
+	// ゴール以外のレールの終点から飛び出すときに、レールを進んでいた速さに掛ける割合(1で同じ速さのまま飛び出す)
+	static constexpr float kRailEndLaunchSpeedRate = 0.4f;
+	// ゴール以外のレールの終点から飛び出すときの、上向きの初速(通常のジャンプより小さくして飛びすぎないようにする)
+	static constexpr float kRailEndJumpSpeed = 2.5f;
 	// 並走レールへの乗り換えができる水平方向(XZ平面)の最大距離
 	static constexpr float kSideRailSwitchMaxDistance = 8.0f;
 	// 並走レールへの乗り換えができる高さの差の最大値
