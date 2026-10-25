@@ -4,7 +4,6 @@
 #include "ModelManager.h"
 #include "CameraManager.h"
 #include "Camera.h"
-#include <algorithm>
 #include <cmath>
 #include <string>
 
@@ -33,6 +32,22 @@ void PlayerBulletManager::Initialize(Obj3dCommon* objCommon){
 	ModelManager::GetInstance()->LoadModel(kBulletModelPath);
 	model_ = ModelManager::GetInstance()->FindModel(kBulletModelPath);
 
+	// 弾の生成
+	// 発射のたびに生成すると無駄な処理が毎回発生するため、ここで最大数ぶんまとめて作り、以降は使い回す
+	bullets_.resize(kMaxBulletCount);
+	for(auto& bullet : bullets_){
+		bullet.obj = std::make_unique<Obj3D>();
+		bullet.obj->Initialize(objCommon_);
+		bullet.obj->SetModel(kBulletModelPath);
+
+		// 弾の色は生成時に一度設定するだけでよいため、ここでインクの色にしておく
+		// 周りの明るさに関係なく光る筋に見えるよう、ライティングは切る
+		if(Model::Material* material = bullet.obj->GetMaterial()){
+			material->color = kBulletColor;
+			material->enableLighting = 0;
+		}
+	}
+
 	std::random_device seedGenerator;
 	randomEngine_.seed(seedGenerator());
 }
@@ -57,22 +72,20 @@ Vector3 PlayerBulletManager::ApplySpread(const Vector3& direction){
 
 // 弾を1発発射する
 void PlayerBulletManager::Fire(const Vector3& position,const Vector3& direction,bool canHit){
-	Bullet bullet;
-	bullet.obj = std::make_unique<Obj3D>();
-	bullet.obj->Initialize(objCommon_);
-	bullet.obj->SetModel(kBulletModelPath);
+	// 未使用の弾を探して使い回す(全弾使用中のときは発射しない)
+	for(auto& bullet : bullets_){
+		if(bullet.isAlive){
+			continue;
+		}
 
-	// 弾の色は生成時に一度設定するだけでよいため、ここでインクの色にしておく
-	// 周りの明るさに関係なく光る筋に見えるよう、ライティングは切る
-	if(Model::Material* material = bullet.obj->GetMaterial()){
-		material->color = kBulletColor;
-		material->enableLighting = 0;
+		bullet.position = position;
+		bullet.velocity = ApplySpread(direction) * kSpeed;
+		bullet.lifeTime = 0.0f;
+		bullet.traveledDistance = 0.0f;
+		bullet.canHit = canHit;
+		bullet.isAlive = true;
+		return;
 	}
-
-	bullet.position = position;
-	bullet.velocity = ApplySpread(direction) * kSpeed;
-	bullet.canHit = canHit;
-	bullets_.push_back(std::move(bullet));
 }
 
 // 弾の移動と生存時間の更新
@@ -124,18 +137,12 @@ bool PlayerBulletManager::CheckHit(const Model::BoundingSphere& sphere){
 	return false;
 }
 
-// 命中または生存時間切れで消えた弾をリストから削除する
-void PlayerBulletManager::RemoveDeadBullets(){
-	bullets_.erase(
-		std::remove_if(bullets_.begin(),bullets_.end(),[](const Bullet& b){ return !b.isAlive; }),
-		bullets_.end());
-}
-
 // 弾のトランスフォームを更新する(描画用)
 // 球を飛んでいる向きへ細長く伸ばして、インクの筋に見せる
+// 未使用の弾は描かないため更新しない
 void PlayerBulletManager::UpdateTransforms(){
 	for(auto& bullet : bullets_){
-		if(bullet.obj){
+		if(bullet.isAlive && bullet.obj){
 			// 球モデルのZ軸を速度の向きへ回す(Y軸回転で左右、X軸回転で上下を合わせる)
 			Vector3 direction = Normalize(bullet.velocity);
 			float horizontalLength = std::sqrt(direction.x * direction.x + direction.z * direction.z);
@@ -160,7 +167,9 @@ void PlayerBulletManager::Draw(){
 	}
 }
 
-// すべての弾を消す
+// すべての弾を未使用に戻す(生成した弾は消さずに、次の発射で使い回す)
 void PlayerBulletManager::Clear(){
-	bullets_.clear();
+	for(auto& bullet : bullets_){
+		bullet.isAlive = false;
+	}
 }

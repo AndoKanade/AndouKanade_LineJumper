@@ -833,8 +833,7 @@ void GameScene::UpdateGameplay(){
 	// 雑魚敵への被弾判定
 	enemyManager_->CheckHitByBullets(*bulletManager_);
 
-	// 命中または生存時間切れで消えた弾をリストから削除し、残った弾の描画用の行列を更新する
-	bulletManager_->RemoveDeadBullets();
+	// 飛んでいる弾の描画用の行列を更新する(命中・生存時間切れの弾は未使用に戻り、次の発射で使い回す)
 	bulletManager_->UpdateTransforms();
 
 	// 狙えているときはレティクル中心を赤くする

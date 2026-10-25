@@ -87,7 +87,6 @@
 - 鳴らしているのはタイトルの BGM・決定音・ゲートのカウントダウン（3・2・1 と GO!）（StartSequence）と、カタパルトの溜め・発射音（CatapultDeparture）。ほかのスタート演出の効果音（遮断棒・宙返り・着地）、発射音・被弾音・プレイ中の BGM はまだない。素材をユーザーが見つけて置いたら対応する。
 
 **実装品質・パフォーマンス**
-- プレイヤーの弾を発射のたびに `make_unique<Obj3D>` して Initialize している（`PlayerBulletManager::Fire`）。敵弾は Enemy 側で使い回しているため、プレイヤーの弾も同様にプーリングしたい。
 - Edit 中の曲線の点列（`RailEditor::sampleObjects_`）とインクのしぶき・破片（`InkEffectManager`）は、1 個ずつ別の Obj3D で描いていて描画命令が多い。Play 中のレールの管は 2026-10-24 に 1 本のモデルにまとめて軽くした（`RailEditor::BuildTubes`）ので、重くなったら同じやり方かインスタンシングで描く。
 
 ---
