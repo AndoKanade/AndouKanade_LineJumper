@@ -530,7 +530,7 @@ void GameScene::UpdateCursorVisibility(bool isPlayMode){
 	// (GetActiveWindowは自分のウィンドウがアクティブでない間はnullptrを返す)
 	HWND activeWindow = ::GetActiveWindow();
 	const bool shouldClip = !isCursorVisible_ && activeWindow != nullptr;
-	if(shouldClip && !isCursorClipped_){
+	if(shouldClip){
 		// クライアント領域をスクリーン座標に変換して閉じ込める範囲にする
 		RECT clientRect{};
 		::GetClientRect(activeWindow,&clientRect);
@@ -539,9 +539,16 @@ void GameScene::UpdateCursorVisibility(bool isPlayMode){
 		::ClientToScreen(activeWindow,&topLeft);
 		::ClientToScreen(activeWindow,&bottomRight);
 		RECT clipRect{topLeft.x,topLeft.y,bottomRight.x,bottomRight.y};
-		::ClipCursor(&clipRect);
+
+		// 閉じ込めはウィンドウの移動や他のアプリの操作などで Windows 側から外されることがあるため、
+		// 一度かけて終わりにせず毎フレーム今の範囲と比べ、外れていたり範囲がずれていたりしたらかけ直す
+		RECT currentClipRect{};
+		::GetClipCursor(&currentClipRect);
+		if(!::EqualRect(&currentClipRect,&clipRect)){
+			::ClipCursor(&clipRect);
+		}
 		isCursorClipped_ = true;
-	} else if(!shouldClip && isCursorClipped_){
+	} else if(isCursorClipped_){
 		::ClipCursor(nullptr);
 		isCursorClipped_ = false;
 	}
