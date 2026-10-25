@@ -119,16 +119,17 @@ void EnemyManager::CheckHitByBullets(PlayerBulletManager& bullets){
 }
 
 // レティクルの方向が当たり判定の球を通る敵のうち、カメラに一番近いものを探す
-bool EnemyManager::FindAimedEnemy(const Vector3& cameraPosition,const Vector3& cameraForward,Vector3& outPosition,float& outDistance) const{
+bool EnemyManager::FindAimedEnemy(const Vector3& cameraPosition,const Vector3& cameraForward,float minDistance,Vector3& outPosition,float& outDistance) const{
 	bool isFound = false;
 	for(const auto& enemy : enemies_){
 		if(!enemy->IsAlive()) continue;
 
-		// 球の中心からカメラの前方の線へ下ろした垂線の足までの距離(カメラより後ろの敵は狙えない)
+		// 球の中心からカメラの前方の線へ下ろした垂線の足までの距離
+		// 下限より手前の敵(カメラとプレイヤーの間にいる敵など)は、手元から撃つと後ろへ飛んでしまうため狙わない
 		const Model::BoundingSphere sphere = enemy->GetHitSphere();
 		const Vector3 toCenter = sphere.center - cameraPosition;
 		const float alongDistance = Dot(toCenter,cameraForward);
-		if(alongDistance < 0.0f) continue;
+		if(alongDistance < minDistance) continue;
 
 		// 線と球の中心の距離が半径以内なら、線が球を通っている(平方のまま比べて平方根を省く)
 		const float distanceSquaredToLine = Dot(toCenter,toCenter) - alongDistance * alongDistance;

@@ -48,11 +48,12 @@ public:
 	/// 弾をその的の中心へ向けて撃ち、レティクルが赤いときは狙った的へ飛ぶようにするのに使う
 	/// </summary>
 	/// <param name="cameraPosition">カメラの位置</param>
-	/// <param name="cameraForward">カメラの前方ベクトル(画面中央のレティクルの方向)</param>
+	/// <param name="cameraForward">カメラの前方ベクトル(正規化済み。画面中央のレティクルの方向)</param>
+	/// <param name="minDistance">探す的の、カメラからの前方ベクトルに沿った距離の下限(これより手前の的は無視する)</param>
 	/// <param name="outPosition">見つかった的の中心の座標</param>
-	/// <param name="outDistance">カメラから見つかった的までの距離</param>
+	/// <param name="outDistance">カメラから見つかった的までの、前方ベクトルに沿った距離</param>
 	/// <returns>狙えている的があるときtrue</returns>
-	bool FindAimedTarget(const Vector3& cameraPosition,const Vector3& cameraForward,Vector3& outPosition,float& outDistance) const;
+	bool FindAimedTarget(const Vector3& cameraPosition,const Vector3& cameraForward,float minDistance,Vector3& outPosition,float& outDistance) const;
 
 	// すべての的を生存状態に戻す
 	void Reset();

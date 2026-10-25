@@ -68,6 +68,8 @@ namespace{
 	// (カメラはプレイヤーの後ろ上にあるため、カメラと同じ向きで平行に撃つとレティクルより下にずれる)
 	// 弾の射程(PlayerBulletManager::kRange)より手前にして、弾が落ち始める前にこの点を通るようにする
 	constexpr float kAimConvergeDistance = 18.0f;
+	// 弾を向ける的・敵は、手元からカメラの前方へこの距離より先にあるものに限る(すぐ近くや後ろのものへ向けて、弾が横や後ろへ飛ばないようにする)
+	constexpr float kMinAimAheadOfMuzzle = 1.0f;
 
 	// レールに乗り込んで出発した瞬間のインクのしぶきを飛ばす向き(真上)
 	constexpr Vector3 kWorldUp = {0.0f, 1.0f, 0.0f};
@@ -806,17 +808,19 @@ void GameScene::UpdateGameplay(){
 		// プレイヤーの手元から、レティクルの先の点へ向けて撃ち出す
 		// 手元とカメラの位置がずれているため、決まった距離の点を狙うだけだと、それより手前や奥の的ではレティクルとずれる
 		// そこで、的・敵をレティクルで狙えているときは、一番手前のものの中心へ向けて撃つ
+		// ただし手元より手前(カメラとプレイヤーの間)にあるものを狙うと弾が後ろへ飛ぶため、手元より少し先にあるものだけを狙う
 		Vector3 muzzlePos = player_->GetMuzzlePosition();
 		Vector3 aimPoint = cameraPos + cameraForward * kAimConvergeDistance;
+		const float minAimDistance = Dot(muzzlePos - cameraPos,cameraForward) + kMinAimAheadOfMuzzle;
 		Vector3 aimedTargetPos;
 		float aimedTargetDistance = 0.0f;
-		const bool isAimingTarget = targetManager_->FindAimedTarget(cameraPos,cameraForward,aimedTargetPos,aimedTargetDistance);
+		const bool isAimingTarget = targetManager_->FindAimedTarget(cameraPos,cameraForward,minAimDistance,aimedTargetPos,aimedTargetDistance);
 		if(isAimingTarget){
 			aimPoint = aimedTargetPos;
 		}
 		Vector3 aimedEnemyPos;
 		float aimedEnemyDistance = 0.0f;
-		if(enemyManager_->FindAimedEnemy(cameraPos,cameraForward,aimedEnemyPos,aimedEnemyDistance) && (!isAimingTarget || aimedEnemyDistance < aimedTargetDistance)){
+		if(enemyManager_->FindAimedEnemy(cameraPos,cameraForward,minAimDistance,aimedEnemyPos,aimedEnemyDistance) && (!isAimingTarget || aimedEnemyDistance < aimedTargetDistance)){
 			aimPoint = aimedEnemyPos;
 		}
 		Vector3 shootDirection = Normalize(aimPoint - muzzlePos);

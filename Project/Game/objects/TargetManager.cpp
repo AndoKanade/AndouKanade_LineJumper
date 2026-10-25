@@ -190,7 +190,7 @@ bool TargetManager::Update(const Vector3& cameraPosition,const Vector3& cameraFo
 
 // レティクルで狙えている的のうち、カメラに一番近いものを探す
 // 狙えているかは Update() の照準判定と同じく、「カメラ→的」の方向とカメラ前方ベクトルのなす角で決める
-bool TargetManager::FindAimedTarget(const Vector3& cameraPosition,const Vector3& cameraForward,Vector3& outPosition,float& outDistance) const{
+bool TargetManager::FindAimedTarget(const Vector3& cameraPosition,const Vector3& cameraForward,float minDistance,Vector3& outPosition,float& outDistance) const{
 	float aimHitAngle = GlobalVariables::GetInstance()->GetFloatValue(paramGroup_,"aimHitAngle");
 
 	bool isFound = false;
@@ -198,13 +198,16 @@ bool TargetManager::FindAimedTarget(const Vector3& cameraPosition,const Vector3&
 		if(!target.isAlive) continue;
 
 		Vector3 toTarget = target.position - cameraPosition;
-		float distance = Length(toTarget);
-		if(distance < kMinAimDistance) continue; // カメラと的が重なっている異常値は無視
+		if(Length(toTarget) < kMinAimDistance) continue; // カメラと的が重なっている異常値は無視
+
+		// 下限より手前の的(カメラとプレイヤーの間にある的など)は、手元から撃つと後ろへ飛んでしまうため狙わない
+		float alongDistance = Dot(toTarget,cameraForward);
+		if(alongDistance < minDistance) continue;
 
 		// 狙えている的のうち、手前にあるものを優先する(奥の的を狙って手前の的に遮られないようにする)
-		if(AngleBetween(cameraForward,toTarget) <= aimHitAngle && (!isFound || distance < outDistance)){
+		if(AngleBetween(cameraForward,toTarget) <= aimHitAngle && (!isFound || alongDistance < outDistance)){
 			outPosition = target.position;
-			outDistance = distance;
+			outDistance = alongDistance;
 			isFound = true;
 		}
 	}
