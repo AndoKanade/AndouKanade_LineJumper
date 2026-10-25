@@ -67,7 +67,8 @@ namespace{
 	// 的・敵を狙えていないときに、弾が画面中央のレティクルへ向かって飛ぶよう、カメラの前方のこの距離の点を狙って撃ち出す
 	// (カメラはプレイヤーの後ろ上にあるため、カメラと同じ向きで平行に撃つとレティクルより下にずれる)
 	// 弾の射程(PlayerBulletManager::kRange)より手前にして、弾が落ち始める前にこの点を通るようにする
-	constexpr float kAimConvergeDistance = 18.0f;
+	// (手元はカメラの前方およそ 3 にあるため、手元からはおよそ 9 先の点になる)
+	constexpr float kAimConvergeDistance = 12.0f;
 	// 弾を向ける的・敵は、手元からカメラの前方へこの距離より先にあるものに限る(すぐ近くや後ろのものへ向けて、弾が横や後ろへ飛ばないようにする)
 	constexpr float kMinAimAheadOfMuzzle = 1.0f;
 
@@ -812,24 +813,26 @@ void GameScene::UpdateGameplay(){
 	if(shootTriggered){
 		fireCooldown_ = kFireInterval;
 
-		// プレイヤーの手元から、レティクルの先の点へ向けて撃ち出す
+		// プレイヤーの手元から、レティクルの線(カメラの前方へ伸ばした線)の上の点へ向けて撃ち出す
 		// 手元とカメラの位置がずれているため、決まった距離の点を狙うだけだと、それより手前や奥の的ではレティクルとずれる
-		// そこで、的・敵をレティクルで狙えているときは、一番手前のものの中心へ向けて撃つ
+		// そこで、的・敵をレティクルで狙えているときは、レティクルの線の上の、一番手前のものと同じ奥行きの点を狙う
+		// (的・敵の中心そのものを狙うと、レティクルが少し外れているときに弾がそちらへ曲がり、レティクルの通りに飛ばなくなる)
 		// ただし手元より手前(カメラとプレイヤーの間)にあるものを狙うと弾が後ろへ飛ぶため、手元より少し先にあるものだけを狙う
 		Vector3 muzzlePos = player_->GetMuzzlePosition();
-		Vector3 aimPoint = cameraPos + cameraForward * kAimConvergeDistance;
+		float aimDistance = kAimConvergeDistance;
 		const float minAimDistance = Dot(muzzlePos - cameraPos,cameraForward) + kMinAimAheadOfMuzzle;
 		Vector3 aimedTargetPos;
 		float aimedTargetDistance = 0.0f;
 		const bool isAimingTarget = targetManager_->FindAimedTarget(cameraPos,cameraForward,minAimDistance,aimedTargetPos,aimedTargetDistance);
 		if(isAimingTarget){
-			aimPoint = aimedTargetPos;
+			aimDistance = aimedTargetDistance;
 		}
 		Vector3 aimedEnemyPos;
 		float aimedEnemyDistance = 0.0f;
 		if(enemyManager_->FindAimedEnemy(cameraPos,cameraForward,minAimDistance,aimedEnemyPos,aimedEnemyDistance) && (!isAimingTarget || aimedEnemyDistance < aimedTargetDistance)){
-			aimPoint = aimedEnemyPos;
+			aimDistance = aimedEnemyDistance;
 		}
+		Vector3 aimPoint = cameraPos + cameraForward * aimDistance;
 		Vector3 shootDirection = Normalize(aimPoint - muzzlePos);
 		bulletManager_->Fire(muzzlePos,shootDirection,isGameplayActive);
 

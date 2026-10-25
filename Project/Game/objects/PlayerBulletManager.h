@@ -120,15 +120,17 @@ private:
 	// 弾が的に当たらなかった場合に消滅するまでの生存時間(秒)
 	static constexpr float kLifeTime = 2.0f;
 	// 射程(この距離まではまっすぐ飛び、重力も受けない)
-	static constexpr float kRange = 20.0f;
+	// 鍵の的どうしの間隔(およそ 18〜21)より十分短くして、次の鍵の的に近づくまで壊せないようにする
+	static constexpr float kRange = 10.0f;
 	// 射程を過ぎた弾に適用する重力加速度(1秒あたりの下方向への速度変化量。すぐ落ちて射程が分かるよう強めにする)
 	static constexpr float kFallGravity = 40.0f;
 	// 射程を過ぎた弾の勢いの落ち方(1秒あたりに速度が減る割合。大きいほど射程の先へ伸びずに落ちる)
-	static constexpr float kFallDrag = 4.0f;
+	// 射程を過ぎてから前へ進むのは、最大でも 弾の速さ / この値 (40 / 8 = 5) まで
+	static constexpr float kFallDrag = 8.0f;
 	// 撃つたびに向きをずらす最大の角度(ラジアン)。横には大きく、縦には小さくばらけさせる
-	// (射程 20 の先で横に最大 0.3、縦に最大 0.1 ずれる。的の当たり判定の半径より小さくして、狙った的から外れないようにする)
-	static constexpr float kSpreadAngleHorizontal = 0.015f;
-	static constexpr float kSpreadAngleVertical = 0.005f;
+	// (射程 10 の先で横に最大 0.08、縦に最大 0.03 ずれる。弾がレティクルから外れて見えない程度の、わずかなばらつきにする)
+	static constexpr float kSpreadAngleHorizontal = 0.008f;
+	static constexpr float kSpreadAngleVertical = 0.003f;
 	// 使い回す弾の最大数(連射の間隔 0.1 秒・生存時間 2 秒で同時に飛ぶ最大 20 発に余裕を持たせた数)
 	static constexpr size_t kMaxBulletCount = 24;
 	// 弾1発が敵に与えるダメージ量
