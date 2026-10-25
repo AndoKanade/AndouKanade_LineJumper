@@ -177,6 +177,8 @@ private:
 	int editPointIndex_ = -1;
 	// 今回のPlayを選んだ制御点から始めているか(落下リスタートでも同じ位置から始め直すのに使う)
 	bool isPlayingFromPoint_ = false;
+	// 次の弾を撃てるようになるまでの残り時間(秒。押しっぱなしの連射の間隔に使う)
+	float fireCooldown_ = 0.0f;
 
 	// 最後に通ったチェックポイント(レールから落ちたら、ここからやり直す)
 	struct Checkpoint{
@@ -193,6 +195,10 @@ private:
 	static constexpr float kDeltaTime = 1.0f / 60.0f;
 	// 射撃に使うマウスボタン(左ボタン)
 	static constexpr int kShootMouseButton = 0;
+	// 押しっぱなしで連射するときの弾の発射間隔(秒)
+	static constexpr float kFireInterval = 0.1f;
+	// 残り時間がこれ以下なら撃てるとみなす(小数の誤差で残り時間がわずかに残り、発射が1フレーム遅れないよう半フレーム分の余裕を持たせる)
+	static constexpr float kFireIntervalTolerance = kDeltaTime * 0.5f;
 	// 弾を撃ったときに手元から飛び散らせるインクのしぶきの数
 	static constexpr int kMuzzleSplashCount = 3;
 	// レールに乗り込んで出発した瞬間に、足元から飛び散らせるインクのしぶきの数

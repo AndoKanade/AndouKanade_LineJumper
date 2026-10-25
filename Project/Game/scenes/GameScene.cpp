@@ -278,8 +278,9 @@ void GameScene::ResetPlayState(){
 	railCamera_->Reset();
 	// 的を復活させる
 	targetManager_->Reset();
-	// 開始時に残っている弾もリセットする
+	// 開始時に残っている弾もリセットし、次に押したときすぐ撃てるようにする
 	bulletManager_->Clear();
+	fireCooldown_ = 0.0f;
 
 	// レールを0番へ戻し、インクで塗った区間も消す
 	if(railEditor_){
@@ -793,11 +794,14 @@ void GameScene::UpdateGameplay(){
 		}
 	}
 
-	// 弾の発射処理(左クリックした瞬間に1発だけ発射する)
+	// 弾の発射処理(左クリックを押している間、決まった間隔で撃ち続ける。押した瞬間はすぐに1発目を撃つ)
 	// スタート台の上を動ける間も試し撃ちとして撃てるようにし、台に当たったところを塗れるようにする
 	// 試し撃ちの弾は的・敵には当たらないようにして、プレイが始まる前に的を壊したり敵を倒したりしないようにする
-	bool shootTriggered = (isGameplayActive || isPlayerMovable) && input_ && input_->TriggerMouseButton(kShootMouseButton);
+	fireCooldown_ = (std::max)(fireCooldown_ - kDeltaTime,0.0f);
+	bool shootTriggered = (isGameplayActive || isPlayerMovable) && input_ && input_->PushMouseButton(kShootMouseButton) && fireCooldown_ <= kFireIntervalTolerance;
 	if(shootTriggered){
+		fireCooldown_ = kFireInterval;
+
 		// プレイヤーの手元から、レティクルの先の点へ向けて撃ち出す
 		Vector3 muzzlePos = player_->GetMuzzlePosition();
 		Vector3 aimPoint = cameraPos + cameraForward * kAimConvergeDistance;

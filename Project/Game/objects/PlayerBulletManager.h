@@ -4,6 +4,7 @@
 #include "Model.h"
 #include <functional>
 #include <memory>
+#include <random>
 #include <vector>
 
 // 前方宣言
@@ -12,7 +13,9 @@ class Obj3dCommon;
 
 /// <summary>
 /// プレイヤーの弾の管理
-/// 発射・移動(重力あり)・寿命切れの処理と、的や敵との当たり判定に使う境界球の判定を行う。
+/// 発射・移動・寿命切れの処理と、的や敵との当たり判定に使う境界球の判定を行う。
+/// 弾は射程の距離まではまっすぐ飛び、射程を過ぎると勢いが落ちて重力で落ちていく。
+/// 撃つたびに向きを少しランダムにずらして、弾をばらけさせる。
 /// 着地を調べる処理(SetLandingHandler)を渡すと、弾が面に着いたところにインクを塗って消える。
 /// </summary>
 class PlayerBulletManager{
@@ -33,7 +36,7 @@ public:
 	/// 弾を1発発射する
 	/// </summary>
 	/// <param name="position">発射位置</param>
-	/// <param name="direction">発射方向(正規化済み)</param>
+	/// <param name="direction">狙う方向(正規化済み。ここから少しランダムにずらした向きへ撃つ)</param>
 	/// <param name="canHit">的・敵に当たるか(スタート台での試し撃ちの弾は false にして、塗るだけにする)</param>
 	void Fire(const Vector3& position,const Vector3& direction,bool canHit);
 
@@ -73,6 +76,8 @@ private:
 		Vector3 position;
 		Vector3 velocity;
 		float lifeTime = 0.0f;
+		// 発射してから飛んだ距離(射程を過ぎたかの判定に使う)
+		float traveledDistance = 0.0f;
 		bool isAlive = true;
 		// 的・敵に当たるか
 		bool canHit = true;
@@ -89,6 +94,12 @@ private:
 	// 弾の着地を調べる処理
 	LandingHandler landingHandler_;
 
+	// 弾のばらつきに使う乱数生成器
+	std::mt19937 randomEngine_;
+
+	// 狙う方向を、ばらつきの角度の範囲でランダムにずらした向きを返す
+	Vector3 ApplySpread(const Vector3& direction);
+
 	// 弾の移動速度(1秒あたりの移動量)
 	static constexpr float kSpeed = 40.0f;
 	// 弾の表示スケール(当たり判定の大きさにも使う)
@@ -98,8 +109,15 @@ private:
 	static constexpr float kStreakLengthRate = 5.0f;
 	// 弾が的に当たらなかった場合に消滅するまでの生存時間(秒)
 	static constexpr float kLifeTime = 2.0f;
-	// 弾に適用する重力加速度(1秒あたりの下方向への速度変化量)
-	static constexpr float kGravity = 9.8f;
+	// 射程(この距離まではまっすぐ飛び、重力も受けない)
+	static constexpr float kRange = 30.0f;
+	// 射程を過ぎた弾に適用する重力加速度(1秒あたりの下方向への速度変化量。すぐ落ちて射程が分かるよう強めにする)
+	static constexpr float kFallGravity = 40.0f;
+	// 射程を過ぎた弾の勢いの落ち方(1秒あたりに速度が減る割合。大きいほど射程の先へ伸びずに落ちる)
+	static constexpr float kFallDrag = 4.0f;
+	// 撃つたびに向きをずらす最大の角度(ラジアン)。横には大きく、縦には小さくばらけさせる
+	static constexpr float kSpreadAngleHorizontal = 0.05f;
+	static constexpr float kSpreadAngleVertical = 0.02f;
 	// 弾1発が敵に与えるダメージ量
 	static constexpr int kDamage = 1;
 	// 弾が面に着いたときに塗るインクの半径

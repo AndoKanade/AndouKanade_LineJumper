@@ -1178,3 +1178,26 @@ Visual Studio（Debug / Development / Release、x64）でビルドが通るこ�
 ### ビルド確認（4.）
 
 未確認（Visual Studio でのビルドと実機での動作確認が必要）。
+
+### 5. 弾の撃つ感覚を変えた（押しっぱなしで連射・射程・ばらつき）
+
+対象ファイル: `Game/objects/PlayerBulletManager.h/.cpp`、`Game/scenes/GameScene.h/.cpp`
+
+- 左クリックを押している間、0.1 秒ごとに撃ち続けるようにした。押した瞬間はすぐに 1 発目を撃つ。始め直したときは間隔をリセットする。
+- 弾に射程を付けた。射程 30 まではまっすぐ飛び（重力を受けない）、射程を過ぎると勢いが落ちて強い重力ですぐ落ちる。以前は重力 9.8 を最初から受けて、寿命まで遠くへ飛んでいた。
+- 撃つたびに狙う方向を少しランダムにずらし、弾をばらけさせた。横には大きく、縦には小さくずらす。
+
+| 定数 | 値 | 内容 |
+| --- | --- | --- |
+| `GameScene.h::kFireInterval` | 0.1 | 押しっぱなしで連射するときの発射間隔（秒） |
+| `PlayerBulletManager.h::kRange` | 30.0 | 射程（この距離まではまっすぐ飛ぶ） |
+| `PlayerBulletManager.h::kFallGravity` | 40.0 | 射程を過ぎた弾の重力加速度 |
+| `PlayerBulletManager.h::kFallDrag` | 4.0 | 射程を過ぎた弾の勢いが 1 秒あたりに減る割合 |
+| `PlayerBulletManager.h::kSpreadAngleHorizontal` | 0.05 | 横にずらす最大の角度（ラジアン） |
+| `PlayerBulletManager.h::kSpreadAngleVertical` | 0.02 | 縦にずらす最大の角度（ラジアン） |
+
+`kGravity`（9.8）は使わなくなったので消した。
+
+### ビルド確認（5.）
+
+未確認（Visual Studio でのビルドと実機での手触りの確認が必要）。

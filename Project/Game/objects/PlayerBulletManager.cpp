@@ -14,6 +14,13 @@ namespace{
 
 	// 弾の色(プレイヤーのインクの黄色。敵弾のオレンジより明るくして区別する)
 	constexpr Vector4 kBulletColor = {1.0f, 0.9f, 0.2f, 1.0f};
+
+	// 弾のばらつきの横方向を求めるときに使う真上の向き
+	constexpr Vector3 kWorldUp = {0.0f, 1.0f, 0.0f};
+	// 狙う方向が真上・真下に近く、横方向を求められないときに代わりに使う横方向
+	constexpr Vector3 kFallbackRight = {1.0f, 0.0f, 0.0f};
+	// 横方向を求められないとみなす長さ
+	constexpr float kParallelEpsilon = 0.0001f;
 }
 
 PlayerBulletManager::PlayerBulletManager() = default;
@@ -25,6 +32,27 @@ void PlayerBulletManager::Initialize(Obj3dCommon* objCommon){
 
 	ModelManager::GetInstance()->LoadModel(kBulletModelPath);
 	model_ = ModelManager::GetInstance()->FindModel(kBulletModelPath);
+
+	std::random_device seedGenerator;
+	randomEngine_.seed(seedGenerator());
+}
+
+// 狙う方向を、ばらつきの角度の範囲でランダムにずらした向きを返す
+Vector3 PlayerBulletManager::ApplySpread(const Vector3& direction){
+	// 狙う方向に垂直な横方向と縦方向を求める
+	Vector3 right = Cross(kWorldUp,direction);
+	if(Length(right) < kParallelEpsilon){
+		right = kFallbackRight;
+	}
+	right = Normalize(right);
+	const Vector3 up = Cross(direction,right);
+
+	// 横・縦それぞれに、最大の角度までのランダムな角度だけ傾ける
+	std::uniform_real_distribution<float> horizontalDistribution(-kSpreadAngleHorizontal,kSpreadAngleHorizontal);
+	std::uniform_real_distribution<float> verticalDistribution(-kSpreadAngleVertical,kSpreadAngleVertical);
+	const float horizontalAngle = horizontalDistribution(randomEngine_);
+	const float verticalAngle = verticalDistribution(randomEngine_);
+	return Normalize(direction + right * std::tan(horizontalAngle) + up * std::tan(verticalAngle));
 }
 
 // 弾を1発発射する
@@ -42,7 +70,7 @@ void PlayerBulletManager::Fire(const Vector3& position,const Vector3& direction,
 	}
 
 	bullet.position = position;
-	bullet.velocity = direction * kSpeed;
+	bullet.velocity = ApplySpread(direction) * kSpeed;
 	bullet.canHit = canHit;
 	bullets_.push_back(std::move(bullet));
 }
@@ -52,11 +80,17 @@ void PlayerBulletManager::Move(float deltaTime){
 	for(auto& bullet : bullets_){
 		if(!bullet.isAlive) continue;
 
-		// 重力による速度変化(下方向)を先に適用してから位置を更新する(半陰的オイラー法)
-		bullet.velocity.y -= kGravity * deltaTime;
+		// 射程を過ぎた弾は、勢いを落としながら重力で落とす
+		// 速度の変化を先に適用してから位置を更新する(半陰的オイラー法)
+		if(bullet.traveledDistance >= kRange){
+			bullet.velocity = bullet.velocity * (1.0f - kFallDrag * deltaTime);
+			bullet.velocity.y -= kFallGravity * deltaTime;
+		}
 
 		const Vector3 previousPosition = bullet.position;
-		bullet.position += bullet.velocity * deltaTime;
+		const Vector3 movement = bullet.velocity * deltaTime;
+		bullet.position += movement;
+		bullet.traveledDistance += Length(movement);
 		bullet.lifeTime += deltaTime;
 		if(bullet.lifeTime >= kLifeTime){
 			bullet.isAlive = false;
