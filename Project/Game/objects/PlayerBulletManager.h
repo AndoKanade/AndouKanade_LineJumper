@@ -34,7 +34,7 @@ public:
 	void Initialize(Obj3dCommon* objCommon);
 
 	/// <summary>
-	/// 弾を1発発射する(未使用の弾が無いときは何もしない)
+	/// 弾を1発発射する(未使用の弾が無いときは、一番長く飛んでいる弾を使い回す)
 	/// </summary>
 	/// <param name="position">発射位置</param>
 	/// <param name="direction">狙う方向(正規化済み。ここから少しランダムにずらした向きへ撃つ)</param>
@@ -67,6 +67,13 @@ public:
 	// 弾1発が敵に与えるダメージ量を取得
 	int GetDamage() const{ return kDamage; }
 
+	// 飛んでいる弾の数を取得(デバッグ表示用)
+	int GetAliveCount() const;
+	// 使い回す弾の最大数を取得(デバッグ表示用)
+	int GetMaxCount() const{ return static_cast<int>(kMaxBulletCount); }
+	// 未使用の弾が無く、飛んでいる弾を使い回して撃った回数を取得(デバッグ表示用。弾の数が足りているかの確認に使う)
+	int GetPoolFullCount() const{ return poolFullCount_; }
+
 private:
 	// 弾(プロジェクタイル)
 	struct Bullet{
@@ -93,6 +100,9 @@ private:
 
 	// 弾の着地を調べる処理
 	LandingHandler landingHandler_;
+
+	// 未使用の弾が無く、飛んでいる弾を使い回して撃った回数(デバッグ表示用)
+	int poolFullCount_ = 0;
 
 	// 弾のばらつきに使う乱数生成器
 	std::mt19937 randomEngine_;

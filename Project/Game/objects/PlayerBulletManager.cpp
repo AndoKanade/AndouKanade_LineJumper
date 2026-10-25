@@ -72,20 +72,43 @@ Vector3 PlayerBulletManager::ApplySpread(const Vector3& direction){
 
 // 弾を1発発射する
 void PlayerBulletManager::Fire(const Vector3& position,const Vector3& direction,bool canHit){
-	// 未使用の弾を探して使い回す(全弾使用中のときは発射しない)
-	for(auto& bullet : bullets_){
-		if(bullet.isAlive){
-			continue;
-		}
-
-		bullet.position = position;
-		bullet.velocity = ApplySpread(direction) * kSpeed;
-		bullet.lifeTime = 0.0f;
-		bullet.traveledDistance = 0.0f;
-		bullet.canHit = canHit;
-		bullet.isAlive = true;
+	if(bullets_.empty()){
 		return;
 	}
+
+	// 未使用の弾を探して使い回す
+	// 全弾使用中のときは、撃つのが止まらないよう、一番長く飛んでいる弾(一番先に消える弾)を消して使い回す
+	Bullet* selected = nullptr;
+	for(auto& bullet : bullets_){
+		if(!bullet.isAlive){
+			selected = &bullet;
+			break;
+		}
+		if(!selected || bullet.lifeTime > selected->lifeTime){
+			selected = &bullet;
+		}
+	}
+	if(selected->isAlive){
+		++poolFullCount_;
+	}
+
+	selected->position = position;
+	selected->velocity = ApplySpread(direction) * kSpeed;
+	selected->lifeTime = 0.0f;
+	selected->traveledDistance = 0.0f;
+	selected->canHit = canHit;
+	selected->isAlive = true;
+}
+
+// 飛んでいる弾の数を数える
+int PlayerBulletManager::GetAliveCount() const{
+	int count = 0;
+	for(const auto& bullet : bullets_){
+		if(bullet.isAlive){
+			++count;
+		}
+	}
+	return count;
 }
 
 // 弾の移動と生存時間の更新

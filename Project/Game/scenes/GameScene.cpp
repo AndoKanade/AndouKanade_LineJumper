@@ -885,6 +885,11 @@ void GameScene::ShowStatusWindow(){
 	}
 	ImGui::Text("Jump Key: SPACE");
 
+	// 射撃のデバッグ表示(撃てなくなったときに、左クリックが届いているか・弾の数が足りているかを確かめる)
+	ImGui::Text("Mouse Left: %s",(input_ && input_->PushMouseButton(kShootMouseButton))?"pressed":"released");
+	ImGui::Text("Player Bullets: %d / %d",bulletManager_->GetAliveCount(),bulletManager_->GetMaxCount());
+	ImGui::Text("Bullet Pool Full: %d",bulletManager_->GetPoolFullCount());
+
 	// 雑魚敵のデバッグ表示
 	enemyManager_->ShowDebugInfo();
 
