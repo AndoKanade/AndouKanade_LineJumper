@@ -359,7 +359,7 @@ void GameScene::StartFromContinuePoint(){
 	if(checkpoint_.railIndex >= 0){
 		RespawnAtCheckpoint();
 	} else{
-		// チェックポイントを通る前に体力が尽きたときは、レールの始点から始める
+		// チェックポイントを通る前に残機が尽きたときは、レールの始点から始める
 		player_->BoardRailStart();
 	}
 }
@@ -399,6 +399,37 @@ void GameScene::RespawnAtCheckpoint(){
 	targetManager_->RestoreAliveStates(checkpoint_.targetAliveStates);
 	// チェックポイントを通った時点で出ていたレールは出たまま、出ていなかったレールは出ていない状態にすぐ戻す
 	ApplyRailLocks(true);
+}
+
+// 暗転で画面を覆っている間に、最後に通ったチェックポイント(通っていなければスタート台)からやり直す
+// 一瞬で始点へ戻ると何が起きたか分かりにくいため、覆い終わってから戻す
+void GameScene::RestartAfterMiss(){
+	sceneManager_->StartTransition([this](){
+		ResetPlayState();
+		// チェックポイントを通っていれば、そこから始め直す
+		// 通っていなくても、選んだ制御点から始めているときは、落ちても同じ制御点から始め直す
+		if(checkpoint_.railIndex >= 0){
+			RespawnAtCheckpoint();
+		} else if(isPlayingFromPoint_){
+			BoardAtPlayStartPoint();
+		}
+	},GetTransitionStyle(kFallTransitionKey));
+}
+
+// 落下・体力切れで残機を1つ減らし、残っていればやり直し、尽きたらゲームオーバー画面へ移る
+void GameScene::LoseLife(){
+	--lives_;
+	if(lives_ > 0){
+		RestartAfterMiss();
+		return;
+	}
+
+	// ゲームオーバー画面でコンティニューを選んだら最後に通ったチェックポイントから始められるよう、シーンが作り直される前に書き込んでおく
+	ContinuePoint::railIndex = checkpoint_.railIndex;
+	ContinuePoint::pointIndex = checkpoint_.pointIndex;
+	ContinuePoint::targetAliveStates = checkpoint_.targetAliveStates;
+	// ゲームオーバーは暗いインクが上から垂れてきて画面を覆う演出で切り替える
+	sceneManager_->ChangeScene("GAMEOVER",SceneTransition::Style::InkDrip);
 }
 
 // 鍵の的が残っていて出ていないレールを求め、レールの描き方と着地できるレールに反映する
@@ -599,7 +630,9 @@ void GameScene::UpdateGameplay(){
 		// 制御点を選んでいないときは、設定がONでもいつも通り始める
 		isPlayingFromPoint_ = startsFromSelectedPoint_ && editPointIndex_ >= 0;
 		// Playに入り直したら、前回のPlayで通ったチェックポイントは忘れて最初から始める
+		// 残機も満タンから始める(コンティニューで戻ってきたときも満タンにする)
 		checkpoint_ = Checkpoint{};
+		lives_ = kMaxLives;
 		ResetPlayState();
 		// ゲームオーバー画面でコンティニューを選んで戻ってきたときは、最後に通ったチェックポイントから始める
 		if(ContinuePoint::isRequested){
@@ -616,8 +649,9 @@ void GameScene::UpdateGameplay(){
 		railEditor_->SelectPoint(editRailIndex_,editPointIndex_);
 	} else if(isPlayMode && input_ && input_->TriggerKey(DIK_R)){
 		// 確認用の一時的な処理:Play中にRキーでタイトルから最初からやり直す(選んだ制御点から始めているときは、その制御点からやり直す)
-		// 最初からやり直すため、通ったチェックポイントも忘れる
+		// 最初からやり直すため、通ったチェックポイントも忘れ、残機も満タンに戻す
 		checkpoint_ = Checkpoint{};
+		lives_ = kMaxLives;
 		ResetPlayState();
 		StartPlaySequence();
 	}
@@ -782,36 +816,27 @@ void GameScene::UpdateGameplay(){
 		}
 	}
 
-	// ゲームオーバー判定
-	// 体力が0になったらゲームオーバー画面へ遷移する
+	// 体力切れの判定
+	// 体力が0になったら残機を1つ減らしてやり直す(残機が尽きたらゲームオーバー画面へ遷移する)
 	// クリア判定と同じく、以降の落下リスタートなどの処理を行わないようここで抜ける
+	// やり直しの暗転中はプレイ可能でなくなるため、残機が二重に減ることはない
 	if(isGameplayActive && player_->IsDead()){
-		// ゲームオーバー画面でコンティニューを選んだら最後に通ったチェックポイントから始められるよう、シーンが作り直される前に書き込んでおく
-		ContinuePoint::railIndex = checkpoint_.railIndex;
-		ContinuePoint::pointIndex = checkpoint_.pointIndex;
-		ContinuePoint::targetAliveStates = checkpoint_.targetAliveStates;
-		// ゲームオーバーは暗いインクが上から垂れてきて画面を覆う演出で切り替える
-		sceneManager_->ChangeScene("GAMEOVER",SceneTransition::Style::InkDrip);
+		LoseLife();
 		return;
 	}
 
 	// プレイヤーの自立(ジャンプ+WASD移動)
-	// どのレールにも乗れないまま地面の高さまで落ちたら、レール先頭からやり直す
-	// 一瞬で始点へ戻ると何が起きたか分かりにくいため、暗転で画面を覆っている間に始点へ戻す
+	// どのレールにも乗れないまま地面の高さまで落ちたら、残機を1つ減らしてやり直す(残機が尽きたらゲームオーバー画面へ遷移する)
 	// 開始演出でスタート台の上を動ける間も、同じ動き方で動かす
+	// 出発前にスタート台から落ちたときは、まだプレイを始めていないため残機を減らさずにやり直す
 	if(isGameplayActive || isPlayerMovable){
 		bool needsRestart = player_->UpdateMovement(input_,railEditor_.get(),startPlatform_.get(),cameraForward,railCamera_->GetRight(),ground_->GetHeight(),kDeltaTime);
 		if(needsRestart){
-			sceneManager_->StartTransition([this](){
-				ResetPlayState();
-				// チェックポイントを通っていれば、そこから始め直す
-				// 通っていなくても、選んだ制御点から始めているときは、落ちても同じ制御点から始め直す
-				if(checkpoint_.railIndex >= 0){
-					RespawnAtCheckpoint();
-				} else if(isPlayingFromPoint_){
-					BoardAtPlayStartPoint();
-				}
-			},GetTransitionStyle(kFallTransitionKey));
+			if(isGameplayActive){
+				LoseLife();
+			} else{
+				RestartAfterMiss();
+			}
 		}
 
 		// 出発の演出を使うときは、ゲートの先の出発台の手前の線を越えたら演出を始める
@@ -934,6 +959,7 @@ void GameScene::ShowStatusWindow(){
 
 	// プレイヤーの体力・無敵時間のデバッグ表示
 	ImGui::Text("Player HP: %d / %d",player_->GetHp(),player_->GetMaxHp());
+	ImGui::Text("Lives: %d / %d",lives_,kMaxLives);
 	ImGui::Text("Player Invincible: %.2f",player_->GetInvincibleTimer());
 	ImGui::End();
 }

@@ -67,6 +67,10 @@ private:
 	void UpdateCheckpoint();
 	// 最後に通ったチェックポイントの位置からレールに乗せ、壊した的をチェックポイントを通った時点の状態に戻す
 	void RespawnAtCheckpoint();
+	// 暗転で画面を覆っている間に、最後に通ったチェックポイント(通っていなければスタート台)からやり直す
+	void RestartAfterMiss();
+	// 落下・体力切れで残機を1つ減らし、残っていればやり直し、尽きたらゲームオーバー画面へ移る
+	void LoseLife();
 	/// <summary>
 	/// 鍵の的が残っていて出ていないレールを求め、レールの描き方と着地できるレールに反映する
 	/// </summary>
@@ -181,6 +185,8 @@ private:
 	bool isPlayingFromPoint_ = false;
 	// 次の弾を撃てるようになるまでの残り時間(秒。押しっぱなしの連射の間隔に使う)
 	float fireCooldown_ = 0.0f;
+	// 残機(落下・体力切れで1つ減り、0になったらゲームオーバー。やり直しの ResetPlayState() では戻さない)
+	int lives_ = kMaxLives;
 
 	// 最後に通ったチェックポイント(レールから落ちたら、ここからやり直す)
 	struct Checkpoint{
@@ -195,6 +201,8 @@ private:
 
 	// 1フレームの経過時間(エンジンが固定60fps前提(TimeManagerで60fps固定)なので、そのまま合わせる)
 	static constexpr float kDeltaTime = 1.0f / 60.0f;
+	// Playを始めたとき・コンティニューしたときの残機
+	static constexpr int kMaxLives = 3;
 	// 射撃に使うマウスボタン(左ボタン)
 	static constexpr int kShootMouseButton = 0;
 	// 押しっぱなしで連射するときの弾の発射間隔(秒)

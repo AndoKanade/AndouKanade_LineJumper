@@ -10,7 +10,7 @@
 struct ContinuePoint{
 	// 次の GameScene をタイトルからではなく、ここから始めるか(使ったら GameScene が下ろす)
 	inline static bool isRequested = false;
-	// 最後に通ったチェックポイントの制御点があるレール(-1: 通る前に体力が尽きたため、レールの始点から始める)
+	// 最後に通ったチェックポイントの制御点があるレール(-1: 通る前に残機が尽きたため、レールの始点から始める)
 	inline static int railIndex = -1;
 	// 最後に通ったチェックポイントの制御点
 	inline static int pointIndex = -1;
