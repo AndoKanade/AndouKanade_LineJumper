@@ -377,11 +377,11 @@ void GameScene::StartFromContinuePoint(){
 
 // デモのときに、タイトル・スタート台を飛ばしてレールの始点から始める
 // ResetPlayState()でレールを0番へ戻しているため、その後に呼ぶ
-// 1回目は敵の弾に当たって体力が尽きる流れを見せるため、敵の弾を必ず当てる
-// (最初のレールの近くの2体の敵が撃つ弾で約5秒で尽き、レール(約8秒)の終点で落ちる前に尽きる)
+// 1回目は敵の弾に当たって体力が尽きる流れを見せるため、敵の弾を必ず当て、レールの終点に着く前に当たりきるようゆっくり進ませる
 void GameScene::StartDemoPlay(){
 	startSequence_->Start(true);
 	player_->BoardRailStart();
+	player_->SetRailSpeedRate(DemoMode::kFirstLifeRailSpeedRate);
 	enemyManager_->SetGuidedBullets(true);
 }
 
@@ -444,9 +444,10 @@ void GameScene::RestartAfterMiss(){
 void GameScene::LoseLife(){
 	--lives_;
 	if(lives_ > 0){
-		// デモの2回目はレールから落ちて残機が尽きる流れを見せるため、敵の弾は必ず当てるのをやめる
+		// デモの2回目はレールから落ちて残機が尽きる流れを見せるため、敵の弾は必ず当てるのをやめ、終点まで通常の速さで進ませる
 		if(DemoMode::isEnabled){
 			enemyManager_->SetGuidedBullets(false);
+			player_->SetRailSpeedRate(DemoMode::kSecondLifeRailSpeedRate);
 		}
 		RestartAfterMiss();
 		return;

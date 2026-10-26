@@ -42,6 +42,9 @@ public:
 	// ゲートを開け始める(目印から柱へインクを流し込み、柱と梁を塗り終わったら遮断棒を上げる)
 	void BeginOpenGate();
 
+	// ゲートを、開ける演出を出さずにすぐ開ききった状態にする(タイトルを飛ばしてレールの上から始めるとき用)
+	void OpenGateImmediately();
+
 	// ゲートが開ききったか(レールへ歩いて乗れる状態か)
 	bool IsGateOpened() const;
 

@@ -128,7 +128,8 @@ void Player::UpdateRailProgress(const RailEditor* railEditor,bool isGameplayActi
 	}
 
 	// 調整項目から最新の値を取得(ImGui編集/ホットリロードが即反映される)
-	float railSpeed = GlobalVariables::GetInstance()->GetFloatValue(paramGroup_,"railSpeed");
+	// デモでは、設定された倍率でゆっくり進ませる
+	float railSpeed = GlobalVariables::GetInstance()->GetFloatValue(paramGroup_,"railSpeed") * railSpeedRate_;
 
 	// 現在位置に対応する制御点のSpeed値を取得し、全体速度(railSpeed)に掛けて今フレームに進む距離を求める
 	// 進行度に直接足すと制御点間の距離で速さが変わるため、距離として進めて一定の速さにする

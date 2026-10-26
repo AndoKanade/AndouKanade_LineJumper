@@ -1444,3 +1444,20 @@ Visual Studio（Debug / Development / Release、x64）でビルドが通るこ�
 ### ビルド確認（6.）
 
 未確認（Visual Studio でのビルドと実機での動作確認が必要）。1 回目が敵の弾で約 5 秒で尽きるかは、敵の配置（`resource/enemy/enemy.json`）と往復の位置から見積もった値のため、実機で確かめる必要がある。
+
+### 7. タイトルを飛ばしたときにレールから落ちなかった不具合を直し、デモの 1 回目をゆっくり進ませた
+
+対象ファイル: `Game/objects/StartPlatform.h/.cpp`、`Game/Title/StartSequence.cpp`、`Game/objects/Player.h/.cpp`、`Game/scenes/GameScene.cpp`、`Game/systems/DemoMode.h`
+
+- 原因：レールから外れている間は、スタート台の出発ゲートが閉じていると、ゲートより手前へ押し戻す処理（`StartPlatform::ClampBehindClosedGate()`）がかかる。この処理は台の上だけでなく、ゲートの面より先のどこにいてもかかる。タイトルを飛ばして始めたとき（デモ・コンティニュー・デバッグ用の Skip Title / Start From Selected Point）はゲートを開けないため、レールの終点から落ちるとゲートの手前へ引き戻され、地面まで落ちずにやり直しにならなかった。
+- タイトルを飛ばして始めるときは、開ける演出を出さずにゲートを開ききった状態にするようにした（`StartPlatform::OpenGateImmediately()`。開き終わった時間にしておくため、インクの流し込みや遮断棒が跳ね上がる瞬間の演出は起きない）。
+- デモの 1 回目は、敵の弾が 3 発当たりきる前に最初のレールの終点に着いていたため、レールを進む速さを半分にした（`Player::SetRailSpeedRate()`。走り切るまで約 16 秒）。2 回目は終点から落ちるまで長く待たせないよう、通常の速さに戻す。
+
+| 定数 | 値 | 内容 |
+| --- | --- | --- |
+| `DemoMode::kFirstLifeRailSpeedRate` | 0.5 | デモの 1 回目のレールを進む速さの倍率 |
+| `DemoMode::kSecondLifeRailSpeedRate` | 1.0 | デモの 2 回目のレールを進む速さの倍率 |
+
+### ビルド確認（7.）
+
+未確認（Visual Studio でのビルドと実機での動作確認が必要）。
