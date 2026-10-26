@@ -27,8 +27,8 @@
 - タイトル → カメラの回り込み → スタート台で準備 → 出発ゲートを開ける → 出発の演出 → GO! を、シーンを切り替えずに1つのカメラでつないでいる。
 - 出発の演出は 5 種類（Walk / SuperJump / InkDive / Catapult / CountdownFlip）から ImGui で選べる。初期値は CountdownFlip（ゲートの 3・2・1 に合わせて溜め、0 で宙返りしてレールに飛び乗る）。
 - スタート台・ゲートの柱と梁は UV 空間ペイントでインクを塗れる。ゲートを開けるときはインクが柱を塗り上がり、遮断棒が跳ね上がる瞬間にヒットストップ・画面の揺れ・放射ブラーをかける。
-- 自機の体力は3で、被弾後は1秒間の無敵時間がある。0になるとゲームオーバー画面へ移る。ゴールのレール（今は Rail 5）の終点に着くとクリア画面へ移る。ほかのレールの終点ではレールから外れて落ちる。
-- HUD（体力・壊した的の数・連鎖数）、H キーで開く操作説明、タイトル画面右上の「ESC ゲーム終了」の案内を、スプライトで表示している（Release 構成でも出る）。
+- 自機の体力は3で、被弾後は1秒間の無敵時間がある。残機は3で、落下・体力0で1つ減ってチェックポイント（通っていなければスタート台）からやり直す。残機が0になるとゲームオーバー画面へ移り、コンティニュー（最後に通ったチェックポイントから再開）かタイトルへ戻るかを選べる。ゴールのレール（今は Rail 5）の終点に着くとクリア画面へ移る。ほかのレールの終点ではレールから外れて落ちる。
+- HUD（残機・壊した的の数・連鎖数）、体力を表す画面の縁のインク（ポストプロセス）、H キーで開く操作説明、タイトル画面右上の「ESC ゲーム終了」の案内を、スプライトで表示している（Release 構成でも出る）。
 - ESC キーでゲームを終了できる。
 
 **開発環境（エディター）**
@@ -1318,3 +1318,182 @@ Visual Studio（Debug / Development / Release、x64）でビルドが通るこ�
 ### ビルド確認（12.）
 
 未確認（Visual Studio でのビルドと実機での手触りの確認が必要）。
+
+---
+
+## 2026-10-26
+
+### 1. ゲームオーバー画面からコンティニューできるようにした
+
+対象ファイル: `Game/objects/ContinuePoint.h`（新規）、`Game/scenes/GameOverScene.h/.cpp`、`Game/scenes/GameScene.h/.cpp`、`tools/generate_result_assets.py`、`tools/generate_help_texture.py`、`resource/UI/gameOverTitle.png`・`help.png`、`resource/UI/continueOption.png`・`toTitleOption.png`（新規）、`MyGameEngine.vcxproj(.filters)`
+
+- これまではゲームオーバーになると SPACE でタイトルへ戻るしかなく、チェックポイントを通っていても最初からやり直しだった。
+- ゲームオーバー画面に「コンティニュー」「タイトルへ」の項目を出し、W/S（↑/↓）で選んで SPACE で決定するようにした。最初はコンティニューを選んでいる。選んでいる項目は黄色で少し大きく、選んでいない項目は暗く表示する。
+- コンティニューを選ぶと、タイトル・スタート台を飛ばして、最後に通ったチェックポイントからレールに乗って始まる。的はチェックポイントを通った時点の状態に戻り、体力・敵・連鎖数・レールの塗りは最初の状態に戻る（落下リスタートと同じ戻し方）。チェックポイントを通る前に体力が尽きていたときは、レールの始点から始まる。
+- シーンは切り替えのたびに作り直されるため、`StageResult` と同じく static な値（`ContinuePoint`）でシーンをまたいで渡す。GameScene が体力 0 の瞬間に最後に通ったチェックポイントを書き込み、GameOverScene がコンティニューを選んだら `isRequested` を立て、次の GameScene が Play に入るときに読んで下ろす。
+- 再開した後にまたレールから落ちたときも、同じチェックポイントからやり直す。
+- 「GAME OVER」の画像の案内を「SPACE でタイトルへ」から「W/S でえらんで SPACE で決定」に変え、画面の名前を中央より上へずらして下に項目を並べた。項目の画像も同じスクリプトで生成する。
+- 操作説明（H キー）の画面の流れの「クリア/ゲームオーバー → タイトルへ戻る」を、クリアとゲームオーバーに分けた。行が 1 つ増えたため、行の間隔を 88 から 76 に詰めた。
+- 「Start From Selected Point」で始めてチェックポイントを通る前に体力が尽きたときは、選んだ制御点ではなくレールの始点から始まる（デバッグ用の設定はシーンを作り直すと消えるため）。
+
+| 定数 | 値 | 内容 |
+| --- | --- | --- |
+| `GameOverScene.cpp::kTitleCenterYRate` | 0.35 | 画面の名前の画像の中心の高さ（画面の高さに対する割合） |
+| `GameOverScene.cpp::kFirstOptionCenterYRate` | 0.63 | 一番上の項目の中心の高さ（画面の高さに対する割合） |
+| `GameOverScene.cpp::kOptionSpacingYRate` | 0.12 | 項目どうしの間隔（画面の高さに対する割合） |
+| `GameOverScene.cpp::kSelectedOptionColor` / `kSelectedOptionScale` | (1.0, 0.85, 0.15, 1.0) / 1.1 | 選んでいる項目の色と大きさの倍率 |
+| `GameOverScene.cpp::kUnselectedOptionColor` / `kUnselectedOptionScale` | (0.6, 0.6, 0.6, 0.8) / 1.0 | 選んでいない項目の色と大きさの倍率 |
+
+### ビルド確認（1.）
+
+この変更は Windows でのビルド・実機での確認をしていない。`GameOverScene.cpp` を仮のヘッダーで clang の構文チェックにかけ、ImGui がある構成・無い構成どちらでもエラーが無いことだけ確認した。`GameScene.cpp` は DirectX のヘッダーが要るため構文チェックもしていない（Visual Studio でのビルドと実機での動作確認が必要）。
+
+### 2. 残機を追加した
+
+対象ファイル: `Game/scenes/GameScene.h/.cpp`、`tools/generate_help_texture.py`、`resource/UI/help.png`
+
+- これまではレールから落ちても何も減らず何度でもやり直せ、体力が0になるとすぐゲームオーバーだった。
+- 残機（最大 3）を追加した。プレイ中にレールから落ちたとき・体力が 0 になったときに 1 つ減らし、残っていれば落下リスタートと同じ暗転（ImGui の「Fall Transition」で選んだ演出）でチェックポイント（通っていなければスタート台）からやり直す。体力は満タンに戻る。
+- 残機が 0 になったら、これまでの体力 0 と同じく暗いインクが垂れる演出（`InkDrip`）でゲームオーバー画面へ移る。
+- 出発前にスタート台から落ちたときは、まだプレイを始めていないため残機を減らさずにやり直す。
+- 残機は `ResetPlayState()` では戻さず、Play に入ったとき（ゲームオーバー画面からのコンティニューを含む）と R キーのやり直しで満タンに戻す。
+- 落下リスタートの暗転を `RestartAfterMiss()` に、残機を減らしてやり直すかゲームオーバーにするかを `LoseLife()` にまとめた。
+- 残機は「Rail Branch Debug」ウィンドウに Lives として出している。
+- 操作説明（H キー）の画面の流れを「プレイ → 残機を減らしてやり直し（体力が 0 / レールから落ちる）」「プレイ → ゲームオーバー（残機が 0）」に変えた。
+
+| 定数 | 値 | 内容 |
+| --- | --- | --- |
+| `GameScene.h::kMaxLives` | 3 | Play を始めたとき・コンティニューしたときの残機 |
+
+### ビルド確認（2.）
+
+未確認（Visual Studio でのビルドと実機での動作確認が必要）。
+
+### 3. 左上のアイコンを残機の表示にし、体力は画面の縁のインクで表すようにした
+
+対象ファイル: `Game/UI/DamageInkEffect.h/.cpp`（新規）、`Engine/Graphics/Shaders/PostProcess/DamageInk.PS.hlsl`（新規）、`Engine/Graphics/Shaders/PostProcess/PostProcess.hlsli`、`Engine/Graphics/Effect/PostProcess.h/.cpp`、`Engine/Framework/Application.h/.cpp`、`Game/UI/StageHUD.h/.cpp`、`Game/scenes/GameScene.h/.cpp`、`tools/generate_help_texture.py`、`resource/UI/help.png`、`MyGameEngine.vcxproj(.filters)`
+
+- 左上のアイコン（`lifeIcon.png`）は体力を出していたが、残機の表示に変えた。残機が減ると、減った分のアイコンが暗く半透明になる。
+- 体力は、新しく作ったポストプロセス `DamageInk` で表す。体力が減るほど画面の縁から敵のインク（ピンク）が波打ちながら迫り、景色の色が抜けていく。
+  - 体力 3：何もかけない。体力 2：四隅にインクがにじむ。体力 1：インクが縁全体を囲み、鼓動のように脈打つ。
+  - 被弾した瞬間は、画面全体を一瞬ピンクに寄せる（0.4 秒で戻る）。
+  - インクの広がりは少しずつ寄せるため、じわっと迫って見える。やり直しで体力が満タンに戻ると、インクが引いていく。
+- ポストプロセスは 1 回に 1 種類しかかけられないため、ほかのポストプロセス（出発ゲートが開く瞬間の放射ブラーなど）をかけている間はそちらを優先し、終わったら体力の表現に戻すようにした（`Application::Draw()`）。PostProcess Settings の Filter Type にも DamageInk を足した。
+- 定数バッファの最後の詰め物（`padding3[2]`）を、体力の減り具合（`damageAmount`）と被弾の色づき（`damageFlash`）に置き換えた。大きさは 64 バイトのまま変わらない。インクの縁を動かす時間には、すでに毎フレーム進めている `randomTime` を使う。
+- Play 中だけかけ、Edit モードとシーンの終わりでは外す。クリア画面・ゲームオーバー画面には持ち越さない。
+- 操作説明（H キー）の画面の流れの条件を「体力が 0 になる / レールから落ちる」「残機（左上）が 0 になる」に直した。
+- 見た目は、シェーダーと同じ計算を Python で再現して確かめた。
+
+### ビルド確認（3.）
+
+この変更は Windows でのビルド・実機での確認をしていない。`DamageInkEffect.cpp` を仮のヘッダーで clang の構文チェックにかけ、エラーが無いことだけ確認した。`DamageInk.PS.hlsl` はシェーダーのコンパイラで確かめていない（実行時にコンパイルされるため、起動時に失敗すると assert で止まる）。
+
+### 4. ゲームオーバー画面へ切り替わる前に、自機が弾けるやられ演出を入れた
+
+対象ファイル: `Game/scenes/GameScene.h/.cpp`、`Game/objects/InkEffectManager.h/.cpp`
+
+- これまでは残機が 0 になった瞬間にインクが垂れる切り替えが始まり、「やられた」と感じる間が無かった。
+- 残機が 0 になったら、切り替える前にやられ演出を挟むようにした（`StartDefeat()` / `UpdateDefeat()`）。
+  - 自機が敵のインク（ピンク）になって全方向へ弾け飛ぶ（`InkEffectManager::EmitDefeatBurst()`。しぶき 48 粒とピンクの閃光）。自機は描かない。
+  - 弾けた瞬間に一瞬動きを止め（0.15 秒）、画面を揺らし、自機を中心に放射ブラーをかける。
+  - 操作・当たり判定・レールの進行は止め、敵とインクの演出は 0.35 倍のスローで動かす。カメラはその場に止まる。
+  - 1.4 秒たったら、これまでどおり暗いインクが垂れる演出（`InkDrip`）でゲームオーバー画面へ移る。
+- 弾けたしぶきは、スタート台に落ちてもピンクに塗らないようにした（`Piece::paintsOnLanding`）。
+- 体力 0 のときはその場で、落下のときは落ちて地面の高さに着いたところで弾ける（落下はそこで初めて分かるため、落ちていく自機を見送る形にはしていない）。
+- やられ演出の最中に R キーでやり直したときは、`ResetPlayState()` で演出を止めて自機を戻す。
+
+| 定数 | 値 | 内容 |
+| --- | --- | --- |
+| `GameScene.h::kDefeatDuration` | 1.4 | 自機が弾けてからゲームオーバー画面への切り替えを始めるまでの時間（秒） |
+| `GameScene.h::kDefeatTimeScale` | 0.35 | やられ演出の間の、敵・インクの演出の時間の進み方 |
+| `GameScene.h::kDefeatHitStopDuration` | 0.15 | 弾けた瞬間に動きを止める時間（秒） |
+| `GameScene.h::kDefeatShakeAmplitude` / `kDefeatShakeDuration` | 0.25 / 0.6 | 画面の揺れの幅 / 収まるまでの時間（秒） |
+| `GameScene.h::kDefeatRadialBlurWidth` / `kDefeatRadialBlurDuration` | 0.03 / 0.5 | 放射ブラーの強さ / 消えるまでの時間（秒） |
+| `InkEffectManager.h::kDefeatDroplet*` | 48 粒・速さ 3〜9・大きさ 0.06〜0.14・寿命 0.8〜1.4 秒 | 弾けるしぶき |
+| `InkEffectManager.h::kDefeatFlashScale` / `kDefeatFlashLife` | 0.35 / 0.25 | ピンクの閃光の大きさ / 寿命（秒） |
+
+### ビルド確認（4.）
+
+未確認（Visual Studio でのビルドと実機での動作確認が必要）。
+
+### 5. ゲームオーバーまでの演出を流し続けるデモを追加した
+
+対象ファイル: `Game/systems/DemoMode.h`（新規）、`Game/scenes/GameScene.h/.cpp`、`Game/scenes/GameOverScene.h/.cpp`、`MyGameEngine.vcxproj(.filters)`
+
+- 評価会で演出を見てもらうため、人がいなくても「残機 2 で始まる → 体力が尽きてリトライ → もう一度尽きる → やられ演出 → ゲームオーバー画面 → 最初に戻る」をくり返すデモを作った。
+- 提出・掲示する Release 版では、起動したらすぐデモになる（はじめは `--demo` を付けて起動したときだけにしていたが、そのまま提出・掲示するため常にデモにした）。Debug・Development 版はエディターで作業するため、今までどおり遊べる。
+- 被弾は敵弾を待たずに 1.5 秒ごとに起こし、毎回同じ流れになるようにした。体力 3 が尽きるまで約 4.5 秒で、最初のレール（約 8 秒）の終点で落ちる前に尽きる。
+- デモではタイトル・スタート台を飛ばしてレールの始点から始め、リトライもスタート台ではなくレールの始点から行う。
+- ゲームオーバー画面は 4 秒見せたら、項目を選ばずに最初からやり直す。
+- 長い時間くり返しても資源が増え続けないか、シーンを作り直すたびに確保するものを確かめた。テクスチャ・塗りテクスチャ・パーティクルのグループ・カメラは、名前ごとに 1 回だけ作って使い回すため増えない。
+
+### ビルド確認（5.）
+
+この変更は Windows でのビルド・実機での確認をしていない。`GameOverScene.cpp` を仮のヘッダーで clang の構文チェックにかけ、ImGui がある構成・無い構成どちらでもエラーが無いことだけ確認した。評価会の前に、デモを 1 時間ほど流して止まらないか確かめる必要がある。
+
+### 6. デモの 1 回目は敵の弾、2 回目はレールからの落下で残機が尽きるようにした
+
+対象ファイル: `Game/objects/Enemy.h/.cpp`、`Game/objects/EnemyManager.h/.cpp`、`Game/scenes/GameScene.h/.cpp`、`Game/systems/DemoMode.h`
+
+- 5. では決まった間隔で被弾させていたため、敵の弾が当たっていないのに体力が減って見えた。また 2 回とも同じ死に方だった。
+- 1 回目は、最初のレールの近くの 2 体の敵が撃つ本物の弾で体力が尽きるようにした。必ず当たるよう、デモの 1 回目の間だけ、どの弾も毎フレームまっすぐ自機へ向け直す（`Enemy::SetGuidedBullets()` / `EnemyManager::SetGuidedBullets()`）。体力 3 が約 5 秒で尽き、最初のレール（約 8 秒）の終点で落ちる前に尽きる。
+- 2 回目は、弾を必ず当てるのをやめ、敵の弾が当たっても体力を減らさないようにした。誰も鍵の的を撃たないため次のレールが出ず、最初のレールの終点から落ちて残機が尽きる。
+- 決まった間隔で被弾させる処理（`kHitInterval`）は消した。
+- 1 回目に弾が当たりきらずにレールの終点まで行った場合は、1 回目も落下で残機が減る（デモは止まらずに続く）。
+
+### ビルド確認（6.）
+
+未確認（Visual Studio でのビルドと実機での動作確認が必要）。1 回目が敵の弾で約 5 秒で尽きるかは、敵の配置（`resource/enemy/enemy.json`）と往復の位置から見積もった値のため、実機で確かめる必要がある。
+
+### 7. タイトルを飛ばしたときにレールから落ちなかった不具合を直し、デモの 1 回目をゆっくり進ませた
+
+対象ファイル: `Game/objects/StartPlatform.h/.cpp`、`Game/Title/StartSequence.cpp`、`Game/objects/Player.h/.cpp`、`Game/scenes/GameScene.cpp`、`Game/systems/DemoMode.h`
+
+- 原因：レールから外れている間は、スタート台の出発ゲートが閉じていると、ゲートより手前へ押し戻す処理（`StartPlatform::ClampBehindClosedGate()`）がかかる。この処理は台の上だけでなく、ゲートの面より先のどこにいてもかかる。タイトルを飛ばして始めたとき（デモ・コンティニュー・デバッグ用の Skip Title / Start From Selected Point）はゲートを開けないため、レールの終点から落ちるとゲートの手前へ引き戻され、地面まで落ちずにやり直しにならなかった。
+- タイトルを飛ばして始めるときは、開ける演出を出さずにゲートを開ききった状態にするようにした（`StartPlatform::OpenGateImmediately()`。開き終わった時間にしておくため、インクの流し込みや遮断棒が跳ね上がる瞬間の演出は起きない）。
+- デモの 1 回目は、敵の弾が 3 発当たりきる前に最初のレールの終点に着いていたため、レールを進む速さを半分にした（`Player::SetRailSpeedRate()`。走り切るまで約 16 秒）。2 回目は終点から落ちるまで長く待たせないよう、通常の速さに戻す。
+
+| 定数 | 値 | 内容 |
+| --- | --- | --- |
+| `DemoMode::kFirstLifeRailSpeedRate` | 0.5 | デモの 1 回目のレールを進む速さの倍率 |
+| `DemoMode::kSecondLifeRailSpeedRate` | 1.0 | デモの 2 回目のレールを進む速さの倍率 |
+
+### ビルド確認（7.）
+
+未確認（Visual Studio でのビルドと実機での動作確認が必要）。
+
+### 8. 復活したときに、透明な体がだんだん元に戻る見せ方を入れた（2 種類から ImGui で選ぶ）
+
+対象ファイル: `Engine/Graphics/3D/Model.h`、`Engine/Graphics/3D/Obj3D.cpp`、`Engine/Graphics/3D/Model.cpp`、`Engine/Graphics/Shaders/Obj3D/Object3d.PS.hlsl`、`Game/objects/Player.h/.cpp`、`Game/scenes/GameScene.h/.cpp`
+
+- 復活したとき（落下リスタート・残機を減らしたやり直し・コンティニュー）は、自機が透明な状態から 1.2 秒かけて元に戻るようにした。暗転で画面を覆っている間は進めず、画面が見えてから戻っていく。
+- 見せ方は 2 種類作り、Edit モードの「GameScene Debug」パネルの「Respawn Reveal」で切り替える。「Preview Respawn Reveal」を押すと、その場のプレイヤーで見た目を確認できる。
+  - Stripes：細い横じま（体の高さに 9 本）だけ見えている状態から、しまが太くなってすき間が埋まる。
+  - Sweep：光る白い境界線が下から上へ通り、線より下だけ見える。
+- 選んだものは調整項目 `respawnRevealStyle` に入る。Global Variables の Save で `resource/GlobalVariables/GameScene.json` に保存すると、Release 版（デモ）でも同じ見せ方になる。初期値は Stripes。
+- モデルのマテリアルに、現れる演出の見せ方・進み具合・範囲（足元の高さと体の高さ）を足した（`Model::Material::revealStyle` など）。マテリアルの最後に足したため、ほかのモデルの見た目は変わらない（既定は None でふつうに描く）。シェーダーでは、まだ見えていない部分のピクセルを捨てて透明に見せる。
+
+| 定数 | 値 | 内容 |
+| --- | --- | --- |
+| `GameScene.h::kRespawnRevealDuration` | 1.2 | 透明な体が元に戻りきるまでの時間（秒） |
+| `Object3d.PS.hlsl::kRevealStripeCount` | 9 | Stripes の横じまの本数 |
+| `Object3d.PS.hlsl::kRevealEdgeWidth` | 0.06 | Sweep の境界線の太さ（体の高さに対する割合） |
+
+### ビルド確認（8.）
+
+未確認（Visual Studio でのビルドと実機での動作確認が必要）。`Object3d.PS.hlsl` はシェーダーのコンパイラで確かめていない。
+
+### 9. 復活の見せ方を Stripes に決め、元に戻る速さを上げた
+
+対象ファイル: `Game/scenes/GameScene.h`
+
+- 見比べた結果、Stripes（横じまが太くなって埋まる）に決めた（初期値のまま）。Sweep も ImGui で選べるよう残している。
+- 元に戻りきるまでの時間 `kRespawnRevealDuration` を 1.2 秒から 0.8 秒にした。
+
+### 10. デモを消した
+
+対象ファイル: `Game/systems/DemoMode.h`（削除）、`Game/scenes/GameScene.h/.cpp`、`Game/scenes/GameOverScene.h/.cpp`、`Game/objects/Player.h/.cpp`、`Game/objects/Enemy.h/.cpp`、`Game/objects/EnemyManager.h/.cpp`、`MyGameEngine.vcxproj(.filters)`
+
+- 評価会用の exe と動画を用意し終えたため、5.〜7. で入れたデモ（Release 版で起動したらゲームオーバーまでの演出をくり返す）を消し、Release 版も今までどおり遊べるようにした。
+- デモのためだけに足した、敵の弾を必ず当てる設定（`SetGuidedBullets`）、レールを進む速さの倍率（`Player::SetRailSpeedRate`）、ゲームオーバー画面を決まった時間で抜ける処理も消した。
+- 7. のタイトルを飛ばしたときに出発ゲートを開けておく修正（`StartPlatform::OpenGateImmediately()`）は、コンティニューやデバッグ用の Skip Title でも必要なため残した。8.・9. の復活の見せ方も残した。

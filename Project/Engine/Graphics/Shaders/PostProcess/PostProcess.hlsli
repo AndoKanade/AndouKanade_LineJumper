@@ -30,4 +30,8 @@ cbuffer PostProcessConfig : register(b1)
     // --- Random / Noise 用 ---
     float randomIntensity; // ノイズの強さ
     float randomTime; // 時間（これがないとノイズが止まって見える）
+
+    // --- DamageInk (体力の表現) 用 ---
+    float damageAmount; // 体力の減り具合 (0: 満タン 〜 1: 尽きた)
+    float damageFlash; // 被弾した瞬間の画面の色づき (0〜1)
 };

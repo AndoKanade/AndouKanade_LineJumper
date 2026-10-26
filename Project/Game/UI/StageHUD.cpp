@@ -8,7 +8,7 @@
 namespace{
 	// 数字(0〜9, +, /)を横一列に並べたテクスチャ
 	const std::string kDigitsTexture = "resource/UI/digits.png";
-	// 体力アイコン
+	// 残機アイコン
 	const std::string kLifeIconTexture = "resource/UI/lifeIcon.png";
 	// 壊した的の数の下地
 	const std::string kPanelTexture = "resource/UI/panel.png";
@@ -58,24 +58,24 @@ void StageHUD::Initialize(SpriteCommon* spriteCommon){
 }
 
 // 表示内容の更新
-void StageHUD::Update(int hp,int maxHp,int destroyedCount,int totalCount,const ComboCounter& combo){
+void StageHUD::Update(int lives,int maxLives,int destroyedCount,int totalCount,const ComboCounter& combo){
 	usedDigitCount_ = 0;
 
-	// 体力アイコン(最大体力が変わったときだけ作り直す)
-	while(static_cast<int>(lifeIcons_.size()) < maxHp){
+	// 残機アイコン(残機の最大値が変わったときだけ作り直す)
+	while(static_cast<int>(lifeIcons_.size()) < maxLives){
 		auto icon = std::make_unique<Sprite>();
 		icon->Initialize(spriteCommon_,kLifeIconTexture);
 		icon->SetSize({kLifeIconSize, kLifeIconSize});
 		icon->SetAnchorPoint(kTopLeftAnchor);
 		lifeIcons_.push_back(std::move(icon));
 	}
-	while(static_cast<int>(lifeIcons_.size()) > maxHp){
+	while(static_cast<int>(lifeIcons_.size()) > maxLives){
 		lifeIcons_.pop_back();
 	}
 	for(int i = 0; i < static_cast<int>(lifeIcons_.size()); ++i){
 		lifeIcons_[i]->SetPosition({kScreenMargin + kLifeIconSpacing * static_cast<float>(i), kScreenMargin});
-		// 残っている体力は明るく、減った分は暗く表示する
-		lifeIcons_[i]->SetColor(i < hp?kWhite:kLostLifeColor);
+		// 残っている残機は明るく、減った分は暗く表示する
+		lifeIcons_[i]->SetColor(i < lives?kWhite:kLostLifeColor);
 		lifeIcons_[i]->Update();
 	}
 

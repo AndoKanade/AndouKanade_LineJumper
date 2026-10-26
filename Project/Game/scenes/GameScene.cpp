@@ -34,6 +34,7 @@
 #include "objects/InkEffectManager.h"
 #include "objects/ComboCounter.h"
 #include "objects/StageResult.h"
+#include "objects/ContinuePoint.h"
 // カメラ
 #include "Camera/RailCamera.h"
 #include "Camera/DebugTopCamera.h"
@@ -43,6 +44,7 @@
 #include "UI/Reticle.h"
 #include "UI/StageHUD.h"
 #include "UI/SpeedLines.h"
+#include "UI/DamageInkEffect.h"
 #include "UI/HelpOverlay.h"
 #include <algorithm>
 #include <iterator>
@@ -95,10 +97,18 @@ namespace{
 	// 演出の初期値(保存済みJSONがあればそちらが優先される)
 	constexpr SceneTransition::Style kDefaultFallTransitionStyle = SceneTransition::Style::RailStripes;
 	constexpr SceneTransition::Style kDefaultClearTransitionStyle = SceneTransition::Style::InkBurst;
+	// 復活したときの、透明な体が元に戻る見せ方を保存する調整項目名(Model::RevealStyle の番号で保存する)と、初期値
+	const char* kRespawnRevealKey = "respawnRevealStyle";
+	constexpr Model::RevealStyle kDefaultRespawnRevealStyle = Model::RevealStyle::Stripes;
 
 	// 調整項目に保存した番号から演出の種類を取得する
 	SceneTransition::Style GetTransitionStyle(const char* key){
 		return static_cast<SceneTransition::Style>(GlobalVariables::GetInstance()->GetIntValue(kGameSceneGroup,key));
+	}
+
+	// 調整項目に保存した番号から、復活したときの見せ方を取得する
+	Model::RevealStyle GetRespawnRevealStyle(){
+		return static_cast<Model::RevealStyle>(GlobalVariables::GetInstance()->GetIntValue(kGameSceneGroup,kRespawnRevealKey));
 	}
 
 	// 調整項目に保存した番号から出発の演出の種類を取得する
@@ -119,6 +129,14 @@ namespace{
 	};
 	const char* kClearTransitionNames[] = {"InkBurst", "RailPaint", "GoalStamp", "CloudRise"};
 	static_assert(std::size(kClearTransitionStyles) == std::size(kClearTransitionNames),"クリアの演出の候補と名前の数が合っていない");
+
+	// 復活したときの見せ方の候補と、ImGui の切り替えに表示する名前(同じ順番にする)
+	constexpr Model::RevealStyle kRespawnRevealStyles[] = {
+		Model::RevealStyle::Stripes,
+		Model::RevealStyle::Sweep,
+	};
+	const char* kRespawnRevealNames[] = {"Stripes", "Sweep"};
+	static_assert(std::size(kRespawnRevealStyles) == std::size(kRespawnRevealNames),"復活の見せ方の候補と名前の数が合っていない");
 #endif
 }
 
@@ -172,6 +190,7 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// 落下リスタート・クリア画面への切り替えの演出(ImGui で選んだものを "Global Variables" の Save で保存できる)
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kFallTransitionKey,static_cast<int32_t>(kDefaultFallTransitionStyle));
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kClearTransitionKey,static_cast<int32_t>(kDefaultClearTransitionStyle));
+	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kRespawnRevealKey,static_cast<int32_t>(kDefaultRespawnRevealStyle));
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kDepartureStyleKey,static_cast<int32_t>(kDefaultDepartureStyle));
 	// 遠くの物を空の色に溶け込ませる距離(Play中だけ使う)
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kObjectFadeStartKey,kDefaultObjectFadeStart);
@@ -231,13 +250,16 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// 的を続けて壊したときの連鎖数
 	comboCounter_ = std::make_unique<ComboCounter>();
 
-	// プレイ中の画面表示(体力・壊した的の数・連鎖数)
+	// プレイ中の画面表示(残機・壊した的の数・連鎖数)
 	stageHUD_ = std::make_unique<StageHUD>();
 	stageHUD_->Initialize(spriteCommon_);
 
 	// レールを進んでいる間に出すスピード線
 	speedLines_ = std::make_unique<SpeedLines>();
 	speedLines_->Initialize(spriteCommon_);
+
+	// プレイヤーの体力を、画面の縁から迫る敵のインク(ポストプロセス)で表現する
+	damageInkEffect_ = std::make_unique<DamageInkEffect>();
 
 	// H キーで開く操作説明(操作方法と画面の流れ)
 	helpOverlay_ = std::make_unique<HelpOverlay>();
@@ -271,6 +293,8 @@ void GameScene::Finalize(){
 	}
 	// 遠くの物を溶け込ませる距離は全オブジェクト共通の設定のため、他のシーンに持ち越さないよう元に戻す
 	object3dCommon_->SetSceneDistanceFade(0.0f,0.0f);
+	// 体力の表現はポストプロセスにかけているため、クリア画面・ゲームオーバー画面に持ち越さないよう外す
+	damageInkEffect_->Reset();
 }
 
 // ゲームを初期状態(レール先頭)から始め直す
@@ -309,6 +333,10 @@ void GameScene::ResetPlayState(){
 
 	// 雑魚敵も撃破前の初期状態(体力満タン)から始める
 	enemyManager_->Reset();
+
+	// やられ演出の最中にRキーなどでやり直したときも、自機を出して操作できる状態に戻す
+	isDefeated_ = false;
+	defeatTimer_ = 0.0f;
 }
 
 // 遠くの物を空の色に溶け込ませる距離を、全オブジェクト共通の設定にする
@@ -342,6 +370,27 @@ void GameScene::StartPlaySequence(){
 		// タイトルを飛ばすときはスタート台の上も飛ばし、レールの始点に乗せた状態からすぐ始める
 		player_->BoardRailStart();
 	}
+}
+
+// ゲームオーバー画面でコンティニューを選んだときに、タイトル・スタート台を飛ばして最後に通ったチェックポイントから始める
+// ResetPlayState()でレールを0番へ戻し、的もすべて復活させているため、その後に呼ぶ
+void GameScene::StartFromContinuePoint(){
+	// 1回使ったら下ろし、タイトルからやり直したときなどに同じ位置から始めないようにする
+	ContinuePoint::isRequested = false;
+	startSequence_->Start(true);
+
+	// 再開した後にまたレールから落ちたときも、同じチェックポイントからやり直せるよう覚え直す
+	checkpoint_.railIndex = ContinuePoint::railIndex;
+	checkpoint_.pointIndex = ContinuePoint::pointIndex;
+	checkpoint_.targetAliveStates = ContinuePoint::targetAliveStates;
+	if(checkpoint_.railIndex >= 0){
+		RespawnAtCheckpoint();
+	} else{
+		// チェックポイントを通る前に残機が尽きたときは、レールの始点から始める
+		player_->BoardRailStart();
+	}
+	// 落ちたときのやり直しと同じく、透明な体がだんだん元に戻る見せ方で始める
+	player_->StartReveal(GetRespawnRevealStyle(),kRespawnRevealDuration);
 }
 
 // Playに入ったときに覚えておいた制御点の位置からレールに乗せる
@@ -379,6 +428,63 @@ void GameScene::RespawnAtCheckpoint(){
 	targetManager_->RestoreAliveStates(checkpoint_.targetAliveStates);
 	// チェックポイントを通った時点で出ていたレールは出たまま、出ていなかったレールは出ていない状態にすぐ戻す
 	ApplyRailLocks(true);
+}
+
+// 暗転で画面を覆っている間に、最後に通ったチェックポイント(通っていなければスタート台)からやり直す
+// 一瞬で始点へ戻ると何が起きたか分かりにくいため、覆い終わってから戻す
+void GameScene::RestartAfterMiss(){
+	sceneManager_->StartTransition([this](){
+		ResetPlayState();
+		// チェックポイントを通っていれば、そこから始め直す
+		// 通っていなくても、選んだ制御点から始めているときは、落ちても同じ制御点から始め直す
+		if(checkpoint_.railIndex >= 0){
+			RespawnAtCheckpoint();
+		} else if(isPlayingFromPoint_){
+			BoardAtPlayStartPoint();
+		}
+		// 透明な体がだんだん元に戻る見せ方で、復活したことを分かりやすくする
+		player_->StartReveal(GetRespawnRevealStyle(),kRespawnRevealDuration);
+	},GetTransitionStyle(kFallTransitionKey));
+}
+
+// 落下・体力切れで残機を1つ減らし、残っていればやり直し、尽きたらやられ演出を始める
+void GameScene::LoseLife(){
+	--lives_;
+	if(lives_ > 0){
+		RestartAfterMiss();
+		return;
+	}
+
+	// ゲームオーバー画面でコンティニューを選んだら最後に通ったチェックポイントから始められるよう、シーンが作り直される前に書き込んでおく
+	ContinuePoint::railIndex = checkpoint_.railIndex;
+	ContinuePoint::pointIndex = checkpoint_.pointIndex;
+	ContinuePoint::targetAliveStates = checkpoint_.targetAliveStates;
+	// すぐに切り替えず、やられ演出で「やられた」ことを見せてからゲームオーバー画面へ移る
+	StartDefeat();
+}
+
+// 残機が尽きたときのやられ演出を始める
+// 自機をピンクのインクにして弾けさせ、一瞬動きを止めて画面を揺らし、自機を中心に放射ブラーをかける
+void GameScene::StartDefeat(){
+	isDefeated_ = true;
+	defeatTimer_ = 0.0f;
+
+	const Vector3 burstPosition = player_->GetHitSphere().center;
+	inkEffect_->EmitDefeatBurst(burstPosition);
+	screenImpact_->Trigger(kDefeatHitStopDuration,kDefeatShakeAmplitude,kDefeatShakeDuration);
+	if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
+		Application::GetInstance()->TriggerRadialBlur(CameraPoseMath::WorldToScreenUv(burstPosition,activeCamera->GetViewProjectionMatrix()),kDefeatRadialBlurWidth,kDefeatRadialBlurDuration);
+	}
+}
+
+// やられ演出を進め、終わったらゲームオーバー画面へ移る
+// ゲームオーバーは暗いインクが上から垂れてきて画面を覆う演出で切り替える
+void GameScene::UpdateDefeat(){
+	const bool wasWaiting = defeatTimer_ < kDefeatDuration;
+	defeatTimer_ += kDeltaTime;
+	if(wasWaiting && defeatTimer_ >= kDefeatDuration){
+		sceneManager_->ChangeScene("GAMEOVER",SceneTransition::Style::InkDrip);
+	}
 }
 
 // 鍵の的が残っていて出ていないレールを求め、レールの描き方と着地できるレールに反映する
@@ -579,9 +685,16 @@ void GameScene::UpdateGameplay(){
 		// 制御点を選んでいないときは、設定がONでもいつも通り始める
 		isPlayingFromPoint_ = startsFromSelectedPoint_ && editPointIndex_ >= 0;
 		// Playに入り直したら、前回のPlayで通ったチェックポイントは忘れて最初から始める
+		// 残機も満タンから始める(コンティニューで戻ってきたときも満タンにする)
 		checkpoint_ = Checkpoint{};
+		lives_ = kMaxLives;
 		ResetPlayState();
-		StartPlaySequence();
+		// ゲームオーバー画面でコンティニューを選んで戻ってきたときは、最後に通ったチェックポイントから始める
+		if(ContinuePoint::isRequested){
+			StartFromContinuePoint();
+		} else{
+			StartPlaySequence();
+		}
 	} else if(!isPlayMode && wasPlayMode_){
 		startSequence_->Stop();
 		departureDirector_->Reset();
@@ -591,8 +704,9 @@ void GameScene::UpdateGameplay(){
 		railEditor_->SelectPoint(editRailIndex_,editPointIndex_);
 	} else if(isPlayMode && input_ && input_->TriggerKey(DIK_R)){
 		// 確認用の一時的な処理:Play中にRキーでタイトルから最初からやり直す(選んだ制御点から始めているときは、その制御点からやり直す)
-		// 最初からやり直すため、通ったチェックポイントも忘れる
+		// 最初からやり直すため、通ったチェックポイントも忘れ、残機も満タンに戻す
 		checkpoint_ = Checkpoint{};
+		lives_ = kMaxLives;
 		ResetPlayState();
 		StartPlaySequence();
 	}
@@ -619,7 +733,8 @@ void GameScene::UpdateGameplay(){
 
 	// レール進行・操作・射撃・勝敗判定は、開始演出が終わってプレイ可能になってから動かす
 	// 暗転中(クリア・ゲームオーバーへの切り替え中、落下リスタート中)も、入力や判定が二重に起きないよう止めておく
-	const bool isGameplayActive = isPlayMode && startSequence_->IsPlayable() && !sceneManager_->IsTransitioning();
+	// やられ演出の最中も、自機は弾けて消えているため止めておく
+	const bool isGameplayActive = isPlayMode && startSequence_->IsPlayable() && !sceneManager_->IsTransitioning() && !isDefeated_;
 	// 開始演出のうち、スタート台の上を自由に動ける段階か(出発ゲートの前で準備中と、ゲートが開いてレールへ乗り込むまで)
 	// 動き方(WASD・ジャンプ・台から落ちたときのリスタート)はプレイ中と同じで、敵・射撃・勝敗判定はまだ動かさない
 	const bool isPlayerMovable = isPlayMode && startSequence_->IsPlayerMovable() && !sceneManager_->IsTransitioning();
@@ -675,6 +790,12 @@ void GameScene::UpdateGameplay(){
 	// レールの状態確認用デバッグ表示(Playモード中も含めて常に表示する)
 	ShowStatusWindow();
 #endif
+
+	// 復活したときに透明な体が元に戻っていく演出を進める
+	// 暗転で画面を覆っている間は進めず、画面が見えてから元に戻っていくようにする
+	if(!sceneManager_->IsTransitioning()){
+		player_->UpdateReveal(kDeltaTime);
+	}
 
 	// プレイヤーをレールの上に立たせ、照準の方向へ向ける
 	// 座標は雑魚敵の検知判定・開始演出にも使う
@@ -739,7 +860,14 @@ void GameScene::UpdateGameplay(){
 
 	// 雑魚敵の更新
 	// Edit中・開始演出中はゲームを静止させるため、経過時間を0にして表示更新のみ行わせる
-	enemyManager_->Update(playerPos,isGameplayActive?kDeltaTime:0.0f);
+	// やられ演出の最中は、周りがスローで動き続けるように見せる
+	float enemyDeltaTime = 0.0f;
+	if(isGameplayActive){
+		enemyDeltaTime = kDeltaTime;
+	} else if(isDefeated_){
+		enemyDeltaTime = kDeltaTime * kDefeatTimeScale;
+	}
+	enemyManager_->Update(playerPos,enemyDeltaTime);
 
 	// 敵弾とプレイヤーの当たり判定
 	// プレイ可能な間のみ判定する。連続被弾で一瞬に体力が尽きないよう、被弾後は一定時間無敵にする
@@ -757,32 +885,32 @@ void GameScene::UpdateGameplay(){
 		}
 	}
 
-	// ゲームオーバー判定
-	// 体力が0になったらゲームオーバー画面へ遷移する
+	// やられ演出を進め、終わったらゲームオーバー画面へ移る(Editモードへ戻ったときは止める)
+	if(isPlayMode && isDefeated_){
+		UpdateDefeat();
+	}
+
+	// 体力切れの判定
+	// 体力が0になったら残機を1つ減らしてやり直す(残機が尽きたら、やられ演出のあとゲームオーバー画面へ遷移する)
 	// クリア判定と同じく、以降の落下リスタートなどの処理を行わないようここで抜ける
+	// やり直しの暗転中はプレイ可能でなくなるため、残機が二重に減ることはない
 	if(isGameplayActive && player_->IsDead()){
-		// ゲームオーバーは暗いインクが上から垂れてきて画面を覆う演出で切り替える
-		sceneManager_->ChangeScene("GAMEOVER",SceneTransition::Style::InkDrip);
+		LoseLife();
 		return;
 	}
 
 	// プレイヤーの自立(ジャンプ+WASD移動)
-	// どのレールにも乗れないまま地面の高さまで落ちたら、レール先頭からやり直す
-	// 一瞬で始点へ戻ると何が起きたか分かりにくいため、暗転で画面を覆っている間に始点へ戻す
+	// どのレールにも乗れないまま地面の高さまで落ちたら、残機を1つ減らしてやり直す(残機が尽きたら、やられ演出のあとゲームオーバー画面へ遷移する)
 	// 開始演出でスタート台の上を動ける間も、同じ動き方で動かす
+	// 出発前にスタート台から落ちたときは、まだプレイを始めていないため残機を減らさずにやり直す
 	if(isGameplayActive || isPlayerMovable){
 		bool needsRestart = player_->UpdateMovement(input_,railEditor_.get(),startPlatform_.get(),cameraForward,railCamera_->GetRight(),ground_->GetHeight(),kDeltaTime);
 		if(needsRestart){
-			sceneManager_->StartTransition([this](){
-				ResetPlayState();
-				// チェックポイントを通っていれば、そこから始め直す
-				// 通っていなくても、選んだ制御点から始めているときは、落ちても同じ制御点から始め直す
-				if(checkpoint_.railIndex >= 0){
-					RespawnAtCheckpoint();
-				} else if(isPlayingFromPoint_){
-					BoardAtPlayStartPoint();
-				}
-			},GetTransitionStyle(kFallTransitionKey));
+			if(isGameplayActive){
+				LoseLife();
+			} else{
+				RestartAfterMiss();
+			}
 		}
 
 		// 出発の演出を使うときは、ゲートの先の出発台の手前の線を越えたら演出を始める
@@ -869,13 +997,18 @@ void GameScene::UpdateGameplay(){
 
 	// 演出の更新(このフレームで出した分も含めて行列を求めるため、出す処理がすべて終わってから行う)
 	// ヒットストップ中は、飛び散ったインクも空中で止める
-	inkEffect_->Update(screenImpact_->IsHitStopping()?0.0f:kDeltaTime);
+	// やられ演出の最中は、弾けたインクがゆっくり飛び散っていくように見せる
+	const float inkTimeScale = isDefeated_?kDefeatTimeScale:1.0f;
+	inkEffect_->Update(screenImpact_->IsHitStopping()?0.0f:kDeltaTime * inkTimeScale);
 
 	// スピード線はレールを進んでいる間だけ出す
 	speedLines_->Update(isRidingRail,kDeltaTime);
 
-	// 画面表示の更新
-	stageHUD_->Update(player_->GetHp(),player_->GetMaxHp(),targetManager_->GetDestroyedCount(),targetManager_->GetTotalCount(),*comboCounter_);
+	// 体力の表現の更新(Play中だけ出し、Editモードでは外す)
+	damageInkEffect_->Update(player_->GetHp(),player_->GetMaxHp(),isPlayMode,kDeltaTime);
+
+	// 画面表示の更新(左上のアイコンには残機を出す)
+	stageHUD_->Update(lives_,kMaxLives,targetManager_->GetDestroyedCount(),targetManager_->GetTotalCount(),*comboCounter_);
 }
 
 #ifdef USE_IMGUI
@@ -905,6 +1038,7 @@ void GameScene::ShowStatusWindow(){
 
 	// プレイヤーの体力・無敵時間のデバッグ表示
 	ImGui::Text("Player HP: %d / %d",player_->GetHp(),player_->GetMaxHp());
+	ImGui::Text("Lives: %d / %d",lives_,kMaxLives);
 	ImGui::Text("Player Invincible: %.2f",player_->GetInvincibleTimer());
 	ImGui::End();
 }
@@ -986,6 +1120,21 @@ void GameScene::ShowEditorPanels(){
 		sceneManager_->StartTransition(nullptr,clearTransitionStyle);
 	}
 
+	// 復活したときの、透明な体が元に戻る見せ方を切り替える。Preview を押すと、その場のプレイヤーで見た目を確認できる
+	const Model::RevealStyle respawnRevealStyle = GetRespawnRevealStyle();
+	int respawnRevealIndex = 0;
+	for(int i = 0; i < static_cast<int>(std::size(kRespawnRevealStyles)); ++i){
+		if(kRespawnRevealStyles[i] == respawnRevealStyle){
+			respawnRevealIndex = i;
+		}
+	}
+	if(ImGui::Combo("Respawn Reveal",&respawnRevealIndex,kRespawnRevealNames,IM_ARRAYSIZE(kRespawnRevealNames))){
+		gv->SetValue(kGameSceneGroup,kRespawnRevealKey,static_cast<int32_t>(kRespawnRevealStyles[respawnRevealIndex]));
+	}
+	if(ImGui::Button("Preview Respawn Reveal")){
+		player_->StartReveal(respawnRevealStyle,kRespawnRevealDuration);
+	}
+
 	// スタート台からステージのレールへ移るときの出発の演出を切り替える(次に出発ゲートが開いたときから使われる)
 	int departureStyleIndex = static_cast<int>(GetDepartureStyle());
 	if(ImGui::Combo("Departure",&departureStyleIndex,DepartureDirector::kStyleNames,IM_ARRAYSIZE(DepartureDirector::kStyleNames))){
@@ -1060,7 +1209,10 @@ void GameScene::Draw(){
 	}
 
 	// プレイヤー(人型モデル)を描画
-	player_->Draw();
+	// やられ演出の最中は、インクになって弾けたため描かない
+	if(!isDefeated_){
+		player_->Draw();
+	}
 
 	// タイトルロゴを描画(タイトル中・カメラの回り込み中のみ)
 	if(startSequence_){

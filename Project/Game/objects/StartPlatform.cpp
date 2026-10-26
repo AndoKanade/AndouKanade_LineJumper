@@ -198,6 +198,15 @@ void StartPlatform::BeginOpenGate(){
 	PaintInk(ToWorld({0.0f, 0.0f, kGateDistance - kMarkerDistanceFromGate}),kGateStampRadius);
 }
 
+// ゲートを、開ける演出を出さずにすぐ開ききった状態にする
+// 開き終わった時間にしておくため、インクの流し込み・遮断棒が跳ね上がる瞬間の演出は起きない
+// ゲートが閉じたままだと、レールから落ちたときにゲートより手前へ押し戻されてしまうため、レールの上から始めるときは開けておく
+void StartPlatform::OpenGateImmediately(){
+	isGateOpening_ = true;
+	gateOpenTimer_ = kGateOpenedTime;
+	isBarBurstTriggered_ = false;
+}
+
 // ゲートが開ききったか
 bool StartPlatform::IsGateOpened() const{
 	return isGateOpening_ && gateOpenTimer_ >= kGateOpenedTime;

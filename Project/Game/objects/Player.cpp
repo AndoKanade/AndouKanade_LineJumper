@@ -65,6 +65,10 @@ void Player::Reset(){
 	hp_ = kMaxHp;
 	invincibleTimer_ = 0.0f;
 
+	// 現れる演出の途中なら止め、ふつうに見える状態にする
+	revealStyle_ = Model::RevealStyle::None;
+	revealTimer_ = 0.0f;
+
 	// 速さを上げている途中なら止める
 	railBoostDuration_ = 0.0f;
 	railBoostTimer_ = 0.0f;
@@ -220,6 +224,36 @@ void Player::UpdateTransform(const Vector3& cameraRotation,float hopHeight){
 		obj_->SetCamera(activeCamera);
 	}
 	obj_->Update();
+
+	// 現れる演出の見せ方と進み具合をマテリアルに渡す
+	// しま・境界線の位置を体に合わせるため、範囲は足元から、行列を更新した後の境界球の上端までにする
+	if(Model::Material* material = obj_->GetMaterial()){
+		material->revealStyle = static_cast<int32_t>(revealStyle_);
+		if(revealStyle_ != Model::RevealStyle::None){
+			const Model::BoundingSphere sphere = obj_->GetWorldBoundingSphere();
+			material->revealProgress = (revealDuration_ > 0.0f)?(std::min)(revealTimer_ / revealDuration_,1.0f):1.0f;
+			material->revealBottom = position_.y + hopHeight;
+			material->revealHeight = sphere.center.y + sphere.radius - material->revealBottom;
+		}
+	}
+}
+
+// 透明な体がだんだん元に戻る、現れる演出を始める
+void Player::StartReveal(Model::RevealStyle style,float duration){
+	revealStyle_ = style;
+	revealTimer_ = 0.0f;
+	revealDuration_ = duration;
+}
+
+// 現れる演出を進め、元に戻りきったらふつうに描く状態に戻す
+void Player::UpdateReveal(float deltaTime){
+	if(revealStyle_ == Model::RevealStyle::None){
+		return;
+	}
+	revealTimer_ += deltaTime;
+	if(revealTimer_ >= revealDuration_){
+		revealStyle_ = Model::RevealStyle::None;
+	}
 }
 
 // 被弾後の無敵時間を進める

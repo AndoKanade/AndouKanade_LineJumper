@@ -315,6 +315,9 @@
     <ClCompile Include="Game\UI\SpeedLines.cpp">
       <Filter>ソース ファイル\Game\UI</Filter>
     </ClCompile>
+    <ClCompile Include="Game\UI\DamageInkEffect.cpp">
+      <Filter>ソース ファイル\Game\UI</Filter>
+    </ClCompile>
     <ClCompile Include="Game\UI\HelpOverlay.cpp">
       <Filter>ソース ファイル\Game\UI</Filter>
     </ClCompile>
@@ -557,10 +560,16 @@
     <ClInclude Include="Game\objects\StageResult.h">
       <Filter>ヘッダー ファイル\Game\objects</Filter>
     </ClInclude>
+    <ClInclude Include="Game\objects\ContinuePoint.h">
+      <Filter>ヘッダー ファイル\Game\objects</Filter>
+    </ClInclude>
     <ClInclude Include="Game\UI\StageHUD.h">
       <Filter>ヘッダー ファイル\Game\UI</Filter>
     </ClInclude>
     <ClInclude Include="Game\UI\SpeedLines.h">
+      <Filter>ヘッダー ファイル\Game\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\UI\DamageInkEffect.h">
       <Filter>ヘッダー ファイル\Game\UI</Filter>
     </ClInclude>
     <ClInclude Include="Game\UI\HelpOverlay.h">
@@ -701,6 +710,9 @@
       <Filter>Resources\shader\PostEffect</Filter>
     </FxCompile>
     <FxCompile Include="Engine\Graphics\Shaders\PostProcess\RadialBlur.PS.hlsl">
+      <Filter>Resources\shader\PostEffect</Filter>
+    </FxCompile>
+    <FxCompile Include="Engine\Graphics\Shaders\PostProcess\DamageInk.PS.hlsl">
       <Filter>Resources\shader\PostEffect</Filter>
     </FxCompile>
     <FxCompile Include="Engine\Graphics\Shaders\PostProcess\Random.PS.hlsl">

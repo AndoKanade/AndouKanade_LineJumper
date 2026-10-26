@@ -82,6 +82,16 @@ public:
 	// 被弾後の無敵時間を進める
 	void UpdateInvincible(float deltaTime);
 
+	/// <summary>
+	/// 透明な体がだんだん元に戻る、現れる演出を始める(復活したとき用。Reset() で止まる)
+	/// </summary>
+	/// <param name="style">見せ方(横じまが太くなって埋まる / 光る境界線が下から上へ通る)</param>
+	/// <param name="duration">元に戻りきるまでの時間(秒)</param>
+	void StartReveal(Model::RevealStyle style,float duration);
+
+	// 現れる演出を進める
+	void UpdateReveal(float deltaTime);
+
 	// 敵弾が当たったときの処理(無敵中でなければ体力を1減らし、無敵時間を始める)
 	void TakeDamage();
 
@@ -205,6 +215,11 @@ private:
 	int hp_ = kMaxHp;
 	// 被弾後の無敵時間の残り(秒)。0より大きい間は敵弾が当たっても体力が減らない
 	float invincibleTimer_ = 0.0f;
+
+	// 現れる演出の見せ方(None のときは演出をしていない)・経過時間・元に戻りきるまでの時間(秒)
+	Model::RevealStyle revealStyle_ = Model::RevealStyle::None;
+	float revealTimer_ = 0.0f;
+	float revealDuration_ = 0.0f;
 
 	// レールを進む速さを一時的に上げる倍率(かけ始め)と、元の速さへ戻りきるまでの時間・経過時間(秒)
 	float railBoostRate_ = 1.0f;

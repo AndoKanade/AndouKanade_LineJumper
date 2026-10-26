@@ -32,7 +32,7 @@ Game/
 │   └── Departure/  スタート台からレールへ移るときの出発の演出（1 種類 1 クラス）
 ├── objects/   Player / PlayerBulletManager / TargetManager / Enemy / EnemyManager / Ground / Sun / StartPlatform / InkEffectManager / ComboCounter / StageResult
 ├── Camera/    RailCamera（プレイ用カメラ）/ DebugTopCamera（俯瞰デバッグカメラ）/ ScreenImpact（ヒットストップ・画面の揺れ）/ CameraPose（演出のカメラの補間）
-├── UI/        Reticle（画面中央のレティクル）/ StageHUD（体力・的の数・連鎖数）/ SpeedLines（スピード線）/ HelpOverlay（H キーで開く操作説明）
+├── UI/        Reticle（画面中央のレティクル）/ StageHUD（残機・的の数・連鎖数）/ SpeedLines（スピード線）/ DamageInkEffect（体力を画面の縁のインクで表現）/ HelpOverlay（H キーで開く操作説明）
 └── Editor/    RailEditor / TargetEditor / EnemyEditor（Editモード中の配置ツール）/ EditHistory・EditorDocumentManager（Undo/Redo と保存の管理）/ EditorPicking（Scene ビューでのマウス選択）
 ```
 
@@ -41,11 +41,11 @@ Game/
 ```
 起動 ─→ GAME ─(レール終端に到達)─→ CLEAR ─(SPACE)─→ GAME
           │
-          └─(体力0)─→ GAMEOVER ─(SPACE)─→ GAME
+          └─(落下・体力0で残機が0)─→ GAMEOVER ─(コンティニュー / タイトルへ を選んで SPACE)─→ GAME
 ```
 
 - タイトルは独立したシーンではなく、GameScene の中の開始演出（`StartSequence`）として表示する。
-- GAME へ切り替わるたびに GameScene が作り直され、Play モードならタイトルから始まる。
+- GAME へ切り替わるたびに GameScene が作り直され、Play モードならタイトルから始まる。ゲームオーバー画面でコンティニューを選んだときだけ、タイトル・スタート台を飛ばして最後に通ったチェックポイントから始まる（`ContinuePoint`）。
 - ESC キーでいつでもゲームを終了する（`Framework::Update()`）。
 
 ### Edit モードと Play モード
@@ -164,7 +164,8 @@ Game/
 | `reticle_` | 画面中央のレティクル（Reticle） |
 | `inkEffect_` | インクのしぶき・的の破片・閃光の演出（InkEffectManager） |
 | `comboCounter_` | 連鎖数（ComboCounter） |
-| `stageHUD_` | 体力・壊した的の数・連鎖数の表示（StageHUD） |
+| `stageHUD_` | 残機・壊した的の数・連鎖数の表示（StageHUD） |
+| `damageInkEffect_` | 体力を画面の縁から迫る敵のインクで表現する（DamageInkEffect） |
 | `speedLines_` | スピード線（SpeedLines） |
 | `helpOverlay_` | H キーで開く操作説明（HelpOverlay） |
 | `screenImpact_` | ヒットストップと画面の揺れ（ScreenImpact） |
@@ -194,7 +195,7 @@ Game/
    6. クリア判定、状態確認用のデバッグウィンドウ（`ShowStatusWindow()`）。
    7. `Player::UpdateTransform()` でプレイヤーをレールの上に立たせ、照準の方向へ向ける。出発の演出中は `DepartureDirector::Update()` でプレイヤーの表示を上書きする。カメラは「タイトル・回り込み（StartSequence）→ 出発の演出 → ゲートを映すカメラ」の優先順で上書きし、最後に画面の揺れを足す。
    8. 敵の更新、敵弾とプレイヤーの当たり判定、ゲームオーバー判定。
-   9. `Player::UpdateMovement()` でジャンプ・WASD 移動・着地判定を行う。地面まで落ちたら `ResetPlayState()` を呼ぶ。`isPlayerMovable` の間も同じく動かす。出発台を使う演出なら、出発台の手前の線を越えたら演出を始める。歩いてレールへ乗ったとき・出発の演出がレールへ乗せ終えたときは `StartSequence::NotifyBoarded()` を呼び、`PlayBoardedEffects()` で足元から輪・インクのしぶき・インクの跡を出す。
+   9. `Player::UpdateMovement()` でジャンプ・WASD 移動・着地判定を行う。地面まで落ちたら、プレイ中なら `LoseLife()`、出発前のスタート台の上なら `RestartAfterMiss()` を呼ぶ。`isPlayerMovable` の間も同じく動かす。出発台を使う演出なら、出発台の手前の線を越えたら演出を始める。歩いてレールへ乗ったとき・出発の演出がレールへ乗せ終えたときは `StartSequence::NotifyBoarded()` を呼び、`PlayBoardedEffects()` で足元から輪・インクのしぶき・インクの跡を出す。
    10. 射撃（手元からインクのしぶきも出す。スタート台の上では的・敵に当たらない試し撃ち）、弾の移動、的・敵と弾の当たり判定、壊れた的ごとの演出と連鎖数の加算、弾の行列の更新、レティクルの色の更新。
    11. 演出・スピード線・HUD の更新。レールを進んでいる間は、通った区間を塗り、足元から後ろへしぶきを飛ばし、スピード線を出す。
 3. デバッグ用のキー操作（F4 / F5）と、Edit モード中の ImGui パネル（`ShowEditorPanels()`）を処理する。
@@ -208,10 +209,13 @@ Game/
 | 射撃 | 左クリックを押している間、0.1 秒ごとに連射する（押した瞬間に 1 発目を撃つ）。プレイヤーの手元（`Player::GetMuzzlePosition()`）から弾を発射する。的をレティクルで狙えている（レティクルの中心が赤い）とき、またはレティクルの方向が敵の当たり判定の球を通るときは、レティクルの線（カメラの前方へ伸ばした線）の上の、一番手前のものと同じ奥行きの点へ向けて撃つ（中心そのものは狙わず、弾はいつもレティクルの通りに飛ぶ。手元から前方へ 1.0 より手前にあるものは狙わない）。どちらも無いときは、カメラの前方 12.0 の点（レティクルの先。手元からはおよそ 9 先で、射程 10 より手前）へ向けて撃つ |
 | 試し撃ち | スタート台の上（`isPlayerMovable` の間）でも撃てる。この弾は的・敵に当たらず、台に着いたところにインクを塗る |
 | 出発の演出 | ImGui の「Departure」で選んだ演出で、スタート台からレールへ移る（Title の Departure を参照） |
-| 落下リスタート | どのレールにも乗れずに地面の高さまで落ちたら暗転（`SceneManager::StartTransition()`）を始め、画面を覆っている間に `ResetPlayState()` を呼ぶ。開始演出は挟まない。チェックポイントを通っていれば、続けて `RespawnAtCheckpoint()` でそこから始め直す |
+| 落下リスタート | どのレールにも乗れずに地面の高さまで落ちたら暗転（`SceneManager::StartTransition()`）を始め、画面を覆っている間に `ResetPlayState()` を呼ぶ（`RestartAfterMiss()`）。開始演出は挟まない。チェックポイントを通っていれば、続けて `RespawnAtCheckpoint()` でそこから始め直す。プレイ中に落ちたときは残機を 1 つ減らす（出発前にスタート台から落ちたときは減らさない） |
+| 残機 | 最大 3（`kMaxLives`）。落下・体力 0 で 1 つ減り（`LoseLife()`）、残っていれば落下リスタートと同じ暗転でやり直す（体力は満タンに戻る）。0 になったら、やられ演出のあと GAMEOVER へ移る。`ResetPlayState()` では戻さず、Play に入ったとき（コンティニューを含む）と R キーのやり直しで満タンに戻す |
 | チェックポイント | レールを進んでいる間に、チェックポイントにした制御点（`isCheckpoint`）を通ったら、レールと制御点・その時点の的ごとの生存状態を覚える（`UpdateCheckpoint()`）。落ちたらその制御点の位置からレールに乗せ、的を覚えた状態に戻す（チェックポイントより前に壊した的は壊れたまま、後の的は復活する）。体力・敵・連鎖数・レールの塗りは最初の状態に戻る。Play に入り直したときと R キーのやり直しでは忘れる。「Start From Selected Point」で始めたときは、始めた制御点より手前のチェックポイントは通ったものとしない |
 | クリア | オンレール中にゴールのレール（`Player::kGoalRailIndex`、今は Rail 5）の終端に着いたら CLEAR へ移る。ほかのレールの終端ではレールから外れて落ちる。移る前に壊した的の数・総数・最大連鎖数を StageResult に書き込む（的を全部壊すことはクリアの条件にしない） |
-| ゲームオーバー | プレイヤーの体力が 0 になったら GAMEOVER へ移る |
+| 復活の見せ方 | 落下リスタート・残機を減らしたやり直し・コンティニューで始めるときは、透明な体がだんだん元に戻る見せ方にする（`Player::StartReveal()`、0.8 秒）。暗転が明けてから進める。見せ方は Edit モードの「GameScene Debug」パネルの「Respawn Reveal」で、Stripes（細い横じまだけ見えている状態から、しまが太くなってすき間が埋まる）と Sweep（光る境界線が下から上へ通り、線より下だけ見える）から選ぶ。「Preview Respawn Reveal」でその場で確認できる。選んだものは調整項目 `respawnRevealStyle` に入り、Global Variables の Save で保存する（初期値は Stripes） |
+| やられ演出 | 残機が 0 になったら、すぐには切り替えず `StartDefeat()` を呼ぶ。自機が敵のインク（ピンク）になって弾け（`InkEffectManager::EmitDefeatBurst()`）、一瞬動きを止めて（0.15 秒）画面を揺らし、自機を中心に放射ブラーをかける。自機は描かず、操作・判定は止め、敵とインクの演出は 0.35 倍のスローで動かす。カメラはその場に止まる |
+| ゲームオーバー | やられ演出が始まってから 1.4 秒たったら（`UpdateDefeat()`）、暗いインクが垂れる演出（`InkDrip`）で GAMEOVER へ移る |
 | 当たり判定 | すべてモデルの頂点から求めた境界球（`Model::BoundingSphere`）同士の重なりで判定する。プレイヤー・敵本体はワールド行列で変換した球（`Obj3D::GetWorldBoundingSphere()`）、弾・的は現在座標と表示スケールから求めた球を使う |
 
 - レール移動・ジャンプ・体力などプレイヤーの仕様は Player、カメラと照準の仕様は RailCamera、弾の仕様は PlayerBulletManager、的の仕様は TargetManager を参照。
@@ -254,7 +258,7 @@ Game/
 
 | ウィンドウ | 表示するモード | 内容 |
 | --- | --- | --- |
-| Rail Branch Debug | 常時 | レールの本数、アクティブレール、進行度、オンレール状態、敵の体力（EnemyManager が表示）、プレイヤーの体力など |
+| Rail Branch Debug | 常時 | レールの本数、アクティブレール、進行度、オンレール状態、敵の体力（EnemyManager が表示）、プレイヤーの体力・残機など |
 | GameScene Debug | Edit のみ | タイトルを飛ばす設定、選んだ制御点から始める設定（Start From Selected Point）、レール・的・敵の編集の Undo / Redo / Save All と未保存のエディター名の表示、落下リスタート・クリアへの切り替えの演出の選択と Preview、出発の演出の選択（Departure。次にゲートを開けたときから使われる）、カメラ座標・回転の編集、ライティング |
 | Hierarchy | Edit のみ | 的の一覧。クリックで選択できる（TargetManager が表示） |
 | Inspector | Edit のみ | 選択中の的の座標・生存フラグの編集（TargetManager が表示） |
@@ -270,12 +274,26 @@ Game/
 
 ### GameOverScene（`scenes/GameOverScene.h/.cpp`）
 
-プレイヤーの体力が 0 になったときの画面。ClearScene と同じ構成。
+残機が 0 になったときの画面。ClearScene と同じ構成に、項目の選択を足したもの。
 
 - 背景に `resource/circle.png` を赤系の色で表示する。
-- 画面の中央に「GAME OVER」と「SPACE でタイトルへ」を描いた画像（`resource/UI/gameOverTitle.png`、仮素材）を表示する。ImGui を使わないため Release 構成でも表示される。
+- 画面の中央より上に「GAME OVER」と「W/S でえらんで SPACE で決定」を描いた画像（`resource/UI/gameOverTitle.png`、仮素材）を表示し、その下に「コンティニュー」「タイトルへ」の項目の画像（`resource/UI/continueOption.png` / `toTitleOption.png`、仮素材）を並べる。ImGui を使わないため Release 構成でも表示される。
+- W/S（↑/↓）で項目を選ぶ。端からさらに進めると反対側の端へ回り込む。最初はコンティニューを選んでいる。選んでいる項目は黄色で少し大きく、選んでいない項目は暗く表示する。
+- SPACE で決定し、GAME へ戻る。コンティニューなら `ContinuePoint::isRequested` を立て、最後に通ったチェックポイントから始まる。タイトルへならタイトルから始まる。
 - 「GAME OVER」と操作説明を ImGui で表示する。
-- SPACE で GAME へ戻る（タイトルから始まる）。
+
+### ContinuePoint（`objects/ContinuePoint.h`）
+
+ゲームオーバー画面でコンティニューを選んだときに再開する位置。シーンは切り替えのたびに作り直されるため、`StageResult` と同じく static な値でシーンをまたいで渡す。
+
+| 値 | 書き込む | 読み出す |
+| --- | --- | --- |
+| `railIndex` / `pointIndex` / `targetAliveStates` | GameScene（残機が 0 になった瞬間に、最後に通ったチェックポイントを書き込む。通っていなければ railIndex は -1） | GameScene（コンティニューで始めるとき） |
+| `isRequested` | GameOverScene（コンティニューを選んだら true、タイトルへなら false） | GameScene（Play に入るときに見て、使ったら false に戻す） |
+
+- コンティニューで始めるときは、残機を満タンにし、`ResetPlayState()` で全部を戻した後、タイトル・スタート台を飛ばし、チェックポイントの位置からレールに乗せて、的をチェックポイントを通った時点の状態に戻す（落下リスタートと同じ戻し方）。体力・敵・連鎖数・レールの塗りは最初の状態に戻る。
+- チェックポイントを通る前に残機が尽きていたときは、レールの始点から始める。
+- 再開した後にまたレールから落ちたときも、同じチェックポイントからやり直す。
 
 ---
 
@@ -713,6 +731,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `EmitInkSplash(position, direction, count)` | 指定した向きへ飛び散るしぶき（弾を撃ったときの手元に使う） |
 | `EmitRailTrail(position, backward)` | レールを進んでいる間、足元から後ろへ飛ぶしぶき（1 回で 1 粒） |
 | `EmitLaunchBurst(position, count)` | 出発の合図に、しぶきを高く打ち上げる（落ちたところにインクの跡が残る） |
+| `EmitDefeatBurst(position)` | やられ演出で、自機が敵のインク（ピンク）になって全方向へ弾け飛ぶしぶき（48 粒）と閃光。しぶきは何かに着いても塗らない |
 | `SetLandingHandler(handler)` | しぶきが面に着いたかを調べてインクを塗る処理を渡す（塗る半径はしぶきの大きさの 6 倍） |
 | `Update(deltaTime)` / `Draw()` | 移動・回転・縮小・寿命の更新 / 描画 |
 
@@ -809,7 +828,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 
 | 表示 | 位置 | 内容 |
 | --- | --- | --- |
-| 体力 | 左上 | `UI/lifeIcon.png` を最大体力の数だけ並べ、減った分は暗く半透明にする |
+| 残機 | 左上 | `UI/lifeIcon.png` を残機の最大値の数だけ並べ、減った分は暗く半透明にする |
 | 壊した的の数 | 右上 | 下地（`UI/panel.png`）の上に標的のアイコンと「壊した数/総数」 |
 | 連鎖数 | 壊した的の数の下 | オレンジの吹き出し（`UI/comboBubble.png`）に「+N」。増えた瞬間に弾み、途切れる直前に薄くなる |
 
@@ -818,7 +837,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | 関数 | 内容 |
 | --- | --- |
 | `Initialize(SpriteCommon*)` | テクスチャの読み込みとスプライトの生成 |
-| `Update(hp, maxHp, destroyedCount, totalCount, combo)` | 表示内容の更新 |
+| `Update(lives, maxLives, destroyedCount, totalCount, combo)` | 表示内容の更新 |
 | `Draw()` | スプライト共通の描画前処理を行ってから描画する |
 
 ### SpeedLines（`UI/SpeedLines.h/.cpp`）
@@ -830,6 +849,37 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Initialize(SpriteCommon*)` | テクスチャの読み込みとスプライトの生成 |
 | `Reset()` | 線を置き直し、表示の濃さを 0 に戻す |
 | `Update(isActive, deltaTime)` / `Draw()` | 線の移動と表示の濃さの更新 / 描画 |
+
+### DamageInkEffect（`UI/DamageInkEffect.h/.cpp`）
+
+プレイヤーの体力を、画面の縁から迫る敵のインクで表現する。描くのはポストプロセスの `DamageInk`（`Engine/Graphics/Shaders/PostProcess/DamageInk.PS.hlsl`）で、このクラスは体力から強さを求めて `Application::SetDamageEffect(amount, flash)` に渡す。HUD のアイコンは残機に使うため、体力は数字やアイコンでは出さない。
+
+| 体力 | 見た目 |
+| --- | --- |
+| 3（満タン） | 何もかけない |
+| 2 | 画面の四隅にピンクのインクがにじむ |
+| 1 | インクが画面の縁全体を囲み、鼓動のように脈打つ（1 秒に 1.2 回）。景色の色も抜けていく |
+| 被弾の瞬間 | 画面全体を一瞬ピンクに寄せ、0.4 秒で戻す |
+
+- インクの広がりは体力の減り具合（0: 満タン 〜 1: 尽きた）へ少しずつ寄せ、じわっと迫って見えるようにする。やり直しで体力が満タンに戻ると、インクが引いていく。
+- インクの縁は 2 つの波で波打たせ、時間とともに動かす。縁のすぐ外側は暗いピンクにして、インクの盛り上がりに見せる。
+- Play 中だけかける。Edit モードとシーンの終わり（`GameScene::Finalize()`）では外す。
+- 放射ブラーなど、ほかのポストプロセスをかけている間はそちらを優先し、終わったら体力の表現に戻る（`Application::Draw()`）。
+
+| 関数 | 内容 |
+| --- | --- |
+| `Reset()` | 表示を消し、ポストプロセスからも外す |
+| `Update(hp, maxHp, isVisible, deltaTime)` | 体力からインクの広がり・色づきを求め、ポストプロセスに渡す |
+
+| 定数 | 値 | 内容 |
+| --- | --- | --- |
+| `DamageInkEffect.h::kFollowSpeed` | 6.0 | インクの広がりを体力から求めた広がりへ寄せる速さ（1 秒あたりに残りの差を詰める割合） |
+| `DamageInkEffect.h::kFlashDuration` | 0.4 | 被弾した瞬間の色づきが消えるまでの時間（秒） |
+| `DamageInkEffect.h::kDangerHp` | 1 | この体力以下で脈打たせる |
+| `DamageInkEffect.h::kPulseAmplitude` / `kPulseFrequency` | 0.08 / 1.2 | 脈打つときに広げる最大の量 / 1 秒あたりの回数 |
+| `DamageInk.PS.hlsl::kInkStartRadius` / `kInkFullRadius` | 1.45 / 0.75 | 体力満タン / 尽きたときのインクの縁の位置（画面の中心から縁までを 1 とした距離。角は約 1.41） |
+| `DamageInk.PS.hlsl::kMaxDesaturation` | 0.6 | 体力が尽きたときに景色の色をどこまで抜くか |
+| `DamageInk.PS.hlsl::kFlashTintRate` | 0.35 | 被弾した瞬間に画面全体をインクの色へどこまで寄せるか |
 
 ### HelpOverlay（`UI/HelpOverlay.h/.cpp`）
 

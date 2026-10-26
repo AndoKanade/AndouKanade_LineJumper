@@ -17,6 +17,8 @@ namespace{
 	constexpr Vector4 kInkColor = {1.0f, 0.85f, 0.1f, 1.0f};
 	// 閃光の色(白)
 	constexpr Vector4 kFlashColor = {1.0f, 1.0f, 0.9f, 1.0f};
+	// 敵のインクの色(ピンク。やられ演出で自機が弾けるときに使う)
+	constexpr Vector4 kEnemyInkColor = {1.0f, 0.2f, 0.55f, 1.0f};
 	// 的の破片の色(的の外側から順に、緑・オレンジ・白・黒)
 	constexpr Vector4 kShardColors[] = {
 		{0.43f, 0.80f, 0.27f, 1.0f},
@@ -85,6 +87,7 @@ InkEffectManager::Piece& InkEffectManager::Spawn(std::vector<Piece>& pool,size_t
 	piece.lifeTime = 0.0f;
 	piece.rotate = {0.0f, 0.0f, 0.0f};
 	piece.angularVelocity = {0.0f, 0.0f, 0.0f};
+	piece.paintsOnLanding = true;
 	return piece;
 }
 
@@ -167,6 +170,27 @@ void InkEffectManager::EmitLaunchBurst(const Vector3& position,int count){
 	}
 }
 
+// 最後のミスで自機が敵のインクになって弾け飛ぶしぶきと閃光
+// 全方向へばらばらの速さで飛ばし、少し上向きの勢いを足して、弧を描いて落ちていくようにする
+void InkEffectManager::EmitDefeatBurst(const Vector3& position){
+	for(int i = 0; i < kDefeatDropletCount; ++i){
+		Piece& droplet = Spawn(droplets_,nextDroplet_);
+		droplet.position = position;
+		droplet.velocity = Normalize(RandomVector()) * RandomRange(kDefeatDropletSpeedMin,kDefeatDropletSpeedMax) + kWorldUp * kDefeatDropletUpSpeed;
+		droplet.color = kEnemyInkColor;
+		droplet.baseScale = RandomRange(kDefeatDropletScaleMin,kDefeatDropletScaleMax);
+		droplet.maxLifeTime = RandomRange(kDefeatDropletLifeMin,kDefeatDropletLifeMax);
+		droplet.paintsOnLanding = false;
+	}
+
+	Piece& flash = Spawn(flashes_,nextFlash_);
+	flash.position = position;
+	flash.velocity = {0.0f, 0.0f, 0.0f};
+	flash.color = kEnemyInkColor;
+	flash.baseScale = kDefeatFlashScale;
+	flash.maxLifeTime = kDefeatFlashLife;
+}
+
 // 移動・回転・縮小・寿命の更新
 void InkEffectManager::Update(float deltaTime){
 	for(std::vector<Piece>* pool : {&droplets_, &shards_, &flashes_}){
@@ -190,7 +214,7 @@ void InkEffectManager::Update(float deltaTime){
 			piece.rotate += piece.angularVelocity * deltaTime;
 
 			// しぶきがこのフレームの移動で面に着いたら、着いたところにインクを塗ってそこで消す
-			if(piece.kind == Kind::Droplet && landingHandler_ && landingHandler_(previousPosition,piece.position,piece.baseScale * kLandingInkRadiusRate)){
+			if(piece.kind == Kind::Droplet && piece.paintsOnLanding && landingHandler_ && landingHandler_(previousPosition,piece.position,piece.baseScale * kLandingInkRadiusRate)){
 				piece.isAlive = false;
 				continue;
 			}

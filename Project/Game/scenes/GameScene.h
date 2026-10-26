@@ -29,6 +29,7 @@ class InkEffectManager;
 class ComboCounter;
 class StageHUD;
 class SpeedLines;
+class DamageInkEffect;
 class HelpOverlay;
 class DepartureDirector;
 struct DepartureContext;
@@ -59,12 +60,22 @@ private:
 	void ResetPlayState();
 	// タイトル・スタート演出を始め、デバッグ用の設定に合わせてレールへ乗せる(Playに入った瞬間とRキーのやり直しで共通して使う)
 	void StartPlaySequence();
+	// ゲームオーバー画面でコンティニューを選んだときに、タイトル・スタート台を飛ばして最後に通ったチェックポイントから始める
+	void StartFromContinuePoint();
 	// Playに入ったときに覚えておいた制御点の位置からレールに乗せる(途中からPlayするとき用)
 	void BoardAtPlayStartPoint();
 	// レールを進んでいる間に、チェックポイントの制御点を通ったら、その位置と壊した的を覚えておく
 	void UpdateCheckpoint();
 	// 最後に通ったチェックポイントの位置からレールに乗せ、壊した的をチェックポイントを通った時点の状態に戻す
 	void RespawnAtCheckpoint();
+	// 暗転で画面を覆っている間に、最後に通ったチェックポイント(通っていなければスタート台)からやり直す
+	void RestartAfterMiss();
+	// 落下・体力切れで残機を1つ減らし、残っていればやり直し、尽きたらやられ演出を始める
+	void LoseLife();
+	// 残機が尽きたときのやられ演出を始める(自機がピンクのインクになって弾け、周りがスローになる)
+	void StartDefeat();
+	// やられ演出を進め、終わったらゲームオーバー画面へ移る
+	void UpdateDefeat();
 	/// <summary>
 	/// 鍵の的が残っていて出ていないレールを求め、レールの描き方と着地できるレールに反映する
 	/// </summary>
@@ -151,11 +162,14 @@ private:
 	// 的を続けて壊したときの連鎖数
 	std::unique_ptr<ComboCounter> comboCounter_;
 
-	// プレイ中の画面表示(体力・壊した的の数・連鎖数)
+	// プレイ中の画面表示(残機・壊した的の数・連鎖数)
 	std::unique_ptr<StageHUD> stageHUD_;
 
 	// レールを進んでいる間に出すスピード線
 	std::unique_ptr<SpeedLines> speedLines_;
+
+	// プレイヤーの体力を、画面の縁から迫る敵のインク(ポストプロセス)で表現する
+	std::unique_ptr<DamageInkEffect> damageInkEffect_;
 
 	// H キーで開く操作説明(操作方法と画面の流れ)
 	std::unique_ptr<HelpOverlay> helpOverlay_;
@@ -179,6 +193,12 @@ private:
 	bool isPlayingFromPoint_ = false;
 	// 次の弾を撃てるようになるまでの残り時間(秒。押しっぱなしの連射の間隔に使う)
 	float fireCooldown_ = 0.0f;
+	// 残機(落下・体力切れで1つ減り、0になったらゲームオーバー。やり直しの ResetPlayState() では戻さない)
+	int lives_ = kMaxLives;
+	// 残機が尽きて、やられ演出の最中か(自機を消し、操作・判定を止め、周りをスローにする)
+	bool isDefeated_ = false;
+	// やられ演出が始まってからの経過時間(秒)
+	float defeatTimer_ = 0.0f;
 
 	// 最後に通ったチェックポイント(レールから落ちたら、ここからやり直す)
 	struct Checkpoint{
@@ -193,6 +213,21 @@ private:
 
 	// 1フレームの経過時間(エンジンが固定60fps前提(TimeManagerで60fps固定)なので、そのまま合わせる)
 	static constexpr float kDeltaTime = 1.0f / 60.0f;
+	// Playを始めたとき・コンティニューしたときの残機
+	static constexpr int kMaxLives = 3;
+	// 復活したときに、透明な体が元に戻りきるまでの時間(秒)
+	static constexpr float kRespawnRevealDuration = 0.8f;
+	// やられ演出で、自機が弾けてからゲームオーバー画面への切り替えを始めるまでの時間(秒)
+	static constexpr float kDefeatDuration = 1.4f;
+	// やられ演出の間の、周り(敵・インクの演出)の時間の進み方(通常の何倍か)
+	static constexpr float kDefeatTimeScale = 0.35f;
+	// 自機が弾けた瞬間の衝撃(動きを止める時間、画面の揺れの幅・収まるまでの時間)
+	static constexpr float kDefeatHitStopDuration = 0.15f;
+	static constexpr float kDefeatShakeAmplitude = 0.25f;
+	static constexpr float kDefeatShakeDuration = 0.6f;
+	// 自機が弾けた瞬間に、自機を中心にかける放射ブラーの強さと消えるまでの時間
+	static constexpr float kDefeatRadialBlurWidth = 0.03f;
+	static constexpr float kDefeatRadialBlurDuration = 0.5f;
 	// 射撃に使うマウスボタン(左ボタン)
 	static constexpr int kShootMouseButton = 0;
 	// 押しっぱなしで連射するときの弾の発射間隔(秒)
