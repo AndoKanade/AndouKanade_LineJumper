@@ -1387,3 +1387,31 @@ Visual Studio（Debug / Development / Release、x64）でビルドが通るこ�
 ### ビルド確認（3.）
 
 この変更は Windows でのビルド・実機での確認をしていない。`DamageInkEffect.cpp` を仮のヘッダーで clang の構文チェックにかけ、エラーが無いことだけ確認した。`DamageInk.PS.hlsl` はシェーダーのコンパイラで確かめていない（実行時にコンパイルされるため、起動時に失敗すると assert で止まる）。
+
+### 4. ゲームオーバー画面へ切り替わる前に、自機が弾けるやられ演出を入れた
+
+対象ファイル: `Game/scenes/GameScene.h/.cpp`、`Game/objects/InkEffectManager.h/.cpp`
+
+- これまでは残機が 0 になった瞬間にインクが垂れる切り替えが始まり、「やられた」と感じる間が無かった。
+- 残機が 0 になったら、切り替える前にやられ演出を挟むようにした（`StartDefeat()` / `UpdateDefeat()`）。
+  - 自機が敵のインク（ピンク）になって全方向へ弾け飛ぶ（`InkEffectManager::EmitDefeatBurst()`。しぶき 48 粒とピンクの閃光）。自機は描かない。
+  - 弾けた瞬間に一瞬動きを止め（0.15 秒）、画面を揺らし、自機を中心に放射ブラーをかける。
+  - 操作・当たり判定・レールの進行は止め、敵とインクの演出は 0.35 倍のスローで動かす。カメラはその場に止まる。
+  - 1.4 秒たったら、これまでどおり暗いインクが垂れる演出（`InkDrip`）でゲームオーバー画面へ移る。
+- 弾けたしぶきは、スタート台に落ちてもピンクに塗らないようにした（`Piece::paintsOnLanding`）。
+- 体力 0 のときはその場で、落下のときは落ちて地面の高さに着いたところで弾ける（落下はそこで初めて分かるため、落ちていく自機を見送る形にはしていない）。
+- やられ演出の最中に R キーでやり直したときは、`ResetPlayState()` で演出を止めて自機を戻す。
+
+| 定数 | 値 | 内容 |
+| --- | --- | --- |
+| `GameScene.h::kDefeatDuration` | 1.4 | 自機が弾けてからゲームオーバー画面への切り替えを始めるまでの時間（秒） |
+| `GameScene.h::kDefeatTimeScale` | 0.35 | やられ演出の間の、敵・インクの演出の時間の進み方 |
+| `GameScene.h::kDefeatHitStopDuration` | 0.15 | 弾けた瞬間に動きを止める時間（秒） |
+| `GameScene.h::kDefeatShakeAmplitude` / `kDefeatShakeDuration` | 0.25 / 0.6 | 画面の揺れの幅 / 収まるまでの時間（秒） |
+| `GameScene.h::kDefeatRadialBlurWidth` / `kDefeatRadialBlurDuration` | 0.03 / 0.5 | 放射ブラーの強さ / 消えるまでの時間（秒） |
+| `InkEffectManager.h::kDefeatDroplet*` | 48 粒・速さ 3〜9・大きさ 0.06〜0.14・寿命 0.8〜1.4 秒 | 弾けるしぶき |
+| `InkEffectManager.h::kDefeatFlashScale` / `kDefeatFlashLife` | 0.35 / 0.25 | ピンクの閃光の大きさ / 寿命（秒） |
+
+### ビルド確認（4.）
+
+未確認（Visual Studio でのビルドと実機での動作確認が必要）。

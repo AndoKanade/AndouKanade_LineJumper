@@ -316,6 +316,10 @@ void GameScene::ResetPlayState(){
 
 	// 雑魚敵も撃破前の初期状態(体力満タン)から始める
 	enemyManager_->Reset();
+
+	// やられ演出の最中にRキーなどでやり直したときも、自機を出して操作できる状態に戻す
+	isDefeated_ = false;
+	defeatTimer_ = 0.0f;
 }
 
 // 遠くの物を空の色に溶け込ませる距離を、全オブジェクト共通の設定にする
@@ -422,7 +426,7 @@ void GameScene::RestartAfterMiss(){
 	},GetTransitionStyle(kFallTransitionKey));
 }
 
-// 落下・体力切れで残機を1つ減らし、残っていればやり直し、尽きたらゲームオーバー画面へ移る
+// 落下・体力切れで残機を1つ減らし、残っていればやり直し、尽きたらやられ演出を始める
 void GameScene::LoseLife(){
 	--lives_;
 	if(lives_ > 0){
@@ -434,8 +438,32 @@ void GameScene::LoseLife(){
 	ContinuePoint::railIndex = checkpoint_.railIndex;
 	ContinuePoint::pointIndex = checkpoint_.pointIndex;
 	ContinuePoint::targetAliveStates = checkpoint_.targetAliveStates;
-	// ゲームオーバーは暗いインクが上から垂れてきて画面を覆う演出で切り替える
-	sceneManager_->ChangeScene("GAMEOVER",SceneTransition::Style::InkDrip);
+	// すぐに切り替えず、やられ演出で「やられた」ことを見せてからゲームオーバー画面へ移る
+	StartDefeat();
+}
+
+// 残機が尽きたときのやられ演出を始める
+// 自機をピンクのインクにして弾けさせ、一瞬動きを止めて画面を揺らし、自機を中心に放射ブラーをかける
+void GameScene::StartDefeat(){
+	isDefeated_ = true;
+	defeatTimer_ = 0.0f;
+
+	const Vector3 burstPosition = player_->GetHitSphere().center;
+	inkEffect_->EmitDefeatBurst(burstPosition);
+	screenImpact_->Trigger(kDefeatHitStopDuration,kDefeatShakeAmplitude,kDefeatShakeDuration);
+	if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
+		Application::GetInstance()->TriggerRadialBlur(CameraPoseMath::WorldToScreenUv(burstPosition,activeCamera->GetViewProjectionMatrix()),kDefeatRadialBlurWidth,kDefeatRadialBlurDuration);
+	}
+}
+
+// やられ演出を進め、終わったらゲームオーバー画面へ移る
+// ゲームオーバーは暗いインクが上から垂れてきて画面を覆う演出で切り替える
+void GameScene::UpdateDefeat(){
+	const bool wasWaiting = defeatTimer_ < kDefeatDuration;
+	defeatTimer_ += kDeltaTime;
+	if(wasWaiting && defeatTimer_ >= kDefeatDuration){
+		sceneManager_->ChangeScene("GAMEOVER",SceneTransition::Style::InkDrip);
+	}
 }
 
 // 鍵の的が残っていて出ていないレールを求め、レールの描き方と着地できるレールに反映する
@@ -684,7 +712,8 @@ void GameScene::UpdateGameplay(){
 
 	// レール進行・操作・射撃・勝敗判定は、開始演出が終わってプレイ可能になってから動かす
 	// 暗転中(クリア・ゲームオーバーへの切り替え中、落下リスタート中)も、入力や判定が二重に起きないよう止めておく
-	const bool isGameplayActive = isPlayMode && startSequence_->IsPlayable() && !sceneManager_->IsTransitioning();
+	// やられ演出の最中も、自機は弾けて消えているため止めておく
+	const bool isGameplayActive = isPlayMode && startSequence_->IsPlayable() && !sceneManager_->IsTransitioning() && !isDefeated_;
 	// 開始演出のうち、スタート台の上を自由に動ける段階か(出発ゲートの前で準備中と、ゲートが開いてレールへ乗り込むまで)
 	// 動き方(WASD・ジャンプ・台から落ちたときのリスタート)はプレイ中と同じで、敵・射撃・勝敗判定はまだ動かさない
 	const bool isPlayerMovable = isPlayMode && startSequence_->IsPlayerMovable() && !sceneManager_->IsTransitioning();
@@ -804,7 +833,14 @@ void GameScene::UpdateGameplay(){
 
 	// 雑魚敵の更新
 	// Edit中・開始演出中はゲームを静止させるため、経過時間を0にして表示更新のみ行わせる
-	enemyManager_->Update(playerPos,isGameplayActive?kDeltaTime:0.0f);
+	// やられ演出の最中は、周りがスローで動き続けるように見せる
+	float enemyDeltaTime = 0.0f;
+	if(isGameplayActive){
+		enemyDeltaTime = kDeltaTime;
+	} else if(isDefeated_){
+		enemyDeltaTime = kDeltaTime * kDefeatTimeScale;
+	}
+	enemyManager_->Update(playerPos,enemyDeltaTime);
 
 	// 敵弾とプレイヤーの当たり判定
 	// プレイ可能な間のみ判定する。連続被弾で一瞬に体力が尽きないよう、被弾後は一定時間無敵にする
@@ -822,8 +858,13 @@ void GameScene::UpdateGameplay(){
 		}
 	}
 
+	// やられ演出を進め、終わったらゲームオーバー画面へ移る(Editモードへ戻ったときは止める)
+	if(isPlayMode && isDefeated_){
+		UpdateDefeat();
+	}
+
 	// 体力切れの判定
-	// 体力が0になったら残機を1つ減らしてやり直す(残機が尽きたらゲームオーバー画面へ遷移する)
+	// 体力が0になったら残機を1つ減らしてやり直す(残機が尽きたら、やられ演出のあとゲームオーバー画面へ遷移する)
 	// クリア判定と同じく、以降の落下リスタートなどの処理を行わないようここで抜ける
 	// やり直しの暗転中はプレイ可能でなくなるため、残機が二重に減ることはない
 	if(isGameplayActive && player_->IsDead()){
@@ -832,7 +873,7 @@ void GameScene::UpdateGameplay(){
 	}
 
 	// プレイヤーの自立(ジャンプ+WASD移動)
-	// どのレールにも乗れないまま地面の高さまで落ちたら、残機を1つ減らしてやり直す(残機が尽きたらゲームオーバー画面へ遷移する)
+	// どのレールにも乗れないまま地面の高さまで落ちたら、残機を1つ減らしてやり直す(残機が尽きたら、やられ演出のあとゲームオーバー画面へ遷移する)
 	// 開始演出でスタート台の上を動ける間も、同じ動き方で動かす
 	// 出発前にスタート台から落ちたときは、まだプレイを始めていないため残機を減らさずにやり直す
 	if(isGameplayActive || isPlayerMovable){
@@ -929,7 +970,9 @@ void GameScene::UpdateGameplay(){
 
 	// 演出の更新(このフレームで出した分も含めて行列を求めるため、出す処理がすべて終わってから行う)
 	// ヒットストップ中は、飛び散ったインクも空中で止める
-	inkEffect_->Update(screenImpact_->IsHitStopping()?0.0f:kDeltaTime);
+	// やられ演出の最中は、弾けたインクがゆっくり飛び散っていくように見せる
+	const float inkTimeScale = isDefeated_?kDefeatTimeScale:1.0f;
+	inkEffect_->Update(screenImpact_->IsHitStopping()?0.0f:kDeltaTime * inkTimeScale);
 
 	// スピード線はレールを進んでいる間だけ出す
 	speedLines_->Update(isRidingRail,kDeltaTime);
@@ -1124,7 +1167,10 @@ void GameScene::Draw(){
 	}
 
 	// プレイヤー(人型モデル)を描画
-	player_->Draw();
+	// やられ演出の最中は、インクになって弾けたため描かない
+	if(!isDefeated_){
+		player_->Draw();
+	}
 
 	// タイトルロゴを描画(タイトル中・カメラの回り込み中のみ)
 	if(startSequence_){

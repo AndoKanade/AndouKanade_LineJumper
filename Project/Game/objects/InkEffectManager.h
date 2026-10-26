@@ -65,6 +65,13 @@ public:
 	/// <param name="count">しぶきの数</param>
 	void EmitLaunchBurst(const Vector3& position,int count);
 
+	/// <summary>
+	/// 最後のミスで自機が敵のインク(ピンク)になって弾け飛ぶしぶきと閃光(やられ演出)
+	/// 全方向へ大きく飛び散らせる。しぶきは何かに着いても塗らない(スタート台をピンクに塗らないようにする)
+	/// </summary>
+	/// <param name="position">弾ける中心の座標(自機の体の中心)</param>
+	void EmitDefeatBurst(const Vector3& position);
+
 	// 移動・回転・縮小・寿命の更新
 	void Update(float deltaTime);
 
@@ -92,6 +99,8 @@ private:
 		float lifeTime = 0.0f;
 		float maxLifeTime = 1.0f;
 		bool isAlive = false;
+		// 面に着いたときにインクを塗るか(やられ演出のしぶきだけ塗らない)
+		bool paintsOnLanding = true;
 	};
 
 	// 使い回し用の配列から次に使う1つを取り出す(一番古いものから順に上書きする)
@@ -190,6 +199,18 @@ private:
 	static constexpr float kBurstScaleMax = 0.065f;
 	static constexpr float kBurstLifeMin = 1.8f;
 	static constexpr float kBurstLifeMax = 2.2f;
+	// やられ演出のしぶきの数・速さ・上への速さ・大きさ・寿命と、閃光の大きさ・寿命
+	// 普段のしぶきより大きく速くして、自機が弾けたことがはっきり分かるようにする
+	static constexpr int kDefeatDropletCount = 48;
+	static constexpr float kDefeatDropletSpeedMin = 3.0f;
+	static constexpr float kDefeatDropletSpeedMax = 9.0f;
+	static constexpr float kDefeatDropletUpSpeed = 3.0f;
+	static constexpr float kDefeatDropletScaleMin = 0.06f;
+	static constexpr float kDefeatDropletScaleMax = 0.14f;
+	static constexpr float kDefeatDropletLifeMin = 0.8f;
+	static constexpr float kDefeatDropletLifeMax = 1.4f;
+	static constexpr float kDefeatFlashScale = 0.35f;
+	static constexpr float kDefeatFlashLife = 0.25f;
 	// しぶきが面に着いたときに塗るインクの半径(しぶきの大きさに対する倍率)
 	// しぶきは画面の邪魔にならないよう小さめにし、その分倍率を上げて、台に残る跡は見える大きさにする
 	static constexpr float kLandingInkRadiusRate = 6.0f;

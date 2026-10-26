@@ -70,8 +70,12 @@ private:
 	void RespawnAtCheckpoint();
 	// 暗転で画面を覆っている間に、最後に通ったチェックポイント(通っていなければスタート台)からやり直す
 	void RestartAfterMiss();
-	// 落下・体力切れで残機を1つ減らし、残っていればやり直し、尽きたらゲームオーバー画面へ移る
+	// 落下・体力切れで残機を1つ減らし、残っていればやり直し、尽きたらやられ演出を始める
 	void LoseLife();
+	// 残機が尽きたときのやられ演出を始める(自機がピンクのインクになって弾け、周りがスローになる)
+	void StartDefeat();
+	// やられ演出を進め、終わったらゲームオーバー画面へ移る
+	void UpdateDefeat();
 	/// <summary>
 	/// 鍵の的が残っていて出ていないレールを求め、レールの描き方と着地できるレールに反映する
 	/// </summary>
@@ -191,6 +195,10 @@ private:
 	float fireCooldown_ = 0.0f;
 	// 残機(落下・体力切れで1つ減り、0になったらゲームオーバー。やり直しの ResetPlayState() では戻さない)
 	int lives_ = kMaxLives;
+	// 残機が尽きて、やられ演出の最中か(自機を消し、操作・判定を止め、周りをスローにする)
+	bool isDefeated_ = false;
+	// やられ演出が始まってからの経過時間(秒)
+	float defeatTimer_ = 0.0f;
 
 	// 最後に通ったチェックポイント(レールから落ちたら、ここからやり直す)
 	struct Checkpoint{
@@ -207,6 +215,17 @@ private:
 	static constexpr float kDeltaTime = 1.0f / 60.0f;
 	// Playを始めたとき・コンティニューしたときの残機
 	static constexpr int kMaxLives = 3;
+	// やられ演出で、自機が弾けてからゲームオーバー画面への切り替えを始めるまでの時間(秒)
+	static constexpr float kDefeatDuration = 1.4f;
+	// やられ演出の間の、周り(敵・インクの演出)の時間の進み方(通常の何倍か)
+	static constexpr float kDefeatTimeScale = 0.35f;
+	// 自機が弾けた瞬間の衝撃(動きを止める時間、画面の揺れの幅・収まるまでの時間)
+	static constexpr float kDefeatHitStopDuration = 0.15f;
+	static constexpr float kDefeatShakeAmplitude = 0.25f;
+	static constexpr float kDefeatShakeDuration = 0.6f;
+	// 自機が弾けた瞬間に、自機を中心にかける放射ブラーの強さと消えるまでの時間
+	static constexpr float kDefeatRadialBlurWidth = 0.03f;
+	static constexpr float kDefeatRadialBlurDuration = 0.5f;
 	// 射撃に使うマウスボタン(左ボタン)
 	static constexpr int kShootMouseButton = 0;
 	// 押しっぱなしで連射するときの弾の発射間隔(秒)

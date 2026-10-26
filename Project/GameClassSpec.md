@@ -210,10 +210,11 @@ Game/
 | 試し撃ち | スタート台の上（`isPlayerMovable` の間）でも撃てる。この弾は的・敵に当たらず、台に着いたところにインクを塗る |
 | 出発の演出 | ImGui の「Departure」で選んだ演出で、スタート台からレールへ移る（Title の Departure を参照） |
 | 落下リスタート | どのレールにも乗れずに地面の高さまで落ちたら暗転（`SceneManager::StartTransition()`）を始め、画面を覆っている間に `ResetPlayState()` を呼ぶ（`RestartAfterMiss()`）。開始演出は挟まない。チェックポイントを通っていれば、続けて `RespawnAtCheckpoint()` でそこから始め直す。プレイ中に落ちたときは残機を 1 つ減らす（出発前にスタート台から落ちたときは減らさない） |
-| 残機 | 最大 3（`kMaxLives`）。落下・体力 0 で 1 つ減り（`LoseLife()`）、残っていれば落下リスタートと同じ暗転でやり直す（体力は満タンに戻る）。0 になったら GAMEOVER へ移る。`ResetPlayState()` では戻さず、Play に入ったとき（コンティニューを含む）と R キーのやり直しで満タンに戻す |
+| 残機 | 最大 3（`kMaxLives`）。落下・体力 0 で 1 つ減り（`LoseLife()`）、残っていれば落下リスタートと同じ暗転でやり直す（体力は満タンに戻る）。0 になったら、やられ演出のあと GAMEOVER へ移る。`ResetPlayState()` では戻さず、Play に入ったとき（コンティニューを含む）と R キーのやり直しで満タンに戻す |
 | チェックポイント | レールを進んでいる間に、チェックポイントにした制御点（`isCheckpoint`）を通ったら、レールと制御点・その時点の的ごとの生存状態を覚える（`UpdateCheckpoint()`）。落ちたらその制御点の位置からレールに乗せ、的を覚えた状態に戻す（チェックポイントより前に壊した的は壊れたまま、後の的は復活する）。体力・敵・連鎖数・レールの塗りは最初の状態に戻る。Play に入り直したときと R キーのやり直しでは忘れる。「Start From Selected Point」で始めたときは、始めた制御点より手前のチェックポイントは通ったものとしない |
 | クリア | オンレール中にゴールのレール（`Player::kGoalRailIndex`、今は Rail 5）の終端に着いたら CLEAR へ移る。ほかのレールの終端ではレールから外れて落ちる。移る前に壊した的の数・総数・最大連鎖数を StageResult に書き込む（的を全部壊すことはクリアの条件にしない） |
-| ゲームオーバー | 残機が 0 になったら、暗いインクが垂れる演出（`InkDrip`）で GAMEOVER へ移る |
+| やられ演出 | 残機が 0 になったら、すぐには切り替えず `StartDefeat()` を呼ぶ。自機が敵のインク（ピンク）になって弾け（`InkEffectManager::EmitDefeatBurst()`）、一瞬動きを止めて（0.15 秒）画面を揺らし、自機を中心に放射ブラーをかける。自機は描かず、操作・判定は止め、敵とインクの演出は 0.35 倍のスローで動かす。カメラはその場に止まる |
+| ゲームオーバー | やられ演出が始まってから 1.4 秒たったら（`UpdateDefeat()`）、暗いインクが垂れる演出（`InkDrip`）で GAMEOVER へ移る |
 | 当たり判定 | すべてモデルの頂点から求めた境界球（`Model::BoundingSphere`）同士の重なりで判定する。プレイヤー・敵本体はワールド行列で変換した球（`Obj3D::GetWorldBoundingSphere()`）、弾・的は現在座標と表示スケールから求めた球を使う |
 
 - レール移動・ジャンプ・体力などプレイヤーの仕様は Player、カメラと照準の仕様は RailCamera、弾の仕様は PlayerBulletManager、的の仕様は TargetManager を参照。
@@ -729,6 +730,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `EmitInkSplash(position, direction, count)` | 指定した向きへ飛び散るしぶき（弾を撃ったときの手元に使う） |
 | `EmitRailTrail(position, backward)` | レールを進んでいる間、足元から後ろへ飛ぶしぶき（1 回で 1 粒） |
 | `EmitLaunchBurst(position, count)` | 出発の合図に、しぶきを高く打ち上げる（落ちたところにインクの跡が残る） |
+| `EmitDefeatBurst(position)` | やられ演出で、自機が敵のインク（ピンク）になって全方向へ弾け飛ぶしぶき（48 粒）と閃光。しぶきは何かに着いても塗らない |
 | `SetLandingHandler(handler)` | しぶきが面に着いたかを調べてインクを塗る処理を渡す（塗る半径はしぶきの大きさの 6 倍） |
 | `Update(deltaTime)` / `Draw()` | 移動・回転・縮小・寿命の更新 / 描画 |
 
