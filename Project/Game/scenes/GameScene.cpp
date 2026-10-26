@@ -35,6 +35,7 @@
 #include "objects/ComboCounter.h"
 #include "objects/StageResult.h"
 #include "objects/ContinuePoint.h"
+#include "systems/DemoMode.h"
 // カメラ
 #include "Camera/RailCamera.h"
 #include "Camera/DebugTopCamera.h"
@@ -320,6 +321,8 @@ void GameScene::ResetPlayState(){
 	// やられ演出の最中にRキーなどでやり直したときも、自機を出して操作できる状態に戻す
 	isDefeated_ = false;
 	defeatTimer_ = 0.0f;
+	// デモの被弾の間隔も、やり直すたびに最初から数える
+	demoHitTimer_ = 0.0f;
 }
 
 // 遠くの物を空の色に溶け込ませる距離を、全オブジェクト共通の設定にする
@@ -374,6 +377,13 @@ void GameScene::StartFromContinuePoint(){
 	}
 }
 
+// デモのときに、タイトル・スタート台を飛ばしてレールの始点から始める
+// ResetPlayState()でレールを0番へ戻しているため、その後に呼ぶ
+void GameScene::StartDemoPlay(){
+	startSequence_->Start(true);
+	player_->BoardRailStart();
+}
+
 // Playに入ったときに覚えておいた制御点の位置からレールに乗せる
 // ResetPlayState()でレールを0番へ戻しているため、制御点のあるレールへ切り替えてから乗せる
 void GameScene::BoardAtPlayStartPoint(){
@@ -422,6 +432,9 @@ void GameScene::RestartAfterMiss(){
 			RespawnAtCheckpoint();
 		} else if(isPlayingFromPoint_){
 			BoardAtPlayStartPoint();
+		} else if(DemoMode::isEnabled){
+			// デモでは操作する人がいないため、スタート台の上ではなくレールの始点からやり直す
+			player_->BoardRailStart();
 		}
 	},GetTransitionStyle(kFallTransitionKey));
 }
@@ -665,11 +678,14 @@ void GameScene::UpdateGameplay(){
 		isPlayingFromPoint_ = startsFromSelectedPoint_ && editPointIndex_ >= 0;
 		// Playに入り直したら、前回のPlayで通ったチェックポイントは忘れて最初から始める
 		// 残機も満タンから始める(コンティニューで戻ってきたときも満タンにする)
+		// デモでは、1回リトライしてからゲームオーバーになる流れを見せるため、残機2から始める
 		checkpoint_ = Checkpoint{};
-		lives_ = kMaxLives;
+		lives_ = DemoMode::isEnabled?DemoMode::kStartLives:kMaxLives;
 		ResetPlayState();
 		// ゲームオーバー画面でコンティニューを選んで戻ってきたときは、最後に通ったチェックポイントから始める
-		if(ContinuePoint::isRequested){
+		if(DemoMode::isEnabled){
+			StartDemoPlay();
+		} else if(ContinuePoint::isRequested){
 			StartFromContinuePoint();
 		} else{
 			StartPlaySequence();
@@ -852,8 +868,18 @@ void GameScene::UpdateGameplay(){
 		// プレイヤーの行列はこのフレームの配置処理でUpdate()済み
 		int hitCount = enemyManager_->CheckHitToPlayer(player_->GetHitSphere());
 
+		// デモでは、敵弾が当たるのを待たずに決まった間隔で被弾させ、体力が尽きるまでの演出を毎回同じ流れで見せる
+		bool isDemoHit = false;
+		if(DemoMode::isEnabled){
+			demoHitTimer_ += kDeltaTime;
+			if(demoHitTimer_ >= DemoMode::kHitInterval){
+				demoHitTimer_ = 0.0f;
+				isDemoHit = true;
+			}
+		}
+
 		// 同時に複数当たっても体力の減少は1回分だけにする
-		if(hitCount > 0){
+		if(hitCount > 0 || isDemoHit){
 			player_->TakeDamage();
 		}
 	}

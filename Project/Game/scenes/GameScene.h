@@ -62,6 +62,8 @@ private:
 	void StartPlaySequence();
 	// ゲームオーバー画面でコンティニューを選んだときに、タイトル・スタート台を飛ばして最後に通ったチェックポイントから始める
 	void StartFromContinuePoint();
+	// デモのときに、タイトル・スタート台を飛ばしてレールの始点から始める
+	void StartDemoPlay();
 	// Playに入ったときに覚えておいた制御点の位置からレールに乗せる(途中からPlayするとき用)
 	void BoardAtPlayStartPoint();
 	// レールを進んでいる間に、チェックポイントの制御点を通ったら、その位置と壊した的を覚えておく
@@ -199,6 +201,8 @@ private:
 	bool isDefeated_ = false;
 	// やられ演出が始まってからの経過時間(秒)
 	float defeatTimer_ = 0.0f;
+	// デモのときに、次に被弾させるまでの経過時間(秒)
+	float demoHitTimer_ = 0.0f;
 
 	// 最後に通ったチェックポイント(レールから落ちたら、ここからやり直す)
 	struct Checkpoint{

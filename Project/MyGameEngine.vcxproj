@@ -441,6 +441,7 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClInclude Include="Game\objects\ComboCounter.h" />
     <ClInclude Include="Game\objects\StageResult.h" />
     <ClInclude Include="Game\objects\ContinuePoint.h" />
+    <ClInclude Include="Game\systems\DemoMode.h" />
     <ClInclude Include="Game\UI\StageHUD.h" />
     <ClInclude Include="Game\UI\SpeedLines.h" />
     <ClInclude Include="Game\UI\DamageInkEffect.h" />

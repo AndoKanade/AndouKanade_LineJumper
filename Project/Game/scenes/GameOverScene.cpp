@@ -13,6 +13,8 @@
 
 // コンティニューで再開する位置(GameSceneがゲームオーバー直前に書き込む)
 #include "objects/ContinuePoint.h"
+// 人がいなくても演出を流し続けるデモ
+#include "DemoMode.h"
 
 // ImGui (マクロ定義がある場合のみ)
 #ifdef USE_IMGUI
@@ -48,6 +50,8 @@ namespace{
 	// 選んでいない項目の色(暗くして、選んでいる項目を目立たせる)と、大きさの倍率(画像そのままの大きさ)
 	constexpr Vector4 kUnselectedOptionColor = {0.6f, 0.6f, 0.6f, 0.8f};
 	constexpr float kUnselectedOptionScale = 1.0f;
+	// 1フレームの経過時間(エンジンが60fps固定のため、そのまま合わせる。デモの待ち時間を数えるのに使う)
+	constexpr float kDeltaTime = 1.0f / 60.0f;
 	// ゲームオーバー演出の背景色(赤がかった色で「失敗」を表現)
 	const Vector4 kBackgroundColor = {1.0f, 0.3f, 0.3f, 0.6f};
 }
@@ -144,6 +148,15 @@ void GameOverScene::Update(){
 		ImGui::End();
 	}
 #endif
+
+	// デモでは操作する人がいないため、決まった時間この画面を見せたら最初からやり直す
+	if(DemoMode::isEnabled){
+		demoTimer_ += kDeltaTime;
+		if(demoTimer_ >= DemoMode::kGameOverDisplayDuration){
+			SceneManager::GetInstance()->ChangeScene("GAME");
+		}
+		return;
+	}
 
 	// W/S(↑/↓)で項目を選ぶ。端の項目からさらに進めたら、反対側の端の項目へ回り込む
 	// 選び直した見た目は、次のフレームのスプライトの更新で反映される
