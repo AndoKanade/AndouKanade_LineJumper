@@ -218,7 +218,7 @@ private:
 	// Playを始めたとき・コンティニューしたときの残機
 	static constexpr int kMaxLives = 3;
 	// 復活したときに、透明な体が元に戻りきるまでの時間(秒)
-	static constexpr float kRespawnRevealDuration = 1.2f;
+	static constexpr float kRespawnRevealDuration = 0.8f;
 	// やられ演出で、自機が弾けてからゲームオーバー画面への切り替えを始めるまでの時間(秒)
 	static constexpr float kDefeatDuration = 1.4f;
 	// やられ演出の間の、周り(敵・インクの演出)の時間の進み方(通常の何倍か)

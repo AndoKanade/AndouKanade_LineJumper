@@ -1482,3 +1482,10 @@ Visual Studio（Debug / Development / Release、x64）でビルドが通るこ�
 ### ビルド確認（8.）
 
 未確認（Visual Studio でのビルドと実機での動作確認が必要）。`Object3d.PS.hlsl` はシェーダーのコンパイラで確かめていない。
+
+### 9. 復活の見せ方を Stripes に決め、元に戻る速さを上げた
+
+対象ファイル: `Game/scenes/GameScene.h`
+
+- 見比べた結果、Stripes（横じまが太くなって埋まる）に決めた（初期値のまま）。Sweep も ImGui で選べるよう残している。
+- 元に戻りきるまでの時間 `kRespawnRevealDuration` を 1.2 秒から 0.8 秒にした。
