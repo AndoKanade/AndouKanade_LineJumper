@@ -224,7 +224,12 @@ void Application::Draw(){
 	}
 
 	// ポストプロセスの実行
-	postProcess_->Draw(commandList,renderTexture_->GetSrvHandleGpu(),secondarySRV,currentPPType_);
+	// ほかのポストプロセスをかけていない間は、体力の表現をかける(放射ブラーなどの一瞬の演出は、終われば体力の表現に戻る)
+	PostProcess::Type drawType = currentPPType_;
+	if(drawType == PostProcess::Type::PostProcess && isDamageEffectVisible_){
+		drawType = PostProcess::Type::DamageInk;
+	}
+	postProcess_->Draw(commandList,renderTexture_->GetSrvHandleGpu(),secondarySRV,drawType);
 
 	// 状態を元に戻す
 	barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -252,7 +257,7 @@ void Application::ShowPostProcessUI(){
 	// 固定タイルレイアウトの下段・右に配置
 	EditorWidgets::BeginFixedPanel("PostProcess Settings",EditorWidgets::ComputeLayout().bottomRight);
 
-	const char* typeNames[] = {"Default", "BoxFilter", "Grayscale", "Vignette", "GaussianBlur", "LuminanceOutline", "DepthOutline", "RadialBlur", "Dissolve", "Random", "Glitch"};
+	const char* typeNames[] = {"Default", "BoxFilter", "Grayscale", "Vignette", "GaussianBlur", "LuminanceOutline", "DepthOutline", "RadialBlur", "Dissolve", "Random", "Glitch", "DamageInk"};
 	int currentIdx = static_cast<int>(currentPPType_);
 
 	if(ImGui::Combo("Filter Type",&currentIdx,typeNames,IM_ARRAYSIZE(typeNames))){
@@ -312,4 +317,10 @@ void Application::TriggerRadialBlur(const Vector2& center,float width,float dura
 	radialBlurStartWidth_ = width;
 	postProcess_->SetRadialBlurCenter(center);
 	postProcess_->SetRadialBlurWidth(width);
+}
+
+void Application::SetDamageEffect(float amount,float flash){
+	postProcess_->SetDamageAmount(amount);
+	postProcess_->SetDamageFlash(flash);
+	isDamageEffectVisible_ = amount > 0.0f || flash > 0.0f;
 }

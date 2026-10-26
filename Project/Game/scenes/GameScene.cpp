@@ -44,6 +44,7 @@
 #include "UI/Reticle.h"
 #include "UI/StageHUD.h"
 #include "UI/SpeedLines.h"
+#include "UI/DamageInkEffect.h"
 #include "UI/HelpOverlay.h"
 #include <algorithm>
 #include <iterator>
@@ -232,13 +233,16 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// 的を続けて壊したときの連鎖数
 	comboCounter_ = std::make_unique<ComboCounter>();
 
-	// プレイ中の画面表示(体力・壊した的の数・連鎖数)
+	// プレイ中の画面表示(残機・壊した的の数・連鎖数)
 	stageHUD_ = std::make_unique<StageHUD>();
 	stageHUD_->Initialize(spriteCommon_);
 
 	// レールを進んでいる間に出すスピード線
 	speedLines_ = std::make_unique<SpeedLines>();
 	speedLines_->Initialize(spriteCommon_);
+
+	// プレイヤーの体力を、画面の縁から迫る敵のインク(ポストプロセス)で表現する
+	damageInkEffect_ = std::make_unique<DamageInkEffect>();
 
 	// H キーで開く操作説明(操作方法と画面の流れ)
 	helpOverlay_ = std::make_unique<HelpOverlay>();
@@ -272,6 +276,8 @@ void GameScene::Finalize(){
 	}
 	// 遠くの物を溶け込ませる距離は全オブジェクト共通の設定のため、他のシーンに持ち越さないよう元に戻す
 	object3dCommon_->SetSceneDistanceFade(0.0f,0.0f);
+	// 体力の表現はポストプロセスにかけているため、クリア画面・ゲームオーバー画面に持ち越さないよう外す
+	damageInkEffect_->Reset();
 }
 
 // ゲームを初期状態(レール先頭)から始め直す
@@ -928,8 +934,11 @@ void GameScene::UpdateGameplay(){
 	// スピード線はレールを進んでいる間だけ出す
 	speedLines_->Update(isRidingRail,kDeltaTime);
 
-	// 画面表示の更新
-	stageHUD_->Update(player_->GetHp(),player_->GetMaxHp(),targetManager_->GetDestroyedCount(),targetManager_->GetTotalCount(),*comboCounter_);
+	// 体力の表現の更新(Play中だけ出し、Editモードでは外す)
+	damageInkEffect_->Update(player_->GetHp(),player_->GetMaxHp(),isPlayMode,kDeltaTime);
+
+	// 画面表示の更新(左上のアイコンには残機を出す)
+	stageHUD_->Update(lives_,kMaxLives,targetManager_->GetDestroyedCount(),targetManager_->GetTotalCount(),*comboCounter_);
 }
 
 #ifdef USE_IMGUI

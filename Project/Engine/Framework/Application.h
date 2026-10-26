@@ -70,6 +70,14 @@ public:
 	/// <param name="duration">ブラーが消えるまでの時間(秒)</param>
 	void TriggerRadialBlur(const Vector2& center,float width,float duration);
 
+	/// <summary>
+	/// 体力の表現(画面の縁から迫る敵のインク)の強さを設定する
+	/// どちらも 0 のときはかけない。ほかのポストプロセス(放射ブラーなど)をかけている間は、そちらを優先する
+	/// </summary>
+	/// <param name="amount">体力の減り具合(0: 満タン 〜 1: 尽きた)</param>
+	/// <param name="flash">被弾した瞬間の画面の色づき(0〜1)</param>
+	void SetDamageEffect(float amount,float flash);
+
 private:
 	// --- 静的メンバ変数 ---
 	static Application* instance_;
@@ -95,4 +103,7 @@ private:
 	float radialBlurTimer_ = 0.0f;        // 経過時間
 	float radialBlurDuration_ = 0.0f;     // ブラーが消えるまでの時間（秒）
 	float radialBlurStartWidth_ = 0.0f;   // かけ始めのブラーの強さ
+
+	// --- 体力の表現用管理 ---
+	bool isDamageEffectVisible_ = false;  // 体力の表現をかけるか(減り具合か色づきが 0 より大きい間)
 };

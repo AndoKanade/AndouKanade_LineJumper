@@ -29,6 +29,7 @@ class InkEffectManager;
 class ComboCounter;
 class StageHUD;
 class SpeedLines;
+class DamageInkEffect;
 class HelpOverlay;
 class DepartureDirector;
 struct DepartureContext;
@@ -157,11 +158,14 @@ private:
 	// 的を続けて壊したときの連鎖数
 	std::unique_ptr<ComboCounter> comboCounter_;
 
-	// プレイ中の画面表示(体力・壊した的の数・連鎖数)
+	// プレイ中の画面表示(残機・壊した的の数・連鎖数)
 	std::unique_ptr<StageHUD> stageHUD_;
 
 	// レールを進んでいる間に出すスピード線
 	std::unique_ptr<SpeedLines> speedLines_;
+
+	// プレイヤーの体力を、画面の縁から迫る敵のインク(ポストプロセス)で表現する
+	std::unique_ptr<DamageInkEffect> damageInkEffect_;
 
 	// H キーで開く操作説明(操作方法と画面の流れ)
 	std::unique_ptr<HelpOverlay> helpOverlay_;

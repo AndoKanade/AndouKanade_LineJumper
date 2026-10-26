@@ -22,7 +22,8 @@ public:
 		RadialBlur,
 		Dissolve,
         Random,
-        Glitch
+        Glitch,
+        DamageInk   // 体力が減るほど画面の縁から敵のインクが迫ってくる(プレイヤーの体力の表現)
     };
 
     // 定数バッファ構造体
@@ -38,7 +39,8 @@ public:
         Vector3 dissolveEdgeColor;
         float randomIntensity;
         float randomTime;
-        float padding3[2]; // 16byte調整
+        float damageAmount; // 体力の減り具合(0: 満タン 〜 1: 尽きた)。画面の縁のインクの広がりに使う
+        float damageFlash;  // 被弾した瞬間の画面の色づき(0〜1)
     };
 
 public:
@@ -56,6 +58,8 @@ public:
     void SetDissolveEdgeColor(const Vector3& color){ if(constMap_) constMap_->dissolveEdgeColor = color; }
 	void SetRandomIntensity(float intensity){ if(constMap_) constMap_->randomIntensity = intensity; }   
     void SetRandomTime(float time){ if(constMap_) constMap_->randomTime = time; }
+    void SetDamageAmount(float amount){ if(constMap_) constMap_->damageAmount = amount; }
+    void SetDamageFlash(float flash){ if(constMap_) constMap_->damageFlash = flash; }
 
 private:
     void CreateRootSignature(ID3D12Device* device);

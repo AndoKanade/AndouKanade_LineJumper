@@ -32,7 +32,7 @@ Game/
 │   └── Departure/  スタート台からレールへ移るときの出発の演出（1 種類 1 クラス）
 ├── objects/   Player / PlayerBulletManager / TargetManager / Enemy / EnemyManager / Ground / Sun / StartPlatform / InkEffectManager / ComboCounter / StageResult
 ├── Camera/    RailCamera（プレイ用カメラ）/ DebugTopCamera（俯瞰デバッグカメラ）/ ScreenImpact（ヒットストップ・画面の揺れ）/ CameraPose（演出のカメラの補間）
-├── UI/        Reticle（画面中央のレティクル）/ StageHUD（体力・的の数・連鎖数）/ SpeedLines（スピード線）/ HelpOverlay（H キーで開く操作説明）
+├── UI/        Reticle（画面中央のレティクル）/ StageHUD（残機・的の数・連鎖数）/ SpeedLines（スピード線）/ DamageInkEffect（体力を画面の縁のインクで表現）/ HelpOverlay（H キーで開く操作説明）
 └── Editor/    RailEditor / TargetEditor / EnemyEditor（Editモード中の配置ツール）/ EditHistory・EditorDocumentManager（Undo/Redo と保存の管理）/ EditorPicking（Scene ビューでのマウス選択）
 ```
 
@@ -164,7 +164,8 @@ Game/
 | `reticle_` | 画面中央のレティクル（Reticle） |
 | `inkEffect_` | インクのしぶき・的の破片・閃光の演出（InkEffectManager） |
 | `comboCounter_` | 連鎖数（ComboCounter） |
-| `stageHUD_` | 体力・壊した的の数・連鎖数の表示（StageHUD） |
+| `stageHUD_` | 残機・壊した的の数・連鎖数の表示（StageHUD） |
+| `damageInkEffect_` | 体力を画面の縁から迫る敵のインクで表現する（DamageInkEffect） |
 | `speedLines_` | スピード線（SpeedLines） |
 | `helpOverlay_` | H キーで開く操作説明（HelpOverlay） |
 | `screenImpact_` | ヒットストップと画面の揺れ（ScreenImpact） |
@@ -824,7 +825,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 
 | 表示 | 位置 | 内容 |
 | --- | --- | --- |
-| 体力 | 左上 | `UI/lifeIcon.png` を最大体力の数だけ並べ、減った分は暗く半透明にする |
+| 残機 | 左上 | `UI/lifeIcon.png` を残機の最大値の数だけ並べ、減った分は暗く半透明にする |
 | 壊した的の数 | 右上 | 下地（`UI/panel.png`）の上に標的のアイコンと「壊した数/総数」 |
 | 連鎖数 | 壊した的の数の下 | オレンジの吹き出し（`UI/comboBubble.png`）に「+N」。増えた瞬間に弾み、途切れる直前に薄くなる |
 
@@ -833,7 +834,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | 関数 | 内容 |
 | --- | --- |
 | `Initialize(SpriteCommon*)` | テクスチャの読み込みとスプライトの生成 |
-| `Update(hp, maxHp, destroyedCount, totalCount, combo)` | 表示内容の更新 |
+| `Update(lives, maxLives, destroyedCount, totalCount, combo)` | 表示内容の更新 |
 | `Draw()` | スプライト共通の描画前処理を行ってから描画する |
 
 ### SpeedLines（`UI/SpeedLines.h/.cpp`）
@@ -845,6 +846,37 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Initialize(SpriteCommon*)` | テクスチャの読み込みとスプライトの生成 |
 | `Reset()` | 線を置き直し、表示の濃さを 0 に戻す |
 | `Update(isActive, deltaTime)` / `Draw()` | 線の移動と表示の濃さの更新 / 描画 |
+
+### DamageInkEffect（`UI/DamageInkEffect.h/.cpp`）
+
+プレイヤーの体力を、画面の縁から迫る敵のインクで表現する。描くのはポストプロセスの `DamageInk`（`Engine/Graphics/Shaders/PostProcess/DamageInk.PS.hlsl`）で、このクラスは体力から強さを求めて `Application::SetDamageEffect(amount, flash)` に渡す。HUD のアイコンは残機に使うため、体力は数字やアイコンでは出さない。
+
+| 体力 | 見た目 |
+| --- | --- |
+| 3（満タン） | 何もかけない |
+| 2 | 画面の四隅にピンクのインクがにじむ |
+| 1 | インクが画面の縁全体を囲み、鼓動のように脈打つ（1 秒に 1.2 回）。景色の色も抜けていく |
+| 被弾の瞬間 | 画面全体を一瞬ピンクに寄せ、0.4 秒で戻す |
+
+- インクの広がりは体力の減り具合（0: 満タン 〜 1: 尽きた）へ少しずつ寄せ、じわっと迫って見えるようにする。やり直しで体力が満タンに戻ると、インクが引いていく。
+- インクの縁は 2 つの波で波打たせ、時間とともに動かす。縁のすぐ外側は暗いピンクにして、インクの盛り上がりに見せる。
+- Play 中だけかける。Edit モードとシーンの終わり（`GameScene::Finalize()`）では外す。
+- 放射ブラーなど、ほかのポストプロセスをかけている間はそちらを優先し、終わったら体力の表現に戻る（`Application::Draw()`）。
+
+| 関数 | 内容 |
+| --- | --- |
+| `Reset()` | 表示を消し、ポストプロセスからも外す |
+| `Update(hp, maxHp, isVisible, deltaTime)` | 体力からインクの広がり・色づきを求め、ポストプロセスに渡す |
+
+| 定数 | 値 | 内容 |
+| --- | --- | --- |
+| `DamageInkEffect.h::kFollowSpeed` | 6.0 | インクの広がりを体力から求めた広がりへ寄せる速さ（1 秒あたりに残りの差を詰める割合） |
+| `DamageInkEffect.h::kFlashDuration` | 0.4 | 被弾した瞬間の色づきが消えるまでの時間（秒） |
+| `DamageInkEffect.h::kDangerHp` | 1 | この体力以下で脈打たせる |
+| `DamageInkEffect.h::kPulseAmplitude` / `kPulseFrequency` | 0.08 / 1.2 | 脈打つときに広げる最大の量 / 1 秒あたりの回数 |
+| `DamageInk.PS.hlsl::kInkStartRadius` / `kInkFullRadius` | 1.45 / 0.75 | 体力満タン / 尽きたときのインクの縁の位置（画面の中心から縁までを 1 とした距離。角は約 1.41） |
+| `DamageInk.PS.hlsl::kMaxDesaturation` | 0.6 | 体力が尽きたときに景色の色をどこまで抜くか |
+| `DamageInk.PS.hlsl::kFlashTintRate` | 0.35 | 被弾した瞬間に画面全体をインクの色へどこまで寄せるか |
 
 ### HelpOverlay（`UI/HelpOverlay.h/.cpp`）
 

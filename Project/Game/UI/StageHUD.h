@@ -12,7 +12,7 @@ class ComboCounter;
 
 /// <summary>
 /// プレイ中の画面表示(HUD)
-/// 左上に体力アイコン、右上に壊した的の数、その下に連鎖数の「+N」を出す。
+/// 左上に残機アイコン、右上に壊した的の数、その下に連鎖数の「+N」を出す。
 /// ImGui を使わずスプライトで描くため、Release 構成でも表示される。
 /// </summary>
 class StageHUD{
@@ -26,12 +26,12 @@ public:
 	/// <summary>
 	/// 表示内容の更新
 	/// </summary>
-	/// <param name="hp">プレイヤーの今の体力</param>
-	/// <param name="maxHp">プレイヤーの体力の最大値</param>
+	/// <param name="lives">今の残機</param>
+	/// <param name="maxLives">残機の最大値</param>
 	/// <param name="destroyedCount">壊した的の数</param>
 	/// <param name="totalCount">配置されている的の総数</param>
 	/// <param name="combo">連鎖数</param>
-	void Update(int hp,int maxHp,int destroyedCount,int totalCount,const ComboCounter& combo);
+	void Update(int lives,int maxLives,int destroyedCount,int totalCount,const ComboCounter& combo);
 
 	// 描画処理(スプライト共通の描画前処理も含む)
 	void Draw();
@@ -48,7 +48,7 @@ private:
 
 	SpriteCommon* spriteCommon_ = nullptr;
 
-	// 体力アイコン(最大体力の数だけ並べる)
+	// 残機アイコン(残機の最大値の数だけ並べる)
 	std::vector<std::unique_ptr<Sprite>> lifeIcons_;
 	// 壊した的の数の下地
 	std::unique_ptr<Sprite> counterPanel_;
@@ -75,10 +75,10 @@ private:
 
 	// 画面の端からの余白(ピクセル)
 	static constexpr float kScreenMargin = 32.0f;
-	// 体力アイコンの大きさと間隔(ピクセル)
+	// 残機アイコンの大きさと間隔(ピクセル)
 	static constexpr float kLifeIconSize = 52.0f;
 	static constexpr float kLifeIconSpacing = 58.0f;
-	// 減った体力のアイコンの色(暗く半透明にする)
+	// 減った残機のアイコンの色(暗く半透明にする)
 	static constexpr Vector4 kLostLifeColor = {0.3f, 0.3f, 0.35f, 0.5f};
 	// 下地の大きさ(ピクセル)
 	static constexpr Vector2 kPanelSize = {256.0f, 80.0f};

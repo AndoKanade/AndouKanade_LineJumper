@@ -19,6 +19,7 @@ void PostProcess::Initialize(DXCommon* dxCommon){
 	CreatePipelineState(dxCommon->GetDevice(),dxCommon,Type::Dissolve,L"Engine/Graphics/Shaders/PostProcess/Dissolve.PS.hlsl");
 	CreatePipelineState(dxCommon->GetDevice(),dxCommon,Type::Random,L"Engine/Graphics/Shaders/PostProcess/Random.PS.hlsl");
 	CreatePipelineState(dxCommon->GetDevice(),dxCommon,Type::Glitch,L"Engine/Graphics/Shaders/PostProcess/Glitch.PS.hlsl");
+	CreatePipelineState(dxCommon->GetDevice(),dxCommon,Type::DamageInk,L"Engine/Graphics/Shaders/PostProcess/DamageInk.PS.hlsl");
 
 	// 定数バッファの生成とマッピング
 	constBuff_ = dxCommon->CreateBufferResource(sizeof(PostProcessData));
@@ -34,6 +35,8 @@ void PostProcess::Initialize(DXCommon* dxCommon){
 	constMap_->dissolveThreshold = 0.5f;
 	constMap_->randomIntensity = 0.5f;
 	constMap_->randomTime = 0.0f;
+	constMap_->damageAmount = 0.0f;
+	constMap_->damageFlash = 0.0f;
 }
 
 // --- 描画処理 ---
