@@ -321,8 +321,6 @@ void GameScene::ResetPlayState(){
 	// やられ演出の最中にRキーなどでやり直したときも、自機を出して操作できる状態に戻す
 	isDefeated_ = false;
 	defeatTimer_ = 0.0f;
-	// デモの被弾の間隔も、やり直すたびに最初から数える
-	demoHitTimer_ = 0.0f;
 }
 
 // 遠くの物を空の色に溶け込ませる距離を、全オブジェクト共通の設定にする
@@ -379,9 +377,12 @@ void GameScene::StartFromContinuePoint(){
 
 // デモのときに、タイトル・スタート台を飛ばしてレールの始点から始める
 // ResetPlayState()でレールを0番へ戻しているため、その後に呼ぶ
+// 1回目は敵の弾に当たって体力が尽きる流れを見せるため、敵の弾を必ず当てる
+// (最初のレールの近くの2体の敵が撃つ弾で約5秒で尽き、レール(約8秒)の終点で落ちる前に尽きる)
 void GameScene::StartDemoPlay(){
 	startSequence_->Start(true);
 	player_->BoardRailStart();
+	enemyManager_->SetGuidedBullets(true);
 }
 
 // Playに入ったときに覚えておいた制御点の位置からレールに乗せる
@@ -443,6 +444,10 @@ void GameScene::RestartAfterMiss(){
 void GameScene::LoseLife(){
 	--lives_;
 	if(lives_ > 0){
+		// デモの2回目はレールから落ちて残機が尽きる流れを見せるため、敵の弾は必ず当てるのをやめる
+		if(DemoMode::isEnabled){
+			enemyManager_->SetGuidedBullets(false);
+		}
 		RestartAfterMiss();
 		return;
 	}
@@ -868,18 +873,12 @@ void GameScene::UpdateGameplay(){
 		// プレイヤーの行列はこのフレームの配置処理でUpdate()済み
 		int hitCount = enemyManager_->CheckHitToPlayer(player_->GetHitSphere());
 
-		// デモでは、敵弾が当たるのを待たずに決まった間隔で被弾させ、体力が尽きるまでの演出を毎回同じ流れで見せる
-		bool isDemoHit = false;
-		if(DemoMode::isEnabled){
-			demoHitTimer_ += kDeltaTime;
-			if(demoHitTimer_ >= DemoMode::kHitInterval){
-				demoHitTimer_ = 0.0f;
-				isDemoHit = true;
-			}
-		}
+		// デモの2回目はレールから落ちて残機が尽きる流れを見せるため、敵の弾が当たっても体力を減らさない
+		// (誰も鍵の的を撃たないため、次のレールが出ないまま最初のレールの終点で落ちる)
+		const bool ignoresBulletDamage = DemoMode::isEnabled && lives_ < DemoMode::kStartLives;
 
 		// 同時に複数当たっても体力の減少は1回分だけにする
-		if(hitCount > 0 || isDemoHit){
+		if(hitCount > 0 && !ignoresBulletDamage){
 			player_->TakeDamage();
 		}
 	}

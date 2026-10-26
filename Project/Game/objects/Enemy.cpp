@@ -223,14 +223,15 @@ void Enemy::UpdateBullets(const Vector3& playerPosition,float deltaTime){
 
 		// 追尾弾の向き補正
 		// 現在の進行方向をプレイヤー方向へ少しずつ寄せることで、急に折れ曲がらない緩やかな追尾にする
-		if(bullet.isHoming){
+		// 必ず当てるとき(デモ)は、どの弾も毎フレームまっすぐプレイヤーへ向け直す
+		if(bullet.isHoming || isGuidedBullets_){
 			Vector3 toPlayer = playerPosition - bullet.position;
 			if(Length(toPlayer) > 1e-5f){
 				Vector3 currentDirection = Normalize(bullet.velocity);
 				Vector3 targetDirection = Normalize(toPlayer);
 
 				// 1フレームで補正する割合(1.0を超えると一気に向き切り替わってしまうため上限で制限する)
-				float turnRatio = kHomingTurnRate * deltaTime;
+				float turnRatio = isGuidedBullets_?kGuidedTurnRatio:kHomingTurnRate * deltaTime;
 				if(turnRatio > 1.0f){
 					turnRatio = 1.0f;
 				}

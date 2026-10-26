@@ -62,6 +62,9 @@ public:
 	// 体力の最大値を設定する(現在の体力が最大値を超える場合は最大値に合わせる)
 	void SetMaxHp(int maxHp);
 
+	// 撃った弾を必ずプレイヤーに当てるか(デモで、敵の弾に当たって体力が尽きる流れを毎回同じに見せるのに使う)
+	void SetGuidedBullets(bool isGuided){ isGuidedBullets_ = isGuided; }
+
 	/// <summary>
 	/// 発射済みの弾とプレイヤーの当たり判定を行い、命中した弾を消滅させる
 	/// </summary>
@@ -123,6 +126,8 @@ private:
 
 	// 現在使用している攻撃の種類(kAttackOrderの何番目かを指す)
 	size_t attackIndex_ = 0;
+	// 撃った弾を必ずプレイヤーに当てるか(trueの間は、どの弾も毎フレームプレイヤーへまっすぐ向け直す)
+	bool isGuidedBullets_ = false;
 
 	Vector3 basePosition_ = {0.0f, 0.0f, 0.0f};    // 往復移動の中心座標
 	Vector3 patrolDirection_ = {1.0f, 0.0f, 0.0f}; // 往復移動の方向(正規化済み)
@@ -186,6 +191,8 @@ private:
 	static constexpr float kHomingBulletSpeed = 12.0f;
 	// 追尾弾が1秒あたりにプレイヤー方向へ向きを補正する割合(大きいほど急に曲がる)
 	static constexpr float kHomingTurnRate = 1.5f;
+	// 必ず当てるときに、1フレームでプレイヤーへ向け直す割合(1: まっすぐプレイヤーへ向ける)
+	static constexpr float kGuidedTurnRatio = 1.0f;
 	// 追尾弾の発射間隔(秒)。避けにくい攻撃なので最も長めにする
 	static constexpr float kHomingShotInterval = 2.5f;
 };

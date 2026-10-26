@@ -64,6 +64,9 @@ public:
 	// 全ての敵を初期状態(体力満タン)に戻す
 	void Reset();
 
+	// 全ての敵の撃った弾を、必ずプレイヤーに当てるか(デモで、敵の弾に当たって体力が尽きる流れを毎回同じに見せるのに使う)
+	void SetGuidedBullets(bool isGuided);
+
 	// 全ての敵を描画する(撃破済みのときはEnemy側で描画をスキップする)
 	void Draw();
 
@@ -86,6 +89,8 @@ private:
 
 	// 雑魚敵(固定パターンで往復移動し、プレイヤーを検知すると向きを変える)
 	std::vector<std::unique_ptr<Enemy>> enemies_;
+	// 撃った弾を必ずプレイヤーに当てるか(後から生成した敵にも同じ設定をするため覚えておく)
+	bool isGuidedBullets_ = false;
 
 	// 初回起動時に自動配置する雑魚敵のレール進行度(レールの中間地点)
 	static constexpr float kSpawnRailT = 0.5f;
