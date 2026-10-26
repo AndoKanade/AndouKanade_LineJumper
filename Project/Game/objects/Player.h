@@ -54,9 +54,6 @@ public:
 	/// <param name="scaleRate">通常の大きさに掛ける倍率(軸ごと)</param>
 	void SetDirectedPose(const Vector3& position,const Vector3& rotate,const Vector3& scaleRate);
 
-	// レールを進む速さに掛ける倍率を設定する(デモで、敵の弾が当たりきるまでゆっくり進ませるのに使う。1: 通常の速さ)
-	void SetRailSpeedRate(float rate){ railSpeedRate_ = rate; }
-
 	/// <summary>
 	/// レールを進む速さを一時的に上げ、時間とともに元の速さへ戻す(発射台から飛び出した直後に使う)
 	/// </summary>
@@ -228,8 +225,6 @@ private:
 	float railBoostRate_ = 1.0f;
 	float railBoostDuration_ = 0.0f;
 	float railBoostTimer_ = 0.0f;
-	// レールを進む速さに掛ける倍率(デモ用。Reset() では戻さない)
-	float railSpeedRate_ = 1.0f;
 
 	// レール全体の進行速度の初期値(1秒あたりに進むワールド座標の距離。保存済みJSONがあればそちらが優先される)
 	static constexpr float kDefaultRailSpeed = 6.0f;

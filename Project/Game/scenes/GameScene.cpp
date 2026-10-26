@@ -35,7 +35,6 @@
 #include "objects/ComboCounter.h"
 #include "objects/StageResult.h"
 #include "objects/ContinuePoint.h"
-#include "systems/DemoMode.h"
 // カメラ
 #include "Camera/RailCamera.h"
 #include "Camera/DebugTopCamera.h"
@@ -394,16 +393,6 @@ void GameScene::StartFromContinuePoint(){
 	player_->StartReveal(GetRespawnRevealStyle(),kRespawnRevealDuration);
 }
 
-// デモのときに、タイトル・スタート台を飛ばしてレールの始点から始める
-// ResetPlayState()でレールを0番へ戻しているため、その後に呼ぶ
-// 1回目は敵の弾に当たって体力が尽きる流れを見せるため、敵の弾を必ず当て、レールの終点に着く前に当たりきるようゆっくり進ませる
-void GameScene::StartDemoPlay(){
-	startSequence_->Start(true);
-	player_->BoardRailStart();
-	player_->SetRailSpeedRate(DemoMode::kFirstLifeRailSpeedRate);
-	enemyManager_->SetGuidedBullets(true);
-}
-
 // Playに入ったときに覚えておいた制御点の位置からレールに乗せる
 // ResetPlayState()でレールを0番へ戻しているため、制御点のあるレールへ切り替えてから乗せる
 void GameScene::BoardAtPlayStartPoint(){
@@ -452,9 +441,6 @@ void GameScene::RestartAfterMiss(){
 			RespawnAtCheckpoint();
 		} else if(isPlayingFromPoint_){
 			BoardAtPlayStartPoint();
-		} else if(DemoMode::isEnabled){
-			// デモでは操作する人がいないため、スタート台の上ではなくレールの始点からやり直す
-			player_->BoardRailStart();
 		}
 		// 透明な体がだんだん元に戻る見せ方で、復活したことを分かりやすくする
 		player_->StartReveal(GetRespawnRevealStyle(),kRespawnRevealDuration);
@@ -465,11 +451,6 @@ void GameScene::RestartAfterMiss(){
 void GameScene::LoseLife(){
 	--lives_;
 	if(lives_ > 0){
-		// デモの2回目はレールから落ちて残機が尽きる流れを見せるため、敵の弾は必ず当てるのをやめ、終点まで通常の速さで進ませる
-		if(DemoMode::isEnabled){
-			enemyManager_->SetGuidedBullets(false);
-			player_->SetRailSpeedRate(DemoMode::kSecondLifeRailSpeedRate);
-		}
 		RestartAfterMiss();
 		return;
 	}
@@ -705,14 +686,11 @@ void GameScene::UpdateGameplay(){
 		isPlayingFromPoint_ = startsFromSelectedPoint_ && editPointIndex_ >= 0;
 		// Playに入り直したら、前回のPlayで通ったチェックポイントは忘れて最初から始める
 		// 残機も満タンから始める(コンティニューで戻ってきたときも満タンにする)
-		// デモでは、1回リトライしてからゲームオーバーになる流れを見せるため、残機2から始める
 		checkpoint_ = Checkpoint{};
-		lives_ = DemoMode::isEnabled?DemoMode::kStartLives:kMaxLives;
+		lives_ = kMaxLives;
 		ResetPlayState();
 		// ゲームオーバー画面でコンティニューを選んで戻ってきたときは、最後に通ったチェックポイントから始める
-		if(DemoMode::isEnabled){
-			StartDemoPlay();
-		} else if(ContinuePoint::isRequested){
+		if(ContinuePoint::isRequested){
 			StartFromContinuePoint();
 		} else{
 			StartPlaySequence();
@@ -901,12 +879,8 @@ void GameScene::UpdateGameplay(){
 		// プレイヤーの行列はこのフレームの配置処理でUpdate()済み
 		int hitCount = enemyManager_->CheckHitToPlayer(player_->GetHitSphere());
 
-		// デモの2回目はレールから落ちて残機が尽きる流れを見せるため、敵の弾が当たっても体力を減らさない
-		// (誰も鍵の的を撃たないため、次のレールが出ないまま最初のレールの終点で落ちる)
-		const bool ignoresBulletDamage = DemoMode::isEnabled && lives_ < DemoMode::kStartLives;
-
 		// 同時に複数当たっても体力の減少は1回分だけにする
-		if(hitCount > 0 && !ignoresBulletDamage){
+		if(hitCount > 0){
 			player_->TakeDamage();
 		}
 	}

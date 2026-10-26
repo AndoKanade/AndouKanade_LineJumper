@@ -1489,3 +1489,11 @@ Visual Studio（Debug / Development / Release、x64）でビルドが通るこ�
 
 - 見比べた結果、Stripes（横じまが太くなって埋まる）に決めた（初期値のまま）。Sweep も ImGui で選べるよう残している。
 - 元に戻りきるまでの時間 `kRespawnRevealDuration` を 1.2 秒から 0.8 秒にした。
+
+### 10. デモを消した
+
+対象ファイル: `Game/systems/DemoMode.h`（削除）、`Game/scenes/GameScene.h/.cpp`、`Game/scenes/GameOverScene.h/.cpp`、`Game/objects/Player.h/.cpp`、`Game/objects/Enemy.h/.cpp`、`Game/objects/EnemyManager.h/.cpp`、`MyGameEngine.vcxproj(.filters)`
+
+- 評価会用の exe と動画を用意し終えたため、5.〜7. で入れたデモ（Release 版で起動したらゲームオーバーまでの演出をくり返す）を消し、Release 版も今までどおり遊べるようにした。
+- デモのためだけに足した、敵の弾を必ず当てる設定（`SetGuidedBullets`）、レールを進む速さの倍率（`Player::SetRailSpeedRate`）、ゲームオーバー画面を決まった時間で抜ける処理も消した。
+- 7. のタイトルを飛ばしたときに出発ゲートを開けておく修正（`StartPlatform::OpenGateImmediately()`）は、コンティニューやデバッグ用の Skip Title でも必要なため残した。8.・9. の復活の見せ方も残した。

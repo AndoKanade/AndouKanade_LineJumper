@@ -67,7 +67,6 @@ void EnemyManager::SyncFromEditor(){
 
 		auto enemy = std::make_unique<Enemy>();
 		enemy->Initialize(objCommon_,point.position,point.patrolDirection,point.maxHp);
-		enemy->SetGuidedBullets(isGuidedBullets_);
 		enemies_.push_back(std::move(enemy));
 	}
 
@@ -150,14 +149,6 @@ bool EnemyManager::FindAimedEnemy(const Vector3& cameraPosition,const Vector3& c
 void EnemyManager::Reset(){
 	for(auto& enemy : enemies_){
 		enemy->Reset();
-	}
-}
-
-// 全ての敵の撃った弾を、必ずプレイヤーに当てるか
-void EnemyManager::SetGuidedBullets(bool isGuided){
-	isGuidedBullets_ = isGuided;
-	for(auto& enemy : enemies_){
-		enemy->SetGuidedBullets(isGuided);
 	}
 }
 

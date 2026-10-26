@@ -476,9 +476,6 @@
     <ClInclude Include="Game\systems\SceneManager.h">
       <Filter>ヘッダー ファイル\Game\System</Filter>
     </ClInclude>
-    <ClInclude Include="Game\systems\DemoMode.h">
-      <Filter>ヘッダー ファイル\Game\System</Filter>
-    </ClInclude>
     <ClInclude Include="Game\systems\SceneTransition.h">
       <Filter>ヘッダー ファイル\Game\System</Filter>
     </ClInclude>

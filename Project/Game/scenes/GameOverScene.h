@@ -57,6 +57,4 @@ private:
 
 	// 今選んでいる項目(すぐ再開できるよう、最初はコンティニューを選んでおく)
 	int selectedOption_ = kOptionContinue;
-	// デモのときに、この画面を出してからの経過時間(秒。決まった時間を過ぎたら最初からやり直す)
-	float demoTimer_ = 0.0f;
 };
