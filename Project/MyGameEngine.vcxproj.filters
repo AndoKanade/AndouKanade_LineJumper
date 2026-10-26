@@ -557,6 +557,9 @@
     <ClInclude Include="Game\objects\StageResult.h">
       <Filter>ヘッダー ファイル\Game\objects</Filter>
     </ClInclude>
+    <ClInclude Include="Game\objects\ContinuePoint.h">
+      <Filter>ヘッダー ファイル\Game\objects</Filter>
+    </ClInclude>
     <ClInclude Include="Game\UI\StageHUD.h">
       <Filter>ヘッダー ファイル\Game\UI</Filter>
     </ClInclude>

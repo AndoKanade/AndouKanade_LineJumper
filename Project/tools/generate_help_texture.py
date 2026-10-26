@@ -60,7 +60,8 @@ FLOWS = [
     ("プレイ", "レールの終点に着く", "ステージクリア"),
     ("プレイ", "体力(左上)が0になる", "ゲームオーバー"),
     ("プレイ", "レールから落ちる", "スタート台からやり直し"),
-    ("クリア/ゲームオーバー", "SPACE", "タイトルへ戻る"),
+    ("クリア", "SPACE", "タイトルへ戻る"),
+    ("ゲームオーバー", "W/S で選んで SPACE", "コンティニュー / タイトルへ"),
 ]
 
 
@@ -128,7 +129,7 @@ def generate_help():
 
     # 右の列: 画面の流れ
     draw.text((right_column, top), "画面の流れ", font=heading_font, fill=HEADING_COLOR, anchor="lt")
-    flow_row_height = 88
+    flow_row_height = 76
     box_height = 46
     y = top + 82
     for source, condition, destination in FLOWS:

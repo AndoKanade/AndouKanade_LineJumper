@@ -41,11 +41,11 @@ Game/
 ```
 起動 ─→ GAME ─(レール終端に到達)─→ CLEAR ─(SPACE)─→ GAME
           │
-          └─(体力0)─→ GAMEOVER ─(SPACE)─→ GAME
+          └─(体力0)─→ GAMEOVER ─(コンティニュー / タイトルへ を選んで SPACE)─→ GAME
 ```
 
 - タイトルは独立したシーンではなく、GameScene の中の開始演出（`StartSequence`）として表示する。
-- GAME へ切り替わるたびに GameScene が作り直され、Play モードならタイトルから始まる。
+- GAME へ切り替わるたびに GameScene が作り直され、Play モードならタイトルから始まる。ゲームオーバー画面でコンティニューを選んだときだけ、タイトル・スタート台を飛ばして最後に通ったチェックポイントから始まる（`ContinuePoint`）。
 - ESC キーでいつでもゲームを終了する（`Framework::Update()`）。
 
 ### Edit モードと Play モード
@@ -270,12 +270,26 @@ Game/
 
 ### GameOverScene（`scenes/GameOverScene.h/.cpp`）
 
-プレイヤーの体力が 0 になったときの画面。ClearScene と同じ構成。
+プレイヤーの体力が 0 になったときの画面。ClearScene と同じ構成に、項目の選択を足したもの。
 
 - 背景に `resource/circle.png` を赤系の色で表示する。
-- 画面の中央に「GAME OVER」と「SPACE でタイトルへ」を描いた画像（`resource/UI/gameOverTitle.png`、仮素材）を表示する。ImGui を使わないため Release 構成でも表示される。
+- 画面の中央より上に「GAME OVER」と「W/S でえらんで SPACE で決定」を描いた画像（`resource/UI/gameOverTitle.png`、仮素材）を表示し、その下に「コンティニュー」「タイトルへ」の項目の画像（`resource/UI/continueOption.png` / `toTitleOption.png`、仮素材）を並べる。ImGui を使わないため Release 構成でも表示される。
+- W/S（↑/↓）で項目を選ぶ。端からさらに進めると反対側の端へ回り込む。最初はコンティニューを選んでいる。選んでいる項目は黄色で少し大きく、選んでいない項目は暗く表示する。
+- SPACE で決定し、GAME へ戻る。コンティニューなら `ContinuePoint::isRequested` を立て、最後に通ったチェックポイントから始まる。タイトルへならタイトルから始まる。
 - 「GAME OVER」と操作説明を ImGui で表示する。
-- SPACE で GAME へ戻る（タイトルから始まる）。
+
+### ContinuePoint（`objects/ContinuePoint.h`）
+
+ゲームオーバー画面でコンティニューを選んだときに再開する位置。シーンは切り替えのたびに作り直されるため、`StageResult` と同じく static な値でシーンをまたいで渡す。
+
+| 値 | 書き込む | 読み出す |
+| --- | --- | --- |
+| `railIndex` / `pointIndex` / `targetAliveStates` | GameScene（体力が 0 になった瞬間に、最後に通ったチェックポイントを書き込む。通っていなければ railIndex は -1） | GameScene（コンティニューで始めるとき） |
+| `isRequested` | GameOverScene（コンティニューを選んだら true、タイトルへなら false） | GameScene（Play に入るときに見て、使ったら false に戻す） |
+
+- コンティニューで始めるときは、`ResetPlayState()` で全部を戻した後、タイトル・スタート台を飛ばし、チェックポイントの位置からレールに乗せて、的をチェックポイントを通った時点の状態に戻す（落下リスタートと同じ戻し方）。体力・敵・連鎖数・レールの塗りは最初の状態に戻る。
+- チェックポイントを通る前に体力が尽きていたときは、レールの始点から始める。
+- 再開した後にまたレールから落ちたときも、同じチェックポイントからやり直す。
 
 ---
 

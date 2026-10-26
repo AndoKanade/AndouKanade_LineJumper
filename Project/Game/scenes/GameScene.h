@@ -59,6 +59,8 @@ private:
 	void ResetPlayState();
 	// タイトル・スタート演出を始め、デバッグ用の設定に合わせてレールへ乗せる(Playに入った瞬間とRキーのやり直しで共通して使う)
 	void StartPlaySequence();
+	// ゲームオーバー画面でコンティニューを選んだときに、タイトル・スタート台を飛ばして最後に通ったチェックポイントから始める
+	void StartFromContinuePoint();
 	// Playに入ったときに覚えておいた制御点の位置からレールに乗せる(途中からPlayするとき用)
 	void BoardAtPlayStartPoint();
 	// レールを進んでいる間に、チェックポイントの制御点を通ったら、その位置と壊した的を覚えておく

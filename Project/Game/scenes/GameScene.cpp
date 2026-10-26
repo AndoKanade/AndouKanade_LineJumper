@@ -34,6 +34,7 @@
 #include "objects/InkEffectManager.h"
 #include "objects/ComboCounter.h"
 #include "objects/StageResult.h"
+#include "objects/ContinuePoint.h"
 // カメラ
 #include "Camera/RailCamera.h"
 #include "Camera/DebugTopCamera.h"
@@ -344,6 +345,25 @@ void GameScene::StartPlaySequence(){
 	}
 }
 
+// ゲームオーバー画面でコンティニューを選んだときに、タイトル・スタート台を飛ばして最後に通ったチェックポイントから始める
+// ResetPlayState()でレールを0番へ戻し、的もすべて復活させているため、その後に呼ぶ
+void GameScene::StartFromContinuePoint(){
+	// 1回使ったら下ろし、タイトルからやり直したときなどに同じ位置から始めないようにする
+	ContinuePoint::isRequested = false;
+	startSequence_->Start(true);
+
+	// 再開した後にまたレールから落ちたときも、同じチェックポイントからやり直せるよう覚え直す
+	checkpoint_.railIndex = ContinuePoint::railIndex;
+	checkpoint_.pointIndex = ContinuePoint::pointIndex;
+	checkpoint_.targetAliveStates = ContinuePoint::targetAliveStates;
+	if(checkpoint_.railIndex >= 0){
+		RespawnAtCheckpoint();
+	} else{
+		// チェックポイントを通る前に体力が尽きたときは、レールの始点から始める
+		player_->BoardRailStart();
+	}
+}
+
 // Playに入ったときに覚えておいた制御点の位置からレールに乗せる
 // ResetPlayState()でレールを0番へ戻しているため、制御点のあるレールへ切り替えてから乗せる
 void GameScene::BoardAtPlayStartPoint(){
@@ -581,7 +601,12 @@ void GameScene::UpdateGameplay(){
 		// Playに入り直したら、前回のPlayで通ったチェックポイントは忘れて最初から始める
 		checkpoint_ = Checkpoint{};
 		ResetPlayState();
-		StartPlaySequence();
+		// ゲームオーバー画面でコンティニューを選んで戻ってきたときは、最後に通ったチェックポイントから始める
+		if(ContinuePoint::isRequested){
+			StartFromContinuePoint();
+		} else{
+			StartPlaySequence();
+		}
 	} else if(!isPlayMode && wasPlayMode_){
 		startSequence_->Stop();
 		departureDirector_->Reset();
@@ -761,6 +786,10 @@ void GameScene::UpdateGameplay(){
 	// 体力が0になったらゲームオーバー画面へ遷移する
 	// クリア判定と同じく、以降の落下リスタートなどの処理を行わないようここで抜ける
 	if(isGameplayActive && player_->IsDead()){
+		// ゲームオーバー画面でコンティニューを選んだら最後に通ったチェックポイントから始められるよう、シーンが作り直される前に書き込んでおく
+		ContinuePoint::railIndex = checkpoint_.railIndex;
+		ContinuePoint::pointIndex = checkpoint_.pointIndex;
+		ContinuePoint::targetAliveStates = checkpoint_.targetAliveStates;
 		// ゲームオーバーは暗いインクが上から垂れてきて画面を覆う演出で切り替える
 		sceneManager_->ChangeScene("GAMEOVER",SceneTransition::Style::InkDrip);
 		return;
