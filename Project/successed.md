@@ -1461,3 +1461,24 @@ Visual Studio（Debug / Development / Release、x64）でビルドが通るこ�
 ### ビルド確認（7.）
 
 未確認（Visual Studio でのビルドと実機での動作確認が必要）。
+
+### 8. 復活したときに、透明な体がだんだん元に戻る見せ方を入れた（2 種類から ImGui で選ぶ）
+
+対象ファイル: `Engine/Graphics/3D/Model.h`、`Engine/Graphics/3D/Obj3D.cpp`、`Engine/Graphics/3D/Model.cpp`、`Engine/Graphics/Shaders/Obj3D/Object3d.PS.hlsl`、`Game/objects/Player.h/.cpp`、`Game/scenes/GameScene.h/.cpp`
+
+- 復活したとき（落下リスタート・残機を減らしたやり直し・コンティニュー）は、自機が透明な状態から 1.2 秒かけて元に戻るようにした。暗転で画面を覆っている間は進めず、画面が見えてから戻っていく。
+- 見せ方は 2 種類作り、Edit モードの「GameScene Debug」パネルの「Respawn Reveal」で切り替える。「Preview Respawn Reveal」を押すと、その場のプレイヤーで見た目を確認できる。
+  - Stripes：細い横じま（体の高さに 9 本）だけ見えている状態から、しまが太くなってすき間が埋まる。
+  - Sweep：光る白い境界線が下から上へ通り、線より下だけ見える。
+- 選んだものは調整項目 `respawnRevealStyle` に入る。Global Variables の Save で `resource/GlobalVariables/GameScene.json` に保存すると、Release 版（デモ）でも同じ見せ方になる。初期値は Stripes。
+- モデルのマテリアルに、現れる演出の見せ方・進み具合・範囲（足元の高さと体の高さ）を足した（`Model::Material::revealStyle` など）。マテリアルの最後に足したため、ほかのモデルの見た目は変わらない（既定は None でふつうに描く）。シェーダーでは、まだ見えていない部分のピクセルを捨てて透明に見せる。
+
+| 定数 | 値 | 内容 |
+| --- | --- | --- |
+| `GameScene.h::kRespawnRevealDuration` | 1.2 | 透明な体が元に戻りきるまでの時間（秒） |
+| `Object3d.PS.hlsl::kRevealStripeCount` | 9 | Stripes の横じまの本数 |
+| `Object3d.PS.hlsl::kRevealEdgeWidth` | 0.06 | Sweep の境界線の太さ（体の高さに対する割合） |
+
+### ビルド確認（8.）
+
+未確認（Visual Studio でのビルドと実機での動作確認が必要）。`Object3d.PS.hlsl` はシェーダーのコンパイラで確かめていない。

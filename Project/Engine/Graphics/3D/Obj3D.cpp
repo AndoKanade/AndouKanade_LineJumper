@@ -35,6 +35,11 @@ void Obj3D::Initialize(Obj3dCommon* object3dCommon){
         // 遠くを空の色に溶け込ませる処理は、使うもの(雲海の地面など)だけが距離を設定する
         materialData->distanceFadeStart = 0.0f;
         materialData->distanceFadeEnd = 0.0f;
+        // 現れる演出は、使うもの(復活したときのプレイヤーなど)だけが設定する
+        materialData->revealStyle = static_cast<int32_t>(Model::RevealStyle::None);
+        materialData->revealProgress = 1.0f;
+        materialData->revealBottom = 0.0f;
+        materialData->revealHeight = 0.0f;
     }
 
     transform = {{1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}};

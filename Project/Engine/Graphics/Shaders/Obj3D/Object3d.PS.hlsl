@@ -13,6 +13,13 @@ struct Material
     // カメラからの距離がこの間で、色を背景の空の色へ少しずつ近づける(End <= Start のときは近づけない)
     float32_t distanceFadeStart;
     float32_t distanceFadeEnd;
+    // 現れる演出の見せ方(0: ふつうに描く 1: 横じまが太くなって埋まる 2: 光る境界線が下から上へ通る。Model::RevealStyle と同じ番号)
+    int32_t revealStyle;
+    // 現れる演出の進み具合(0: まったく見えない 〜 1: すべて見える)
+    float32_t revealProgress;
+    // 現れる演出をかける範囲の、下端のワールドの高さと、上端までの高さ
+    float32_t revealBottom;
+    float32_t revealHeight;
 };
 
 struct DirectionalLight
@@ -81,6 +88,18 @@ static const float32_t kTangentEpsilon = 1e-12f;
 // インクの表面はつやがあるので、鏡面反射の鋭さと強さを上げる
 static const float32_t kInkShininess = 64.0f;
 static const float32_t kInkSpecularScale = 1.6f;
+
+// --- 現れる演出 ---
+// 見せ方の番号(Model::RevealStyle と同じ)
+static const int32_t kRevealStripes = 1;
+static const int32_t kRevealSweep = 2;
+// 横じまの本数(モデルの下端から上端までに並べる数)
+static const float32_t kRevealStripeCount = 9.0f;
+// 境界線の太さ(モデルの高さに対する割合)と、線の色(光って見えるよう白にする)
+static const float32_t kRevealEdgeWidth = 0.06f;
+static const float32_t3 kRevealEdgeColor = float32_t3(1.0f, 1.0f, 1.0f);
+// 範囲の高さが0のときに割り算が壊れないようにする最小値
+static const float32_t kRevealMinHeight = 1e-4f;
 
 // インクの盛り上がりの高さ(輪郭の外は0、輪郭から少し内側で1になり、そこから内側は平ら)
 float32_t InkHeight(float32_t field)
@@ -231,6 +250,34 @@ PixelShaderOutput main(VertexShaderOutput input)
         float32_t fadeRate = smoothstep(gMaterial.distanceFadeStart, gMaterial.distanceFadeEnd, length(fromCamera));
         float32_t3 skyColor = gEnvironmentTexture.Sample(gSampler, normalize(fromCamera)).rgb;
         finalColor = lerp(finalColor, skyColor, fadeRate);
+    }
+
+    // --- 現れる演出 ---
+    // まだ見えていない部分は描かずに捨て、透明だった体がだんだん元に戻って見えるようにする
+    if (gMaterial.revealStyle != 0)
+    {
+        // このピクセルが、範囲の下端から上端までのどの高さにあるか(0〜1)
+        float32_t heightRate = saturate((input.worldPosition.y - gMaterial.revealBottom) / max(gMaterial.revealHeight, kRevealMinHeight));
+        if (gMaterial.revealStyle == kRevealStripes)
+        {
+            // しま1本の中での位置が進み具合より上なら捨てる(進むほど、見えている部分が太くなる)
+            if (frac(heightRate * kRevealStripeCount) >= gMaterial.revealProgress)
+            {
+                discard;
+            }
+        }
+        else if (gMaterial.revealStyle == kRevealSweep)
+        {
+            // 境界線は、進み具合 0 で下端より線の太さ分だけ下、1 で上端より線の太さ分だけ上にあり、始めと終わりで線が見えないようにする
+            float32_t lineHeight = lerp(-kRevealEdgeWidth, 1.0f + kRevealEdgeWidth, gMaterial.revealProgress);
+            if (heightRate > lineHeight)
+            {
+                discard;
+            }
+            // 線のすぐ下を光らせる
+            float32_t edgeRate = 1.0f - saturate((lineHeight - heightRate) / kRevealEdgeWidth);
+            finalColor = lerp(finalColor, kRevealEdgeColor, edgeRate);
+        }
     }
 
     // 最終出力の計算

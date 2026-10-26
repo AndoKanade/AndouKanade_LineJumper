@@ -66,6 +66,20 @@ public:
 		// (遠くの物の切れ目を空に溶け込ませて見えなくするため。End <= Startのときは近づけない)
 		float distanceFadeStart;
 		float distanceFadeEnd;
+		// 現れる演出の見せ方(RevealStyle の番号。None のときはふつうに描く)
+		int32_t revealStyle;
+		// 現れる演出の進み具合(0: まったく見えない 〜 1: すべて見える)
+		float revealProgress;
+		// 現れる演出をかける範囲の、下端のワールドの高さと、上端までの高さ(しまの位置・境界線の位置をモデルに合わせるのに使う)
+		float revealBottom;
+		float revealHeight;
+	};
+
+	// 現れる演出の見せ方(シェーダーの Object3d.PS.hlsl と同じ番号にする)
+	enum class RevealStyle : int32_t{
+		None = 0,    // ふつうに描く
+		Stripes = 1, // 細い横じまだけ見えている状態から、しまが太くなってすき間が埋まっていく
+		Sweep = 2,   // 光る境界線が下から上へ通り、線より下だけ見える
 	};
 
 	// アルファテストの既定のしきい値(半分以上透けているピクセルは描画しない)

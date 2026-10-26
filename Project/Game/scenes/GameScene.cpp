@@ -98,10 +98,18 @@ namespace{
 	// 演出の初期値(保存済みJSONがあればそちらが優先される)
 	constexpr SceneTransition::Style kDefaultFallTransitionStyle = SceneTransition::Style::RailStripes;
 	constexpr SceneTransition::Style kDefaultClearTransitionStyle = SceneTransition::Style::InkBurst;
+	// 復活したときの、透明な体が元に戻る見せ方を保存する調整項目名(Model::RevealStyle の番号で保存する)と、初期値
+	const char* kRespawnRevealKey = "respawnRevealStyle";
+	constexpr Model::RevealStyle kDefaultRespawnRevealStyle = Model::RevealStyle::Stripes;
 
 	// 調整項目に保存した番号から演出の種類を取得する
 	SceneTransition::Style GetTransitionStyle(const char* key){
 		return static_cast<SceneTransition::Style>(GlobalVariables::GetInstance()->GetIntValue(kGameSceneGroup,key));
+	}
+
+	// 調整項目に保存した番号から、復活したときの見せ方を取得する
+	Model::RevealStyle GetRespawnRevealStyle(){
+		return static_cast<Model::RevealStyle>(GlobalVariables::GetInstance()->GetIntValue(kGameSceneGroup,kRespawnRevealKey));
 	}
 
 	// 調整項目に保存した番号から出発の演出の種類を取得する
@@ -122,6 +130,14 @@ namespace{
 	};
 	const char* kClearTransitionNames[] = {"InkBurst", "RailPaint", "GoalStamp", "CloudRise"};
 	static_assert(std::size(kClearTransitionStyles) == std::size(kClearTransitionNames),"クリアの演出の候補と名前の数が合っていない");
+
+	// 復活したときの見せ方の候補と、ImGui の切り替えに表示する名前(同じ順番にする)
+	constexpr Model::RevealStyle kRespawnRevealStyles[] = {
+		Model::RevealStyle::Stripes,
+		Model::RevealStyle::Sweep,
+	};
+	const char* kRespawnRevealNames[] = {"Stripes", "Sweep"};
+	static_assert(std::size(kRespawnRevealStyles) == std::size(kRespawnRevealNames),"復活の見せ方の候補と名前の数が合っていない");
 #endif
 }
 
@@ -175,6 +191,7 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// 落下リスタート・クリア画面への切り替えの演出(ImGui で選んだものを "Global Variables" の Save で保存できる)
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kFallTransitionKey,static_cast<int32_t>(kDefaultFallTransitionStyle));
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kClearTransitionKey,static_cast<int32_t>(kDefaultClearTransitionStyle));
+	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kRespawnRevealKey,static_cast<int32_t>(kDefaultRespawnRevealStyle));
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kDepartureStyleKey,static_cast<int32_t>(kDefaultDepartureStyle));
 	// 遠くの物を空の色に溶け込ませる距離(Play中だけ使う)
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kObjectFadeStartKey,kDefaultObjectFadeStart);
@@ -373,6 +390,8 @@ void GameScene::StartFromContinuePoint(){
 		// チェックポイントを通る前に残機が尽きたときは、レールの始点から始める
 		player_->BoardRailStart();
 	}
+	// 落ちたときのやり直しと同じく、透明な体がだんだん元に戻る見せ方で始める
+	player_->StartReveal(GetRespawnRevealStyle(),kRespawnRevealDuration);
 }
 
 // デモのときに、タイトル・スタート台を飛ばしてレールの始点から始める
@@ -437,6 +456,8 @@ void GameScene::RestartAfterMiss(){
 			// デモでは操作する人がいないため、スタート台の上ではなくレールの始点からやり直す
 			player_->BoardRailStart();
 		}
+		// 透明な体がだんだん元に戻る見せ方で、復活したことを分かりやすくする
+		player_->StartReveal(GetRespawnRevealStyle(),kRespawnRevealDuration);
 	},GetTransitionStyle(kFallTransitionKey));
 }
 
@@ -792,6 +813,12 @@ void GameScene::UpdateGameplay(){
 	ShowStatusWindow();
 #endif
 
+	// 復活したときに透明な体が元に戻っていく演出を進める
+	// 暗転で画面を覆っている間は進めず、画面が見えてから元に戻っていくようにする
+	if(!sceneManager_->IsTransitioning()){
+		player_->UpdateReveal(kDeltaTime);
+	}
+
 	// プレイヤーをレールの上に立たせ、照準の方向へ向ける
 	// 座標は雑魚敵の検知判定・開始演出にも使う
 	player_->UpdateTransform(railCamera_->GetRotation(),startSequence_->GetPlayerHopHeight());
@@ -1117,6 +1144,21 @@ void GameScene::ShowEditorPanels(){
 	}
 	if(ImGui::Button("Preview Clear Transition")){
 		sceneManager_->StartTransition(nullptr,clearTransitionStyle);
+	}
+
+	// 復活したときの、透明な体が元に戻る見せ方を切り替える。Preview を押すと、その場のプレイヤーで見た目を確認できる
+	const Model::RevealStyle respawnRevealStyle = GetRespawnRevealStyle();
+	int respawnRevealIndex = 0;
+	for(int i = 0; i < static_cast<int>(std::size(kRespawnRevealStyles)); ++i){
+		if(kRespawnRevealStyles[i] == respawnRevealStyle){
+			respawnRevealIndex = i;
+		}
+	}
+	if(ImGui::Combo("Respawn Reveal",&respawnRevealIndex,kRespawnRevealNames,IM_ARRAYSIZE(kRespawnRevealNames))){
+		gv->SetValue(kGameSceneGroup,kRespawnRevealKey,static_cast<int32_t>(kRespawnRevealStyles[respawnRevealIndex]));
+	}
+	if(ImGui::Button("Preview Respawn Reveal")){
+		player_->StartReveal(respawnRevealStyle,kRespawnRevealDuration);
 	}
 
 	// スタート台からステージのレールへ移るときの出発の演出を切り替える(次に出発ゲートが開いたときから使われる)
