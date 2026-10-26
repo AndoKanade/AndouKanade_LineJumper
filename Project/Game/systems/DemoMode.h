@@ -2,16 +2,18 @@
 
 /// <summary>
 /// 評価会などで、人がいなくてもゲームオーバーまでの演出を流し続けるデモ
-/// exe を「--demo」を付けて起動すると有効になる(tools/run_demo.bat から起動できる)。
+/// 提出・掲示する Release 版では、起動したらすぐデモになる(Debug・Development 版はエディターで作業するため、今までどおり遊べる)。
 /// 残機2でレールの始点から始まり、決まった間隔で被弾して体力が尽きる → リトライ → もう一度尽きる →
 /// やられ演出 → ゲームオーバー画面 → 最初に戻る、をくり返す。
 /// </summary>
 struct DemoMode{
-	// デモを流しているか(起動したときのコマンドラインで決め、以降は変えない)
-	inline static bool isEnabled = false;
+	// デモを流しているか(ImGui が無い Release 版だけ流す)
+#ifdef USE_IMGUI
+	static constexpr bool isEnabled = false;
+#else
+	static constexpr bool isEnabled = true;
+#endif
 
-	// デモを有効にするコマンドラインの指定
-	static constexpr const char* kCommandLineOption = "--demo";
 	// デモを始めるときの残機
 	static constexpr int kStartLives = 2;
 	// 被弾させる間隔(秒)。被弾後の無敵時間(1秒)より長くして、毎回確実に体力が減るようにする

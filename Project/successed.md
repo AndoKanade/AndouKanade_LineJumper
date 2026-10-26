@@ -1418,10 +1418,10 @@ Visual Studio（Debug / Development / Release、x64）でビルドが通るこ�
 
 ### 5. ゲームオーバーまでの演出を流し続けるデモを追加した
 
-対象ファイル: `Game/systems/DemoMode.h`（新規）、`Engine/Framework/main.cpp`、`Game/scenes/GameScene.h/.cpp`、`Game/scenes/GameOverScene.h/.cpp`、`tools/run_demo.bat`（新規）、`MyGameEngine.vcxproj(.filters)`
+対象ファイル: `Game/systems/DemoMode.h`（新規）、`Game/scenes/GameScene.h/.cpp`、`Game/scenes/GameOverScene.h/.cpp`、`MyGameEngine.vcxproj(.filters)`
 
 - 評価会で演出を見てもらうため、人がいなくても「残機 2 で始まる → 体力が尽きてリトライ → もう一度尽きる → やられ演出 → ゲームオーバー画面 → 最初に戻る」をくり返すデモを作った。
-- exe を `--demo` を付けて起動するとデモになる。`tools/run_demo.bat` をダブルクリックすると、Release 版をデモで起動する（先に Visual Studio で Release をビルドしておく）。付けずに起動したときは今までどおり。
+- 提出・掲示する Release 版では、起動したらすぐデモになる（はじめは `--demo` を付けて起動したときだけにしていたが、そのまま提出・掲示するため常にデモにした）。Debug・Development 版はエディターで作業するため、今までどおり遊べる。
 - 被弾は敵弾を待たずに 1.5 秒ごとに起こし、毎回同じ流れになるようにした。体力 3 が尽きるまで約 4.5 秒で、最初のレール（約 8 秒）の終点で落ちる前に尽きる。
 - デモではタイトル・スタート台を飛ばしてレールの始点から始め、リトライもスタート台ではなくレールの始点から行う。
 - ゲームオーバー画面は 4 秒見せたら、項目を選ばずに最初からやり直す。

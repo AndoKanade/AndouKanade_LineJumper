@@ -1,8 +1,6 @@
 #include "Application.h"
 #include "D3DResourceLeakChecker.h"
 #include "TimeManager.h"
-#include "DemoMode.h"
-#include <cstring>
 #include <memory>
 #include <filesystem>
 #include <Windows.h>
@@ -43,12 +41,9 @@ namespace{
 	}
 }
 
-int WINAPI WinMain(HINSTANCE,HINSTANCE,LPSTR commandLine,int){
+int WINAPI WinMain(HINSTANCE,HINSTANCE,LPSTR,int){
 	// exeを直接ダブルクリックしても資産パスを解決できるようにする
 	SetCurrentDirectoryToProjectRoot();
-
-	// 「--demo」を付けて起動されたら、ゲームオーバーまでの演出を流し続けるデモにする(シーンを作る前に決めておく)
-	DemoMode::isEnabled = commandLine && std::strstr(commandLine,DemoMode::kCommandLineOption) != nullptr;
 
 	// リソースリークチェック用オブジェクト
 	D3DResourceLeakChecker leakCheck;
