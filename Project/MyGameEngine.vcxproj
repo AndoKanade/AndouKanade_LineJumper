@@ -143,7 +143,7 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
-      <Optimization>Disabled</Optimization>
+      <Optimization>MaxSpeed</Optimization>
       <WholeProgramOptimization>false</WholeProgramOptimization>
       <AdditionalIncludeDirectories>$(ProjectDir)Engine\Base;$(ProjectDir)Engine\Framework;$(ProjectDir)Engine\Manager;$(ProjectDir)Engine\Graphics\2D;$(ProjectDir)Engine\Graphics\3D;$(ProjectDir)Engine\Graphics\Effect;$(ProjectDir)Game;$(ProjectDir);$(ProjectDir)externals\assimp\include;$(ProjectDir)Engine\Graphics\3D\Animation;$(ProjectDir)Game\systems;$(ProjectDir)Game\scenes;$(ProjectDir)Game\Editor</AdditionalIncludeDirectories>
     </ClCompile>
@@ -432,6 +432,7 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClInclude Include="Game\objects\PlayerBulletManager.h" />
     <ClInclude Include="Game\objects\StartPlatform.h" />
     <ClInclude Include="Game\objects\TargetManager.h" />
+    <ClInclude Include="Game\objects\GoalTarget.h" />
     <ClInclude Include="Game\objects\EnemyManager.h" />
     <ClInclude Include="Game\Camera\RailCamera.h" />
     <ClInclude Include="Game\Camera\DebugTopCamera.h" />
@@ -442,6 +443,7 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClInclude Include="Game\objects\StageResult.h" />
     <ClInclude Include="Game\objects\ContinuePoint.h" />
     <ClInclude Include="Game\UI\StageHUD.h" />
+    <ClInclude Include="Game\UI\StageClearUI.h" />
     <ClInclude Include="Game\UI\SpeedLines.h" />
     <ClInclude Include="Game\UI\DamageInkEffect.h" />
     <ClInclude Include="Game\UI\HelpOverlay.h" />
@@ -458,6 +460,7 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClInclude Include="Game\Title\Departure\CatapultDeparture.h" />
     <ClInclude Include="Game\Title\Departure\CountdownFlipDeparture.h" />
     <ClInclude Include="Game\Title\Departure\DepartureDirector.h" />
+    <ClInclude Include="Game\Title\ReturnJump.h" />
     <ClInclude Include="Game\Camera\CameraPose.h" />
     <ClInclude Include="Game\Title\TitleLogo.h" />
     <ClInclude Include="Game\Title\TitleUI.h" />
@@ -518,6 +521,7 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClCompile Include="Game\objects\PlayerBulletManager.cpp" />
     <ClCompile Include="Game\objects\StartPlatform.cpp" />
     <ClCompile Include="Game\objects\TargetManager.cpp" />
+    <ClCompile Include="Game\objects\GoalTarget.cpp" />
     <ClCompile Include="Game\objects\EnemyManager.cpp" />
     <ClCompile Include="Game\Camera\RailCamera.cpp" />
     <ClCompile Include="Game\Camera\DebugTopCamera.cpp" />
@@ -526,6 +530,7 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClCompile Include="Game\objects\InkEffectManager.cpp" />
     <ClCompile Include="Game\objects\ComboCounter.cpp" />
     <ClCompile Include="Game\UI\StageHUD.cpp" />
+    <ClCompile Include="Game\UI\StageClearUI.cpp" />
     <ClCompile Include="Game\UI\SpeedLines.cpp" />
     <ClCompile Include="Game\UI\DamageInkEffect.cpp" />
     <ClCompile Include="Game\UI\HelpOverlay.cpp" />
@@ -535,6 +540,7 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClCompile Include="Game\Title\TitleCameraDirector.cpp" />
     <ClCompile Include="Game\Title\GateCameraDirector.cpp" />
     <ClCompile Include="Game\Title\Departure\SuperJumpDeparture.cpp" />
+    <ClCompile Include="Game\Title\ReturnJump.cpp" />
     <ClCompile Include="Game\Title\Departure\InkDiveDeparture.cpp" />
     <ClCompile Include="Game\Title\Departure\CatapultDeparture.cpp" />
     <ClCompile Include="Game\Title\Departure\CountdownFlipDeparture.cpp" />

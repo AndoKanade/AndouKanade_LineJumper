@@ -288,6 +288,9 @@
     <ClCompile Include="Game\objects\TargetManager.cpp">
       <Filter>ソース ファイル\Game\objects</Filter>
     </ClCompile>
+    <ClCompile Include="Game\objects\GoalTarget.cpp">
+      <Filter>ソース ファイル\Game\objects</Filter>
+    </ClCompile>
     <ClCompile Include="Game\objects\EnemyManager.cpp">
       <Filter>ソース ファイル\Game\objects</Filter>
     </ClCompile>
@@ -312,6 +315,9 @@
     <ClCompile Include="Game\UI\StageHUD.cpp">
       <Filter>ソース ファイル\Game\UI</Filter>
     </ClCompile>
+    <ClCompile Include="Game\UI\StageClearUI.cpp">
+      <Filter>ソース ファイル\Game\UI</Filter>
+    </ClCompile>
     <ClCompile Include="Game\UI\SpeedLines.cpp">
       <Filter>ソース ファイル\Game\UI</Filter>
     </ClCompile>
@@ -328,6 +334,9 @@
       <Filter>ソース ファイル\Game\Title</Filter>
     </ClCompile>
     <ClCompile Include="Game\Title\StartSequence.cpp">
+      <Filter>ソース ファイル\Game\Title</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Title\ReturnJump.cpp">
       <Filter>ソース ファイル\Game\Title</Filter>
     </ClCompile>
     <ClCompile Include="Game\Title\Departure\SuperJumpDeparture.cpp">
@@ -536,6 +545,9 @@
     <ClInclude Include="Game\objects\TargetManager.h">
       <Filter>ヘッダー ファイル\Game\objects</Filter>
     </ClInclude>
+    <ClInclude Include="Game\objects\GoalTarget.h">
+      <Filter>ヘッダー ファイル\Game\objects</Filter>
+    </ClInclude>
     <ClInclude Include="Game\objects\EnemyManager.h">
       <Filter>ヘッダー ファイル\Game\objects</Filter>
     </ClInclude>
@@ -566,6 +578,9 @@
     <ClInclude Include="Game\UI\StageHUD.h">
       <Filter>ヘッダー ファイル\Game\UI</Filter>
     </ClInclude>
+    <ClInclude Include="Game\UI\StageClearUI.h">
+      <Filter>ヘッダー ファイル\Game\UI</Filter>
+    </ClInclude>
     <ClInclude Include="Game\UI\SpeedLines.h">
       <Filter>ヘッダー ファイル\Game\UI</Filter>
     </ClInclude>
@@ -585,6 +600,9 @@
       <Filter>ヘッダー ファイル\Game\Title</Filter>
     </ClInclude>
     <ClInclude Include="Game\Title\StartSequence.h">
+      <Filter>ヘッダー ファイル\Game\Title</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Title\ReturnJump.h">
       <Filter>ヘッダー ファイル\Game\Title</Filter>
     </ClInclude>
     <ClInclude Include="Game\Title\Departure\DepartureContext.h">

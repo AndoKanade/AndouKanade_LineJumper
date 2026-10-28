@@ -1,5 +1,6 @@
 #pragma once
 #include "MyMath.h"
+#include "Model.h"
 #include "EditHistory.h"
 #include "EditorDocumentManager.h"
 #include <vector>
@@ -12,7 +13,6 @@
 // クラスの前方宣言
 class Obj3D;
 class Obj3dCommon;
-class Model;
 
 class RailEditor : public IEditorDocument{
 public:
@@ -196,10 +196,27 @@ private:
 		float unlockGrownLength = kFullyGrownLength;
 		// 管の始点から各輪(区間の境目)までの、レールに沿った長さ(管を伸ばした長さから、描く区間を求めるのに使う)
 		std::vector<float> tubeRingDistances;
+
+		// Edit中に曲線を描く細い管(レールに沿った1本のモデル。UpdateEditTubes()で頂点から作る)
+		// 曲線の点を1つずつ別のオブジェクトで描くと描画の命令が点の数だけ増えて重いため、1本のモデルにまとめる
+		std::unique_ptr<Model> curveModel;
+		std::unique_ptr<Obj3D> curveObject;
+		// Edit中に着地できる範囲の境界を描く細い管(レールの左右2本を1つのモデルにまとめ、1回の描画で済ませる)
+		std::unique_ptr<Model> landingRangeModel;
+		std::unique_ptr<Obj3D> landingRangeObject;
+		// Edit中の管を作ったときの制御点と着地できる範囲の距離(変わっていなければ作り直さない)
+		std::vector<ControlPoint> editTubeBuiltControlPoints;
+		float editTubeBuiltLandingRangeRadius = 0.0f;
 	};
 
-	// 制御点・曲線の点列・着地範囲の描画用の3Dオブジェクト生成(modelPathで使うモデルを指定する)
+	// 制御点の描画用の3Dオブジェクト生成(modelPathで使うモデルを指定する)
 	std::unique_ptr<Obj3D> CreatePointObject(const std::string& modelPath);
+	// 輪の中心ringCentersを順に通る、半径radiusの管の頂点とインデックスをmodelDataの末尾に足す(Play中の管とEdit中の曲線・着地範囲で共用)
+	static void AppendTubeMesh(const std::vector<Vector3>& ringCenters,float radius,Model::ModelData& modelData);
+	// Edit中の曲線と着地できる範囲の管を、レールの形に合わせて作る(形・着地範囲の距離が前回から変わったときだけ作り直す)
+	void UpdateEditTubes(Rail& rail);
+	// Edit中の管のモデルを新しい頂点に差し替える(頂点の数が同じなら頂点バッファを書き換えるだけにし、GPUのバッファを作り直さない)
+	void ApplyEditTubeModel(std::unique_ptr<Model>& model,std::unique_ptr<Obj3D>& object,Model::ModelData&& data);
 	// Play中のレール本体の管のモデルを、レールに沿った頂点から作る(前回作ったときから形が変わったレールだけ作り直す)
 	// Play中はレールの形が変わらないため、Playに入ってから最初の描画で1回だけ呼ぶ
 	void BuildTubes();
@@ -209,13 +226,8 @@ private:
 	static uint32_t CountDashedSegmentsBefore(uint32_t segment);
 	// rail.pointObjectsの個数をrail.controlPointsに同期
 	void SyncPointObjectsToControlPoints(Rail& rail);
-	// 描画用オブジェクトがcount個に満たなければ、足りない分だけmodelPathのモデルで生成する(多い分は削らず、使わないだけにする)
-	void EnsureObjectCount(std::vector<std::unique_ptr<Obj3D>>& objects,size_t count,const std::string& modelPath);
-	// 制御点数pointCountのレールで、Edit中の曲線の点列に使う点の数を求める
+	// 制御点数pointCountのレールで、Edit中の曲線の管の輪の数を求める
 	size_t GetCurveSampleCount(size_t pointCount) const;
-	// Edit中の曲線の点列・着地できる範囲の点を描くオブジェクトを、全レール共通の置き場から1つ取り出す
-	// 足りないときは1フレームに作る数を制限しながら増やし、このフレームに作れる数を使い切ったらnullptrを返す(その点は次のフレーム以降に描く)
-	Obj3D* AcquireSampleObject();
 	// レールの末尾を延長する位置に置く制御点を求める(末尾2点の向きにそのまま伸ばす)
 	ControlPoint ComputeExtendedPoint(const std::vector<ControlPoint>& controlPoints) const;
 	// 指定インデックスの位置に制御点を挿入し、その制御点を選択状態にする
@@ -269,14 +281,6 @@ private:
 	// Play中のレール本体の管の行列を求め終えたか(Edit中はレールが編集されうるためfalseに戻す)
 	bool areTubesBuilt_ = false;
 
-	// Edit中の曲線の点列・着地できる範囲の点を描くオブジェクトの置き場(全レール共通)
-	// 1つ作るごとにGPUのバッファを2つ確保して重いため、レールごとにまとめて作らず、全レールで使い回す
-	std::vector<std::unique_ptr<Obj3D>> sampleObjects_;
-	// このフレームのDraw()で取り出したオブジェクトの数(毎フレーム0に戻し、置き場の先頭から順に使う)
-	size_t usedSampleObjectCount_ = 0;
-	// このフレームに新しく作ったオブジェクトの数(1フレームに作る数を制限して、重さを複数フレームに分ける)
-	size_t createdSampleObjectCount_ = 0;
-
 	// 編集履歴(Undo/Redo)と、保存していない変更があるかの管理
 	EditHistory<RailsSnapshot> history_;
 	// シーンが切り替わってエディターが破棄されたときに、保存していなかった変更を取っておく場所(次に作ったエディターで戻す)
@@ -321,13 +325,8 @@ private:
 	// 走り切るまでの秒数を求めるとき、速さがこれ未満の区間は止まっているとみなして数えない(0除算防止)
 	static constexpr float kMinStatsSpeed = 1e-4f;
 
-	// 曲線の点列・着地できる範囲の点のオブジェクトを、1フレームに新しく作る最大数
-	static constexpr size_t kMaxSampleObjectCreatePerFrame = 8;
-	// 起動時に、今のレールに必要な数より多めに作っておくオブジェクトの数(制御点を足して延長しても、しばらくは新しく作らずに済むようにする)
-	static constexpr size_t kSampleObjectHeadroom = 200;
-
 	// レール曲線可視化の、Catmull-Romの1区間あたりのサンプリング分割数
-	// レールを延長して区間が増えても点の間隔が粗くならないよう、区間数に比例させる
+	// レールを延長して区間が増えても曲線が角ばらないよう、区間数に比例させる
 	static constexpr int kCurveSamplesPerSegment = 20;
 
 	// Play中のレール本体の管の、Catmull-Romの1区間あたりの分割数(多いほど曲がりがなめらかになる)
@@ -345,8 +344,6 @@ private:
 	// 管の向きを求めるベクトルの長さがこれ未満なら、向きが定まらないとみなして前の向きを使う
 	static constexpr float kMinTubeDirectionLength = 1e-4f;
 
-	// 着地できる範囲の可視化のサンプリング分割数(左右2列ぶん描くため曲線より粗くする)
-	static constexpr int kLandingRangeSampleCount = 50;
 	// 着地できる範囲の水平方向の許容距離の初期値(SetLandingRangeRadius()で上書きされる)
 	static constexpr float kDefaultLandingRangeRadius = 1.0f;
 

@@ -191,6 +191,35 @@ void InkEffectManager::EmitDefeatBurst(const Vector3& position){
 	flash.maxLifeTime = kDefeatFlashLife;
 }
 
+// ゴールの的を壊したときの演出(普通の的を壊したときと同じ作りで、数・大きさ・速さ・寿命を増やす)
+void InkEffectManager::EmitGoalBreak(const Vector3& position){
+	for(int i = 0; i < kGoalBreakShardCount; ++i){
+		Piece& shard = Spawn(shards_,nextShard_);
+		shard.position = position;
+		shard.velocity = Normalize(RandomVector()) * RandomRange(kGoalBreakShardSpeedMin,kGoalBreakShardSpeedMax) + kWorldUp * kGoalBreakShardUpSpeed;
+		shard.angularVelocity = RandomVector() * kBreakShardSpinMax;
+		shard.color = kShardColors[static_cast<size_t>(i) % kShardColorCount];
+		shard.baseScale = RandomRange(kGoalBreakShardScaleMin,kGoalBreakShardScaleMax);
+		shard.maxLifeTime = RandomRange(kGoalBreakShardLifeMin,kGoalBreakShardLifeMax);
+	}
+
+	for(int i = 0; i < kGoalBreakDropletCount; ++i){
+		Piece& droplet = Spawn(droplets_,nextDroplet_);
+		droplet.position = position;
+		droplet.velocity = Normalize(RandomVector()) * RandomRange(kGoalBreakDropletSpeedMin,kGoalBreakDropletSpeedMax) + kWorldUp * kGoalBreakDropletUpSpeed;
+		droplet.color = kInkColor;
+		droplet.baseScale = RandomRange(kGoalBreakDropletScaleMin,kGoalBreakDropletScaleMax);
+		droplet.maxLifeTime = RandomRange(kGoalBreakDropletLifeMin,kGoalBreakDropletLifeMax);
+	}
+
+	Piece& flash = Spawn(flashes_,nextFlash_);
+	flash.position = position;
+	flash.velocity = {0.0f, 0.0f, 0.0f};
+	flash.color = kFlashColor;
+	flash.baseScale = kGoalBreakFlashScale;
+	flash.maxLifeTime = kGoalBreakFlashLife;
+}
+
 // 移動・回転・縮小・寿命の更新
 void InkEffectManager::Update(float deltaTime){
 	for(std::vector<Piece>* pool : {&droplets_, &shards_, &flashes_}){

@@ -123,7 +123,7 @@ public:
 	// 弾を撃ち出す位置を取得(足元から構えた手元の高さまで上げた位置)
 	Vector3 GetMuzzlePosition() const{ return {position_.x, position_.y + kMuzzleHeight, position_.z}; }
 
-	// ゴールのレールの終点に着いたかどうか(オンレール中に終端まで進んだらtrue。ゴール以外のレールは終点でレールから外れるためtrueにならない)
+	// ゴールのレールの終点に着いて止まったかどうか(オンレール中に終端まで進んだらtrue。ゴール以外のレールは終点でレールから外れるためtrueにならない)
 	bool HasReachedGoal() const{ return isOnRail_ && isRailFinished_; }
 	// 体力が尽きたかどうか
 	bool IsDead() const{ return hp_ <= 0; }
@@ -144,6 +144,9 @@ public:
 	// 見た目どおりに、足の裏が管に少しでも掛かっていれば乗れるよう、管の半径と足の裏の幅の半分を足した距離にする
 	// レールエディターで着地できる範囲を可視化するのにも使う
 	static constexpr float kOnRailHorizontalThreshold = RailEditor::kTubeRadius + kFootHalfWidth;
+	// ゴールのレールのインデックス(rail5。ほかのレールは終点でレールから外れるが、このレールは終点で止まる)
+	// 乗るとゴールの的が現れて先を並走し、終点で止まった後もゴールの的を壊すまで撃ち続けられる
+	static constexpr int kGoalRailIndex = 5;
 
 private:
 	/// <summary>
@@ -246,8 +249,6 @@ private:
 	static constexpr float kMoveSpeed = 5.0f;
 	// レールの終端の進行度
 	static constexpr float kRailEndT = 1.0f;
-	// 終点に着いたらクリアにするレールのインデックス(rail5。ほかのレールは終点でレールから外れる)
-	static constexpr int kGoalRailIndex = 5;
 	// ゴール以外のレールの終点から飛び出すときに、レールを進んでいた速さに掛ける割合(1で同じ速さのまま飛び出す)
 	static constexpr float kRailEndLaunchSpeedRate = 0.4f;
 	// ゴール以外のレールの終点から飛び出すときの、上向きの初速(通常のジャンプより小さくして飛びすぎないようにする)

@@ -1,6 +1,6 @@
 # Game フォルダ クラス仕様書
 
-最終更新: 2026-10-19
+最終更新: 2026-10-28
 
 `Game/` 以下の各クラスについて、「何ができるか」「外から何を呼べるか」「中でどう動いているか」をまとめる。
 エンジン側（`Engine/`）のクラスは対象外（Game のために追加したものだけ、使う側の項目で触れる）。
@@ -28,21 +28,24 @@
 Game/
 ├── systems/   シーンの生成・切り替えの仕組み
 ├── scenes/    GameScene（本編）、ClearScene、GameOverScene
-├── Title/     GameScene 内で動くステージ開始演出（タイトル → 回り込み → スタート台で準備 → 出発ゲート → レールへ乗り込む）
+├── Title/     GameScene 内で動くステージ開始演出（タイトル → 回り込み → スタート台で準備 → 出発ゲート → レールへ乗り込む）と、クリア後にスタート台へ戻る大ジャンプ（ReturnJump）
 │   └── Departure/  スタート台からレールへ移るときの出発の演出（1 種類 1 クラス）
-├── objects/   Player / PlayerBulletManager / TargetManager / Enemy / EnemyManager / Ground / Sun / StartPlatform / InkEffectManager / ComboCounter / StageResult
+├── objects/   Player / PlayerBulletManager / TargetManager / GoalTarget / Enemy / EnemyManager / Ground / Sun / StartPlatform / InkEffectManager / ComboCounter / StageResult
 ├── Camera/    RailCamera（プレイ用カメラ）/ DebugTopCamera（俯瞰デバッグカメラ）/ ScreenImpact（ヒットストップ・画面の揺れ）/ CameraPose（演出のカメラの補間）
-├── UI/        Reticle（画面中央のレティクル）/ StageHUD（残機・的の数・連鎖数）/ SpeedLines（スピード線）/ DamageInkEffect（体力を画面の縁のインクで表現）/ HelpOverlay（H キーで開く操作説明）
+├── UI/        Reticle（画面中央のレティクル）/ StageHUD（残機・的の数・連鎖数）/ StageClearUI（「STAGE CLEAR!」）/ SpeedLines（スピード線）/ DamageInkEffect（体力を画面の縁のインクで表現）/ HelpOverlay（H キーで開く操作説明）
 └── Editor/    RailEditor / TargetEditor / EnemyEditor（Editモード中の配置ツール）/ EditHistory・EditorDocumentManager（Undo/Redo と保存の管理）/ EditorPicking（Scene ビューでのマウス選択）
 ```
 
 ### シーンの流れ
 
 ```
-起動 ─→ GAME ─(レール終端に到達)─→ CLEAR ─(SPACE)─→ GAME
+起動 ─→ GAME ─(ボスを倒す。未実装)─→ CLEAR ─(SPACE)─→ GAME
           │
           └─(落下・体力0で残機が0)─→ GAMEOVER ─(コンティニュー / タイトルへ を選んで SPACE)─→ GAME
 ```
+
+- ステージ 1 のゴールの的を壊したときは、シーンを切り替えず、大ジャンプでスタート台へ戻って GAME の中で始め直す（`ReturnJump`）。
+- CLEAR はボス戦を倒したときに移る画面として残している。今は GAME から CLEAR へ移る処理は無い。
 
 - タイトルは独立したシーンではなく、GameScene の中の開始演出（`StartSequence`）として表示する。
 - GAME へ切り替わるたびに GameScene が作り直され、Play モードならタイトルから始まる。ゲームオーバー画面でコンティニューを選んだときだけ、タイトル・スタート台を飛ばして最後に通ったチェックポイントから始まる（`ContinuePoint`）。
@@ -133,7 +136,7 @@ Game/
 | `CloudRise` | ゲーム → クリア（案） | 1.0 / 0.7 秒 | 7 段 × 9 個の雲のかたまり（白と薄い水色の円）が、下の段から順にふくらみながら湧き上がって画面を包む。戻すときは画面の中央から左右に割れる |
 
 - 演出の画像（インクのしみ・白い円・「GOAL!」）は `tools/generate_transition_assets.py` で生成する（`resource/UI/transition/`）。しみの位置・大きさ・傾きは `SceneTransition.cpp` の `kInkSplatLayouts` / `kStampSplashLayouts` で決めている。
-- クリアへ切り替える演出は、Edit モードの「GameScene Debug」パネルの「Clear Transition」で選び、「Preview Clear Transition」でその場で見た目を確認できる（落下リスタートの「Fall Transition」と同じ使い方）。
+- クリアへ切り替える演出は、Edit モードの「GameScene Debug」パネルの「Clear Transition」で選び、「Preview Clear Transition」でその場で見た目を確認できる（落下リスタートの「Fall Transition」と同じ使い方）。今は CLEAR へ移る処理が無いため、ボス戦を作るときに使う。
 - 進め方（`Update()`）と見た目（`Draw()`）を分けているため、後から見た目だけを別の演出に差し替えられる。
 
 ---
@@ -159,17 +162,20 @@ Game/
 | `debugTopCamera_` | 俯瞰デバッグカメラ（DebugTopCamera） |
 | `bulletManager_` | プレイヤーの弾（PlayerBulletManager） |
 | `targetManager_` | 的（TargetManager） |
+| `goalTarget_` | ゴールの的（GoalTarget）。ゴールのレールに乗ると現れて先を並走し、壊すとステージクリア |
 | `enemyManager_` | 雑魚敵（EnemyManager） |
 | `startSequence_` | ステージ開始演出（StartSequence）。タイトルロゴもこの中で表示する |
 | `reticle_` | 画面中央のレティクル（Reticle） |
 | `inkEffect_` | インクのしぶき・的の破片・閃光の演出（InkEffectManager） |
 | `comboCounter_` | 連鎖数（ComboCounter） |
 | `stageHUD_` | 残機・壊した的の数・連鎖数の表示（StageHUD） |
+| `stageClearUI_` | 「STAGE CLEAR!」の表示（StageClearUI） |
 | `damageInkEffect_` | 体力を画面の縁から迫る敵のインクで表現する（DamageInkEffect） |
 | `speedLines_` | スピード線（SpeedLines） |
 | `helpOverlay_` | H キーで開く操作説明（HelpOverlay） |
 | `screenImpact_` | ヒットストップと画面の揺れ（ScreenImpact） |
 | `departureDirector_` | 出発の演出の切り替えと進行（DepartureDirector） |
+| `returnJump_` | ゴールの的を壊したあと、大ジャンプでスタート台へ戻る演出（ReturnJump） |
 
 #### 初期化（Initialize）
 
@@ -177,9 +183,9 @@ Game/
 2. スカイボックス、RailEditor、Ground を生成する。地面の格子はレールの開始地点を基準にそろえ、タイルは毎フレームの更新でカメラの真下を中心に並べる。
 3. GlobalVariables にグループ `GameScene` を作る。調整項目は各クラスが自分の Initialize で登録する。
 4. Player、RailCamera、DebugTopCamera（カメラ `"debug_top"` を作る）、PlayerBulletManager を生成する。
-5. TargetManager / EnemyManager を生成する。保存データが無い初回起動時だけ自動配置する。
-6. Reticle、撃破演出用パーティクルのグループ、StartSequence を生成する。StartSequence には出発ゲートを開け閉めするためにスタート台を渡す。
-7. DepartureDirector を生成する。弾・しぶきが台に着いたらインクを塗るよう、PlayerBulletManager と InkEffectManager に着地の処理（`SetLandingHandler()`）を渡す。
+5. TargetManager / GoalTarget / EnemyManager を生成する。保存データが無い初回起動時だけ自動配置する。
+6. Reticle、StageHUD、StageClearUI、撃破演出用パーティクルのグループ、StartSequence を生成する。StartSequence には出発ゲートを開け閉めするためにスタート台を渡す。
+7. DepartureDirector と ReturnJump を生成する。弾・しぶきが台に着いたらインクを塗るよう、PlayerBulletManager と InkEffectManager に着地の処理（`SetLandingHandler()`）を渡す。
 
 #### 毎フレームの更新（Update）の流れ
 
@@ -187,17 +193,17 @@ Game/
    - ScreenImpact を進め、ヒットストップ中はスタート台とインクの演出の時間を止める。
    - 遮断棒が跳ね上がった瞬間（`StartPlatform::IsBarBurstTriggered()`）に、ゲートからインクを飛び散らせ、ヒットストップ・画面の揺れ・放射ブラーをかける。出発台を使う演出なら、この瞬間に `DepartureDirector::Prepare()` で使う演出を決める。
 2. `UpdateGameplay()` で次の処理を順番に行う。
-   1. Play に入った瞬間は、Rail Editor で編集中のレールと選択中の制御点を覚えてから、`ResetPlayState()` と `StartPlaySequence()`（`startSequence_->Start()`）を呼ぶ。ImGui の「Skip Title」が ON なら、続けて `Player::BoardRailStart()` でレールの始点に乗せ、タイトル・スタート台を飛ばしてすぐプレイを始める。「Start From Selected Point」が ON で制御点を選んでいれば、同じくタイトル・スタート台を飛ばし、その制御点の位置（`RailEditor::GetTOfControlPoint()`）から始める（落下リスタートと R キーのやり直しも同じ位置から）。Edit に戻った瞬間は `startSequence_->Stop()` を呼び、覚えておいたレールと制御点を選び直す（`RailEditor::SelectPoint()`）。
-   2. Play 中は `startSequence_->Update()` にプレイヤーの座標を渡して呼び、`isGameplayActive`（Play 中かつ開始演出が終わってプレイ可能）と `isPlayerMovable`（開始演出のうちスタート台の上を動ける段階）を求める。ゲートを開け始めた瞬間に始める出発の演出（CountdownFlip）は、ここで `Prepare()` と `Begin()` を呼んで始める。
+   1. Play に入った瞬間は、Rail Editor で編集中のレールと選択中の制御点を覚えてから、`ResetPlayState()` と `StartPlaySequence()`（`startSequence_->Start()`）を呼ぶ。ImGui の「Skip Title」が ON なら、続けて `Player::BoardRailStart()` でレールの始点に乗せ、タイトル・スタート台を飛ばしてすぐプレイを始める。「Start From Selected Point」が ON で制御点を選んでいれば、同じくタイトル・スタート台を飛ばし、その制御点の位置（`RailEditor::GetTOfControlPoint()`）から始める（落下リスタートと R キーのやり直しも同じ位置から）。Edit に戻った瞬間は `startSequence_->Stop()` を呼び、出発の演出・大ジャンプ・ゴールの的を止めて、覚えておいたレールと制御点を選び直す（`RailEditor::SelectPoint()`）。
+   2. Play 中は `startSequence_->Update()` にプレイヤーの座標を渡して呼び、`isGameplayActive`（Play 中かつ開始演出が終わってプレイ可能。大ジャンプの最中は false）と `isPlayerMovable`（開始演出のうちスタート台の上を動ける段階）を求める。ゲートを開け始めた瞬間に始める出発の演出（CountdownFlip）は、ここで `Prepare()` と `Begin()` を呼んで始める。
    3. マウスカーソルの表示を切り替える（`UpdateCursorVisibility()`）。
    4. `Player::UpdateRailProgress()` でレールを進め、`Player::UpdateBasePose()` で基準位置・基準向きを求める。
    5. `RailCamera::Update()` でカメラをプレイヤーの後ろ上に置き、照準の入力を反映する（スタート台の上を動ける間も照準を動かせる）。
-   6. クリア判定、状態確認用のデバッグウィンドウ（`ShowStatusWindow()`）。
-   7. `Player::UpdateTransform()` でプレイヤーをレールの上に立たせ、照準の方向へ向ける。出発の演出中は `DepartureDirector::Update()` でプレイヤーの表示を上書きする。カメラは「タイトル・回り込み（StartSequence）→ 出発の演出 → ゲートを映すカメラ」の優先順で上書きし、最後に画面の揺れを足す。
+   6. 状態確認用のデバッグウィンドウ（`ShowStatusWindow()`）。
+   7. `Player::UpdateTransform()` でプレイヤーをレールの上に立たせ、照準の方向へ向ける。出発の演出中は `DepartureDirector::Update()`、大ジャンプの最中は `ReturnJump::Update()` でプレイヤーの表示を上書きする。大ジャンプで跳び上がった瞬間（`ConsumeLaunched()`）にプレイヤーをスタート台の上へ移して照準を戻し、「STAGE CLEAR!」を出す。着地した瞬間（`ConsumeLanded()`）に `RestartFromReturnJump()` を呼ぶ。カメラは「タイトル・回り込み（StartSequence）→ 出発の演出 → 大ジャンプ → ゲートを映すカメラ」の優先順で上書きし、最後に画面の揺れを足す。
    8. 敵の更新、敵弾とプレイヤーの当たり判定、ゲームオーバー判定。
    9. `Player::UpdateMovement()` でジャンプ・WASD 移動・着地判定を行う。地面まで落ちたら、プレイ中なら `LoseLife()`、出発前のスタート台の上なら `RestartAfterMiss()` を呼ぶ。`isPlayerMovable` の間も同じく動かす。出発台を使う演出なら、出発台の手前の線を越えたら演出を始める。歩いてレールへ乗ったとき・出発の演出がレールへ乗せ終えたときは `StartSequence::NotifyBoarded()` を呼び、`PlayBoardedEffects()` で足元から輪・インクのしぶき・インクの跡を出す。
-   10. 射撃（手元からインクのしぶきも出す。スタート台の上では的・敵に当たらない試し撃ち）、弾の移動、的・敵と弾の当たり判定、壊れた的ごとの演出と連鎖数の加算、弾の行列の更新、レティクルの色の更新。
-   11. 演出・スピード線・HUD の更新。レールを進んでいる間は、通った区間を塗り、足元から後ろへしぶきを飛ばし、スピード線を出す。
+   10. 射撃（手元からインクのしぶきも出す。スタート台の上では的・敵に当たらない試し撃ち）、弾の移動、的・敵と弾の当たり判定、壊れた的ごとの演出と連鎖数の加算、ゴールの的の並走と当たり判定・クリア判定、弾の行列の更新、レティクルの色の更新。
+   11. 演出・スピード線・HUD・「STAGE CLEAR!」の更新。レールを進んでいる間は、通った区間を塗り、足元から後ろへしぶきを飛ばし、スピード線を出す。
 3. デバッグ用のキー操作（F4 / F5）と、Edit モード中の ImGui パネル（`ShowEditorPanels()`）を処理する。
 
 - 4〜10 のうち入力・移動・当たり判定・勝敗判定は、`isGameplayActive` が true のときだけ動く。Edit 中・開始演出中は表示の更新だけ行う。
@@ -206,13 +212,14 @@ Game/
 
 | 項目 | 内容 |
 | --- | --- |
-| 射撃 | 左クリックを押している間、0.1 秒ごとに連射する（押した瞬間に 1 発目を撃つ）。プレイヤーの手元（`Player::GetMuzzlePosition()`）から弾を発射する。的をレティクルで狙えている（レティクルの中心が赤い）とき、またはレティクルの方向が敵の当たり判定の球を通るときは、レティクルの線（カメラの前方へ伸ばした線）の上の、一番手前のものと同じ奥行きの点へ向けて撃つ（中心そのものは狙わず、弾はいつもレティクルの通りに飛ぶ。手元から前方へ 1.0 より手前にあるものは狙わない）。どちらも無いときは、カメラの前方 12.0 の点（レティクルの先。手元からはおよそ 9 先で、射程 10 より手前）へ向けて撃つ |
+| 射撃 | 左クリックを押している間、0.1 秒ごとに連射する（押した瞬間に 1 発目を撃つ）。プレイヤーの手元（`Player::GetMuzzlePosition()`）から弾を発射する。的をレティクルで狙えている（レティクルの中心が赤い）とき、またはレティクルの方向が敵・ゴールの的の当たり判定の球を通るときは、レティクルの線（カメラの前方へ伸ばした線）の上の、一番手前のものと同じ奥行きの点へ向けて撃つ（中心そのものは狙わず、弾はいつもレティクルの通りに飛ぶ。手元から前方へ 1.0 より手前にあるものは狙わない）。どちらも無いときは、カメラの前方 12.0 の点（レティクルの先。手元からはおよそ 9 先で、射程 10 より手前）へ向けて撃つ |
 | 試し撃ち | スタート台の上（`isPlayerMovable` の間）でも撃てる。この弾は的・敵に当たらず、台に着いたところにインクを塗る |
 | 出発の演出 | ImGui の「Departure」で選んだ演出で、スタート台からレールへ移る（Title の Departure を参照） |
 | 落下リスタート | どのレールにも乗れずに地面の高さまで落ちたら暗転（`SceneManager::StartTransition()`）を始め、画面を覆っている間に `ResetPlayState()` を呼ぶ（`RestartAfterMiss()`）。開始演出は挟まない。チェックポイントを通っていれば、続けて `RespawnAtCheckpoint()` でそこから始め直す。プレイ中に落ちたときは残機を 1 つ減らす（出発前にスタート台から落ちたときは減らさない） |
 | 残機 | 最大 3（`kMaxLives`）。落下・体力 0 で 1 つ減り（`LoseLife()`）、残っていれば落下リスタートと同じ暗転でやり直す（体力は満タンに戻る）。0 になったら、やられ演出のあと GAMEOVER へ移る。`ResetPlayState()` では戻さず、Play に入ったとき（コンティニューを含む）と R キーのやり直しで満タンに戻す |
 | チェックポイント | レールを進んでいる間に、チェックポイントにした制御点（`isCheckpoint`）を通ったら、レールと制御点・その時点の的ごとの生存状態を覚える（`UpdateCheckpoint()`）。落ちたらその制御点の位置からレールに乗せ、的を覚えた状態に戻す（チェックポイントより前に壊した的は壊れたまま、後の的は復活する）。体力・敵・連鎖数・レールの塗りは最初の状態に戻る。Play に入り直したときと R キーのやり直しでは忘れる。「Start From Selected Point」で始めたときは、始めた制御点より手前のチェックポイントは通ったものとしない |
-| クリア | オンレール中にゴールのレール（`Player::kGoalRailIndex`、今は Rail 5）の終端に着いたら CLEAR へ移る。ほかのレールの終端ではレールから外れて落ちる。移る前に壊した的の数・総数・最大連鎖数を StageResult に書き込む（的を全部壊すことはクリアの条件にしない） |
+| ゴールの的 | ゴールのレール（`Player::kGoalRailIndex`、今は Rail 5）に乗ると、ゴールの的（GoalTarget）が現れてプレイヤーの先を並走する。ゴールのレールは終点でレールから外れず止まるため、壊すまで撃ち続けられる（ほかのレールの終点ではレールから外れて落ちる） |
+| クリア | ゴールの的の体力を 0 にして壊したらステージクリア。普通の的より派手な破片（`InkEffectManager::EmitGoalBreak()`）を出し、0.2 秒のヒットストップ・画面の揺れ・的を中心にした放射ブラーをかける。そのまま `ReturnJump` を始め、1.2 秒待つ間は破片・しぶきを 0.3 倍のスローにする。跳び上がった瞬間に「STAGE CLEAR!」を出す。スタート台に着地したら `RestartFromReturnJump()` で始め直す（的を全部壊すことはクリアの条件にしない） |
 | 復活の見せ方 | 落下リスタート・残機を減らしたやり直し・コンティニューで始めるときは、透明な体がだんだん元に戻る見せ方にする（`Player::StartReveal()`、0.8 秒）。暗転が明けてから進める。見せ方は Edit モードの「GameScene Debug」パネルの「Respawn Reveal」で、Stripes（細い横じまだけ見えている状態から、しまが太くなってすき間が埋まる）と Sweep（光る境界線が下から上へ通り、線より下だけ見える）から選ぶ。「Preview Respawn Reveal」でその場で確認できる。選んだものは調整項目 `respawnRevealStyle` に入り、Global Variables の Save で保存する（初期値は Stripes） |
 | やられ演出 | 残機が 0 になったら、すぐには切り替えず `StartDefeat()` を呼ぶ。自機が敵のインク（ピンク）になって弾け（`InkEffectManager::EmitDefeatBurst()`）、一瞬動きを止めて（0.15 秒）画面を揺らし、自機を中心に放射ブラーをかける。自機は描かず、操作・判定は止め、敵とインクの演出は 0.35 倍のスローで動かす。カメラはその場に止まる |
 | ゲームオーバー | やられ演出が始まってから 1.4 秒たったら（`UpdateDefeat()`）、暗いインクが垂れる演出（`InkDrip`）で GAMEOVER へ移る |
@@ -224,11 +231,12 @@ Game/
 
 | 関数 | 内容 |
 | --- | --- |
-| `ResetPlayState()` | Player・RailCamera・TargetManager・EnemyManager を初期状態に戻し、弾を消し、アクティブレールを 0 番にする。演出・画面の揺れ・出発の演出も止める |
+| `ResetPlayState()` | Player・RailCamera・TargetManager・GoalTarget・EnemyManager を初期状態に戻し、弾を消し、アクティブレールを 0 番にする。演出・画面の揺れ・出発の演出・大ジャンプ・「STAGE CLEAR!」も止める |
 | `UpdateCheckpoint()` / `RespawnAtCheckpoint()` | 通ったチェックポイントを覚える / 覚えたチェックポイントからレールに乗せ、的の生存状態を戻す |
 | `ApplyRailLocks(isInstant)` | 鍵の的が残っているレールを TargetManager から求め、RailEditor に渡す。毎フレームは的の判定の後に演出つきで、`ResetPlayState()` と `RespawnAtCheckpoint()` ではすぐに反映する。出ているかは的の状態から毎回求めるため、チェックポイントで的を戻すとレールも戻る |
 | `MakeDepartureContext()` | 出発の演出が動かす・参照するもの（DepartureContext）をまとめる |
-| `PlayBoardedEffects(position)` | レールに乗って「GO!」を出す瞬間の演出（輪・しぶき・インクの跡） |
+| `PlayBoardedEffects(position)` | レールに乗って「GO!」を出す瞬間の演出（輪・しぶき・インクの跡）。大ジャンプでスタート台に着地したときにも使う |
+| `RestartFromReturnJump(landedPos)` | 大ジャンプでスタート台に着地したときに、チェックポイントを忘れ、残機を満タンにし、`ResetPlayState()` で全部を戻してから `StartSequence::StartFromStandby()` でスタート台の上を動ける段階から始める。最後に着地の演出（輪・しぶき・インクの跡・ヒットストップ・揺れ・放射ブラー）を出す |
 | `UpdateGameplay()` | レール進行・カメラ・プレイヤー・敵・弾・的・勝敗判定を、決まった順番で呼び出す |
 | `UpdateCursorVisibility(isPlayMode)` | Edit 中はカーソルを常に表示し、Play 中は TAB で表示を切り替える |
 | `ShowStatusWindow()` | 「Rail Branch Debug」ウィンドウを表示する（ImGui がある構成のみ） |
@@ -248,10 +256,13 @@ Game/
 | `mouseSensitivity` | 0.0004 | RailCamera | マウス照準の感度 |
 | `aimPitchLimit` | 0.5 | RailCamera | 照準の上下の可動範囲（ラジアン。左右は制限しない） |
 | `aimHitAngle` | 0.09 | TargetManager | レティクルが的を捉えたとみなす角度（ラジアン） |
+| `goalTargetMaxHp` | 20 | GoalTarget | ゴールの的の体力（次にやり直したときから反映される） |
+| `goalTargetAheadDistance` | 10.0 | GoalTarget | ゴールの的がプレイヤーより先を並走する距離（レールに沿った距離） |
+| `goalTargetHeight` | 1.5 | GoalTarget | ゴールの的のレールからの高さ |
 | `fogDensity` | 1.0 | Ground | 雲の上に重ねる霧の濃さの倍率 |
 | `sunElevationDegree` / `sunAzimuthDegree` | 25 / 50 | Sun | 太陽の高さ・方角（度。方角はレール開始地点の進行方向から右回り） |
 | `sunIntensity` / `sunColor` | 1.5 / (1, 0.92, 0.8) | Sun | 光の明るさ・色 |
-| `fallTransitionStyle` / `clearTransitionStyle` | RailStripes / InkBurst | GameScene | 落下リスタート・クリアへの切り替えの演出（ImGui で選ぶ） |
+| `fallTransitionStyle` / `clearTransitionStyle` | RailStripes / InkBurst | GameScene | 落下リスタート・クリアへの切り替えの演出（ImGui で選ぶ。クリアの方はボス戦を作るときに使う） |
 | `departureStyle` | CountdownFlip | GameScene | 出発の演出（ImGui の「Departure」で選ぶ。DepartureStyle の番号） |
 
 #### ImGui 表示
@@ -265,7 +276,7 @@ Game/
 
 ### ClearScene（`scenes/ClearScene.h/.cpp`）
 
-レールの終端に到達したときの画面。
+ボス戦を倒したときに移る画面（ボス戦が未実装のため、今は GameScene から移る処理は無い）。
 
 - 背景に `resource/circle.png` を緑系の色で表示する。
 - 画面の中央に「GAME CLEAR!」と「SPACE でタイトルへ」を描いた画像（`resource/UI/clearTitle.png`、仮素材）を表示する。ImGui を使わないため Release 構成でも表示される。
@@ -300,7 +311,7 @@ Game/
 ## 4. Title（ステージ開始演出）
 
 GameScene の中で「タイトル → カメラの回り込み → スタート台で準備 → 出発ゲートを開ける → レールへ乗り込む → プレイ」を進めるクラス群。
-GameScene が直接触るのは StartSequence と DepartureDirector で、残りのクラスはその内部で使う（スタート台 StartPlatform は GameScene が持ち、StartSequence にポインタを渡す）。
+GameScene が直接触るのは StartSequence・DepartureDirector・ReturnJump で、残りのクラスはその内部で使う（スタート台 StartPlatform は GameScene が持ち、StartSequence にポインタを渡す）。
 
 出発までの流れは、スプラトゥーン2 オクト・エキスパンションの「駅のホームを歩いて改札を通ると、ステージで GO! が出る」雰囲気を参考にした。改札・駅・ポイントの支払いなどの要素はそのまま使わず、「台の上を歩ける → 目印の上で出発の操作 → 3・2・1 でゲートが開く → レールへ乗り込む → GO!」という流れだけを取り入れた。
 スタート台は、最終的に試し撃ち場（チュートリアル的な空間）にする予定。
@@ -328,6 +339,7 @@ GameScene が直接触るのは StartSequence と DepartureDirector で、残り
 | --- | --- |
 | `Initialize(Obj3dCommon*, SpriteCommon*, Input*, StartPlatform*)` | TitleLogo・TitleUI・StageIntroUI を生成し、出発ゲートを開け閉めするスタート台を受け取る |
 | `Start(skipTitle)` | `Title` から始める。カメラワーク・タイトル表示・出発までの表示・出発ゲートも初期状態に戻す。`skipTitle` が true ならゲートは閉じたまますぐ `Playing` にする（カウントダウン・ゲートが開く演出は出さない。プレイヤーは GameScene 側でレールの始点に乗せる） |
+| `StartFromStandby()` | タイトル・カメラの回り込みを飛ばして `Standby` から始める（BGM は鳴らさない）。初期状態への戻し方は `Start()` と同じ（`ResetForStart()`）。大ジャンプでスタート台へ戻ってきたときに使う |
 | `Stop()` | `None` に戻す |
 | `Update(float deltaTime, playerPosition)` | 段階ごとの処理と、次の段階への切り替えを行う。プレイヤーの座標はゲートの前にいるかの判定に使う |
 | `NotifyBoarded()` | `Boarding` / `Departure` 中にプレイヤーがレールに乗ったら呼ぶ。「GO!」を出して `Playing` にする |
@@ -378,6 +390,27 @@ GameScene が直接触るのは StartSequence と DepartureDirector で、残り
 
 - 新しい演出を足すときは、`BaseDeparture` を継承したクラスを作り、`DepartureStyle`（`Count` の前）と `DepartureDirector::kStyleNames`、`DepartureDirector::Initialize()` に 1 行ずつ足す。
 - 時間・高さ・カメラの位置は、各演出のヘッダーの定数で調整する。
+
+### ReturnJump（`Title/ReturnJump.h/.cpp`）
+
+ゴールの的を壊したあと、大ジャンプでスタート台へ戻る演出。作りは `SuperJumpDeparture` と同じで、`DepartureContext` を使ってプレイヤーの表示とカメラを動かす。
+
+| 段階 | 時間 | 内容 |
+| --- | --- | --- |
+| `Wait` | 1.2 秒 | 壊れた的の破片を見せる間、プレイ用カメラのまま待つ（GameScene はこの間、破片・しぶきを 0.3 倍のスローにする） |
+| `Charge` | 0.5 秒 | スタート台の方を向き、縦に縮んで横に広がって溜める。溜めきったら足元からしぶきを打ち上げ、画面を少し揺らして `Flight` へ |
+| `Flight` | 3.0 秒 | 跳んだ位置からスタート台の出発位置（`StartPlatform::GetSpawnPosition()`）へ、高さ 35 の山なりで跳ぶ。上下の速さに応じて縦に伸ばし、跳ぶ向きの逆へしぶきを落とす。カメラは、跳んだ瞬間の画 → 後ろ 9・上 4 から追いかける画 → プレイ用カメラ（スタート台の上の画）の順に移す |
+| `Finished` | — | 着地して終わった（演出をしていない） |
+
+| 関数 | 内容 |
+| --- | --- |
+| `Begin(context)` | 演出を始める（跳ぶ位置と着地する位置・向きを決める） |
+| `Update(deltaTime, gameplayCamera)` | 演出を進める。プレイヤーの行列更新の後に呼ぶ |
+| `Reset()` | 途中で止める |
+| `IsRunning()` / `IsWaiting()` | 演出の最中か / `Wait` の最中か |
+| `GetCameraPose(outPose)` | 演出のカメラの位置と向き（カメラを動かしている最中なら true） |
+| `ConsumeLaunched()` | このフレームで跳び上がったかを受け取る。GameScene はプレイヤーをスタート台の上へ移し、照準を戻し、「STAGE CLEAR!」を出す |
+| `ConsumeLanded(outPosition)` | このフレームで着地したかを受け取る。GameScene は `RestartFromReturnJump()` を呼ぶ |
 
 ### TitleCameraDirector（`Title/TitleCameraDirector.h/.cpp`）
 
@@ -585,7 +618,8 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `GetHitSphere()` | モデルから求めたワールド座標系の境界球を取得する（当たり判定用） |
 | `GetPosition` / `GetBasePosition` / `GetBaseRotation` | 表示位置・基準位置・基準向きの取得 |
 | `GetMuzzlePosition()` | 弾を撃ち出す位置の取得 |
-| `HasReachedGoal` / `IsDead` | クリア・ゲームオーバーの判定用（ゴール以外のレールは終点で `UpdateRailProgress` がレールから外すため、`HasReachedGoal` はゴールのレールでだけ true になる） |
+| `HasReachedGoal` / `IsDead` | ゴールのレールの終点で止まったか（ゴール以外のレールは終点で `UpdateRailProgress` がレールから外すため、ゴールのレールでだけ true になる。止まっている間はレールを塗らない）/ ゲームオーバーの判定用 |
+| `kGoalRailIndex` | ゴールのレールのインデックス（public の定数。今は 5）。GameScene はこのレールに乗ったらゴールの的を出す |
 | `IsGroundedOnRail()` | オンレールで足がレールに着いているか（跳ねている・飛び移っている途中は false。足元のしぶきに使う） |
 | `GetRailT` / `IsOnRail` / `GetFreeVelocityY` / `GetHp` / `GetMaxHp` / `GetInvincibleTimer` | デバッグ表示用の取得 |
 
@@ -639,6 +673,28 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `GetDestroyedPositions()` | 直前の `Update()` で壊れた的の座標の一覧を取得する |
 | `GetTotalCount()` / `GetDestroyedCount()` | 的の総数 / 壊された的の数を取得する |
 | `ShowHierarchy()` / `ShowInspector()` | Hierarchy / Inspector パネルの中身を表示する（ImGui がある構成のみ） |
+
+### GoalTarget（`objects/GoalTarget.h/.cpp`）
+
+ゴールの的。ゴールのレールに乗ると現れ、プレイヤーより決まった距離だけ先をレールに沿って並走する。距離がいつも同じなので置いていかれず、壊し損ねることがない。普通の的より固く、体力を 0 にするとステージクリアになる。
+
+| 項目 | 内容 |
+| --- | --- |
+| 見た目 | 普通の的と同じ `Bullseye/bullseye.obj`、スケール 1.0（普通の的の 2.5 倍）。模様の面を常にカメラへ向ける。色は体力が満タンのとき黄色（1, 0.85, 0.2）で、減った割合に合わせて赤（1, 0.2, 0.25）へ近づける |
+| 並走 | プレイヤーの進行度から、レールに沿って `goalTargetAheadDistance` 先の位置に置く。長い距離を一度に進めると曲がったところでずれるため、1.0 ずつ進めて実際に進んだ距離を引いていく。終点を越える分は、終点の進行方向へまっすぐ伸ばす（プレイヤーが終点で止まっても、的は先に離れたまま） |
+| 高さ・揺れ | レールから `goalTargetHeight` 上に置き、左右に幅 2.0、上下に幅 0.8 で、違う速さでゆっくり揺らす |
+| 命中 | 弾と境界球が重なるたびに、弾のダメージ分の体力を減らし、火花パーティクルを出す。体力は `goalTargetMaxHp`（`Reset()` で読み直す） |
+| 狙い | レティクルの方向が当たり判定の球を通れば狙えているとし、レティクルを赤くし、弾をその奥行きへ向けて撃つ（敵と同じ判定） |
+| 出し入れ | ゴールのレールに乗っている間だけ並走する。乗っていないとき（跳ねて落ちたときなど）はその場に留める。`Reset()` で出ていない状態に戻す |
+
+| 関数 | 内容 |
+| --- | --- |
+| `Initialize(Obj3dCommon*, paramGroup)` | モデルの生成と、調整項目 `goalTargetMaxHp` / `goalTargetAheadDistance` / `goalTargetHeight` の登録 |
+| `Reset()` | 体力満タン・出ていない状態に戻す |
+| `Update(railEditor, playerRailT, isOnGoalRail, cameraPosition, bullets, deltaTime)` | 並走する位置の更新と弾との当たり判定。`isOnGoalRail` が true になったら現れる |
+| `FindAimed(cameraPosition, cameraForward, minDistance, outDistance)` | レティクルの方向が当たり判定の球を通っているか |
+| `Draw()` | 現れていて壊れていないときに描画する |
+| `IsDestroyed()` / `GetPosition()` | 壊れたか / 今の座標 |
 
 ### EnemyManager（`objects/EnemyManager.h/.cpp`）
 
@@ -732,6 +788,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `EmitRailTrail(position, backward)` | レールを進んでいる間、足元から後ろへ飛ぶしぶき（1 回で 1 粒） |
 | `EmitLaunchBurst(position, count)` | 出発の合図に、しぶきを高く打ち上げる（落ちたところにインクの跡が残る） |
 | `EmitDefeatBurst(position)` | やられ演出で、自機が敵のインク（ピンク）になって全方向へ弾け飛ぶしぶき（48 粒）と閃光。しぶきは何かに着いても塗らない |
+| `EmitGoalBreak(position)` | ゴールの的を壊したときの演出。普通の的と同じ作りで、破片 24（大きさ 0.2〜0.4）・しぶき 40（大きさ 0.1〜0.2）・閃光 1（大きさ 0.6）にし、速く遠くまで長く飛ばす |
 | `SetLandingHandler(handler)` | しぶきが面に着いたかを調べてインクを塗る処理を渡す（塗る半径はしぶきの大きさの 6 倍） |
 | `Update(deltaTime)` / `Draw()` | 移動・回転・縮小・寿命の更新 / 描画 |
 
@@ -748,7 +805,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 
 ### StageResult（`objects/StageResult.h`）
 
-クリア画面へ渡すプレイの結果（壊した的の数・的の総数・最大連鎖数）。シーンは切り替えのたびに作り直されるため、GameScene がクリア直前に書き込み、ClearScene が読み出す。
+クリア画面へ渡すプレイの結果（壊した的の数・的の総数・最大連鎖数）。シーンは切り替えのたびに作り直されるため、GameScene がクリア直前に書き込み、ClearScene が読み出す。今は CLEAR へ移る処理が無いため書き込んでいない（ボス戦を作るときに、CLEAR へ移る直前に書き込む）。
 
 ---
 
@@ -840,6 +897,21 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Update(lives, maxLives, destroyedCount, totalCount, combo)` | 表示内容の更新 |
 | `Draw()` | スプライト共通の描画前処理を行ってから描画する |
 
+### StageClearUI（`UI/StageClearUI.h/.cpp`）
+
+ゴールの的を壊して大ジャンプで跳び上がった瞬間に出す「STAGE CLEAR!」。スプライトで描くため、Release 構成でも表示される。Play 中のタイトル・カメラの回り込み以外で、HUD の手前に描く。
+画像は `tools/generate_stage_clear_assets.py` で生成する（`resource/UI/stageClear.png`、1280 × 320。GO! と同じ黄色いインクの斜体の文字。仮素材）。
+
+| 表示 | 位置・大きさ | 動き |
+| --- | --- | --- |
+| STAGE CLEAR! | 画面上から 38% の高さ、1000 × 250 | 3 倍から 0.2 秒で押しつけるように収まり、0.5 秒左右に揺れて止まる。1.6 秒表示した後、0.4 秒で上へ 60 抜けながら消える（全部で 2.7 秒。大ジャンプの 3 秒より短く、着地の前に消える） |
+
+| 関数 | 内容 |
+| --- | --- |
+| `Initialize(SpriteCommon*)` | テクスチャの読み込みとスプライトの生成 |
+| `Reset()` / `Begin()` | 何も表示していない状態に戻す / 出す |
+| `Update(float)` / `Draw()` | 表示の動きを進める / 描画（表示していないときは何もしない） |
+
 ### SpeedLines（`UI/SpeedLines.h/.cpp`）
 
 画面の中心から外側へ流れる白いスピード線（`UI/speedLine.png`、28 本）。レールを進んでいる間だけ濃くなり、乗っていないときはゆっくり消える。画面の中心付近（半径 280 ピクセル）は自機と照準が見えるよう空けておく。
@@ -924,7 +996,8 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
   - レールの始点と終点には制御点の目印を出す（今乗っているレールは黄色、それ以外は黒）。
   - 鍵の的が残っていて出ていないレールは、白い点線で描き、始点と終点の目印も出さない。点線は管と同じ頂点のうち、8 区間ごとに先頭 4 区間の三角形だけを詰めた別のモデル（`dashedTubeModel`）で、1 回の描画で済む。鍵の的をすべて壊したら、0.8 秒かけて始点から終点へ管を伸ばす（`EaseOutCubic`）。伸びていない区間は点線のまま描く。
   - 出ていないレールは `FindNearestRail()` の探索から外し、着地も並走レールへの乗り換えもできない。管を伸ばしている途中から乗れる。
-- Edit 中の曲線の点列は 1 区間あたり 20 点。曲線の点列と着地範囲の点は全レール共通の置き場（`sampleObjects_`）のオブジェクトを使い回し、起動時に読み込んだレールに必要な数＋200 個を作っておく。足りなくなったら 1 フレームに 8 個まで作り、作りきれなかった点は次のフレーム以降に描く（Obj3D は 1 つ作るごとに GPU のバッファを 2 つ確保して重いため、一度にたくさん作って画面が止まらないようにする）。
+- Edit 中の曲線は細い管（半径 0.04）、着地できる範囲はレールの左右に離した 2 本の管（半径 0.06）で描く。どちらもレール 1 本につき 1 つのモデル（`curveModel`・`landingRangeModel`）で、描画命令はそれぞれ 1 回。Catmull-Rom の 1 区間を 20 に分けて輪を置き、作り方は Play 中の管と同じ（`AppendTubeMesh()`）。
+  - `UpdateEditTubes()` が、制御点か着地範囲の距離が前回から変わったときだけ作り直す。制御点の数が同じなら頂点の数も同じなので、頂点バッファを書き換えるだけにする（ドラッグ中に毎フレーム GPU のバッファを作り直さない）。
 
 #### ImGui パネル「Rail Editor」
 
@@ -1028,7 +1101,7 @@ Scene ビュー上のマウス位置から画面奥へ伸びるレイを求め�
 | `resource/rail/rail.json`、`rail1.json`、`rail2.json` … | RailEditor | レールごとの制御点 | 起動時に自動で読み込む。以降は Save / Load ボタン |
 | `resource/target/target.json` | TargetEditor | 的の座標・壊すと出るレール | 同上 |
 | `resource/enemy/enemy.json` | EnemyEditor | 敵の座標・往復方向・最大 HP | 同上 |
-| `resource/GlobalVariables/GameScene.json` | GlobalVariables（エンジン） | GameScene の調整項目 | 実行中の変更が自動で反映される |
+| `resource/GlobalVariables/GameScene.json` | GlobalVariables（エンジン） | GameScene の調整項目（ゴールの的の体力・並走する距離・高さを含む） | 実行中の変更が自動で反映される |
 | `resource/GlobalVariables/Title.json` | GlobalVariables（エンジン） | タイトルロゴの位置・大きさ・消え方、BGM・効果音の音量、ゲートを映す画の位置 | 同上 |
 
 ---
@@ -1077,4 +1150,4 @@ Scene ビュー上のマウス位置から画面奥へ伸びるレイを求め�
 
 | キー | 内容 |
 | --- | --- |
-| SPACE | GAME へ戻る（タイトルから始まる） |
+| SPACE | GAME へ戻る（タイトルから始まる。クリア画面は今は出ない） |

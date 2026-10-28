@@ -11,6 +11,9 @@
         "departureStyle": 4,
         "fallTransitionStyle": 1,
         "fogDensity": 1.0,
+        "goalTargetAheadDistance": 10.0,
+        "goalTargetHeight": 1.5,
+        "goalTargetMaxHp": 20,
         "horizonFadeEnd": 95.0,
         "horizonFadeStart": 45.0,
         "mouseSensitivity": 0.00039999998989515007,
@@ -18,6 +21,7 @@
         "objectFadeEnd": 95.0,
         "objectFadeStart": 60.0,
         "railSpeed": 6.999996662139893,
+        "respawnRevealStyle": 1,
         "sunAzimuthDegree": 50.0,
         "sunColor": [
             1.0,

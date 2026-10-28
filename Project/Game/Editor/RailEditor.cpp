@@ -58,20 +58,17 @@ namespace{
 
 	// 制御点の目印に使うモデル(上下に尖った宝石の形。半径1)
 	const std::string kControlPointModelPath = "RailMarker/railMarker.obj";
-	// 曲線の点列・着地できる範囲の点に使うモデル(半径1の球)
-	const std::string kSampleModelPath = "Sphere/sphere.obj";
 
 	// 制御点の目印の表示スケール
 	constexpr float kControlPointScale = 0.2f;
 	// 選択中の制御点の目印の表示スケール(どの点を編集しているか一目で分かるよう、他の制御点より大きくする)
 	constexpr float kSelectedPointScale = 0.35f;
-	// レール曲線のサンプリング点の表示スケール(線のように見せるため制御点より小さくする)
-	constexpr float kCurveScale = 0.04f;
-	// 着地できる範囲のサンプリング点の表示スケール
-	constexpr float kLandingRangeScale = 0.06f;
-
-	// 進行方向を前後の座標の差分で求めるときに使う、進行度tの刻み幅
-	constexpr float kForwardSampleDelta = 0.01f;
+	// Edit中のレール曲線の管の半径(線のように見せるため制御点より細くする)
+	constexpr float kCurveTubeRadius = 0.04f;
+	// Edit中の着地できる範囲の境界の管の半径
+	constexpr float kLandingRangeTubeRadius = 0.06f;
+	// 1本の管に必要な輪の数(始点と終点の2つ)
+	constexpr size_t kMinTubeRingCount = 2;
 
 	// 制御点が1つしかなく延長する向きが決まらないときに、末尾から伸ばす量
 	constexpr Vector3 kDefaultExtendOffset = {5.0f, 0.0f, 0.0f};
@@ -114,7 +111,7 @@ RailEditor::~RailEditor(){
 	EditorDocumentManager::GetInstance()->Unregister(this);
 }
 
-// 制御点・曲線の点列・着地範囲の描画用のObj3Dを1つ生成する(Initialize/追加ボタン/ロードで共通利用)
+// 制御点の描画用のObj3Dを1つ生成する(Initialize/追加ボタン/ロードで共通利用)
 std::unique_ptr<Obj3D> RailEditor::CreatePointObject(const std::string& modelPath){
 	auto obj = std::make_unique<Obj3D>();
 	obj->Initialize(objCommon_);
@@ -133,40 +130,14 @@ void RailEditor::SyncPointObjectsToControlPoints(Rail& rail){
 	}
 }
 
-// 描画用オブジェクトがcount個に満たなければ、足りない分だけ生成する
-// 曲線の点列はレールの区間数で必要な数が変わるため、延長して足りなくなったときだけ増やす
-void RailEditor::EnsureObjectCount(std::vector<std::unique_ptr<Obj3D>>& objects,size_t count,const std::string& modelPath){
-	if(objects.size() >= count){
-		return;
-	}
-	objects.reserve(count);
-	while(objects.size() < count){
-		objects.push_back(CreatePointObject(modelPath));
-	}
-}
-
-// 制御点数pointCountのレールで、Edit中の曲線の点列に使う点の数を求める
-// 区間数に比例した数の点を並べ、レールを延長しても点の間隔が粗くならないようにする(終点の分だけ1つ多い)
+// 制御点数pointCountのレールで、Edit中の曲線の管の輪の数を求める
+// 区間数に比例した数の輪を並べ、レールを延長しても曲線が角ばらないようにする(終点の分だけ1つ多い)
 size_t RailEditor::GetCurveSampleCount(size_t pointCount) const{
 	// Catmull-Romは制御点4つ以上必要なので、それ未満のときは曲線を描かない
 	if(pointCount < 4){
 		return 0;
 	}
 	return (pointCount - kCatmullRomExtraPointCount) * kCurveSamplesPerSegment + 1;
-}
-
-// Edit中の曲線の点列・着地できる範囲の点を描くオブジェクトを、全レール共通の置き場から1つ取り出す
-// 置き場の先頭から順に使い、足りなければ増やす。New Railや制御点の追加で一度にたくさん作ると画面が止まるため、
-// 1フレームに作る数を制限し、作りきれなかった点は描かずに次のフレーム以降に回す(数フレームで全部描かれる)
-Obj3D* RailEditor::AcquireSampleObject(){
-	if(usedSampleObjectCount_ >= sampleObjects_.size()){
-		if(createdSampleObjectCount_ >= kMaxSampleObjectCreatePerFrame){
-			return nullptr;
-		}
-		sampleObjects_.push_back(CreatePointObject(kSampleModelPath));
-		++createdSampleObjectCount_;
-	}
-	return sampleObjects_[usedSampleObjectCount_++].get();
 }
 
 // レールの末尾を延長する位置に置く制御点を求める
@@ -259,9 +230,8 @@ void RailEditor::AddRail(){
 	rail.controlPoints.push_back(kDefaultControlPoint);
 	rail.pointObjects.push_back(CreatePointObject(kControlPointModelPath));
 
-	// 曲線の点列・着地できる範囲の点は全レール共通の置き場(sampleObjects_)から使い、
-	// 管はPlayに入ったときにBuildTubes()でレールの形から作る
-	// (New Railで一度にたくさん作ると画面が止まるため、ここでは制御点の目印1つだけを作る)
+	// 曲線・着地できる範囲の管はEdit中の描画でUpdateEditTubes()、レール本体の管はPlayに入ったときにBuildTubes()でレールの形から作るため、
+	// ここでは制御点の目印1つだけを作る
 
 	rails_.push_back(std::move(rail));
 	activeRailIndex_ = static_cast<int>(rails_.size()) - 1;
@@ -279,23 +249,14 @@ std::string RailEditor::GetRailFilePath(int index) const{
 void RailEditor::Initialize(Obj3dCommon* objCommon){
 	objCommon_ = objCommon;
 
-	// 制御点の目印と、曲線の点列・着地範囲の点のモデルをロード
+	// 制御点の目印のモデルをロード
 	ModelManager::GetInstance()->LoadModel(kControlPointModelPath);
-	ModelManager::GetInstance()->LoadModel(kSampleModelPath);
 
 	// 最初のレールを1本用意する
 	AddRail();
 
 	// 保存済みのJSONがあれば読み込んで初期状態を上書きする(ホットロードの起動時オート読込)
 	LoadRailsFromFiles();
-
-	// 編集中に描画用オブジェクトを作って画面が止まらないよう、読み込んだレールに必要な分を起動時に作っておく
-	// 曲線の点列は延長に備えて多めに作る
-	size_t sampleObjectCount = kSampleObjectHeadroom;
-	for(const Rail& rail : rails_){
-		sampleObjectCount += GetCurveSampleCount(rail.controlPoints.size());
-	}
-	EnsureObjectCount(sampleObjects_,sampleObjectCount,kSampleModelPath);
 
 	// 読み込んだ状態を編集の基準(保存済み)にし、Ctrl+Z・すべて保存の対象に登録する
 	history_.Reset(MakeSnapshot());
@@ -550,10 +511,6 @@ void RailEditor::Draw(){
 	// Edit中はレールが編集されうるため、次にPlayに入ったときに管の行列を求め直す
 	areTubesBuilt_ = false;
 
-	// 曲線の点列・着地できる範囲の点のオブジェクトは、毎フレーム置き場の先頭から使い直す
-	usedSampleObjectCount_ = 0;
-	createdSampleObjectCount_ = 0;
-
 	Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera();
 
 	// レールの乗り換えを目視確認できるよう、アクティブなレールだけでなく全レールを描画する
@@ -595,81 +552,183 @@ void RailEditor::Draw(){
 			}
 		}
 
-		// レール曲線をサンプリング点列(小さい球)で可視化する簡易版
-		// Catmull-Romは制御点4つ以上必要なので、それ未満のときは何も描画しない
-		if(rail.showCurve && rail.controlPoints.size() >= 4){
-			const size_t curveSampleCount = GetCurveSampleCount(rail.controlPoints.size());
-			for(size_t i = 0; i < curveSampleCount; ++i){
-				// オブジェクトを作りきれていなければ、残りの点は次のフレーム以降に描く
-				Obj3D* curveObject = AcquireSampleObject();
-				if(!curveObject){
-					break;
-				}
+		// Catmull-Romは制御点4つ以上必要なので、それ未満のときは曲線・着地できる範囲を描画しない
+		if(rail.controlPoints.size() < 4 || (!rail.showCurve && !showLandingRange_)){
+			continue;
+		}
 
-				float t = static_cast<float>(i) / static_cast<float>(curveSampleCount - 1);
-				Vector3 pos = ComputePositionOnRail(rail.controlPoints,t);
+		// 曲線・着地できる範囲の管を、レールの形が変わっていれば作り直す
+		// 管の頂点はワールド座標で作っているため、オブジェクトの位置・向き・大きさは初期値のまま使う
+		UpdateEditTubes(rail);
 
-				curveObject->SetTranslate(pos);
-				// 制御点よりさらに小さくして、線のように見せる
-				curveObject->SetScale({kCurveScale, kCurveScale, kCurveScale});
-				if(Model::Material* mat = curveObject->GetMaterial()){
-					mat->color = railColor;
-				}
-
-				if(activeCamera){
-					curveObject->SetCamera(activeCamera);
-				}
-
-				curveObject->Update();
-				curveObject->Draw();
+		// レール曲線を細い管で可視化する
+		if(rail.showCurve && rail.curveModel){
+			if(Model::Material* mat = rail.curveObject->GetMaterial()){
+				mat->color = railColor;
 			}
+			if(activeCamera){
+				rail.curveObject->SetCamera(activeCamera);
+			}
+			rail.curveObject->Draw();
 		}
 
 		// ジャンプしてレールに着地できる範囲を可視化する
 		// 判定は「レール最近傍点から水平方向にlandingRangeRadius_以内」なので、
-		// レールの左右へその距離ぶん離した2列の点列を描いて範囲の境界を示す
-		if(showLandingRange_ && rail.controlPoints.size() >= 4){
-			for(int i = 0; i < kLandingRangeSampleCount; ++i){
-				float t = static_cast<float>(i) / static_cast<float>(kLandingRangeSampleCount - 1);
-				Vector3 pos = ComputePositionOnRail(rail.controlPoints,t);
-
-				// 進行方向を前後の座標の差分から求める(端では範囲外へ出ないようtを丸める)
-				float tPrev = (t - kForwardSampleDelta < 0.0f)?0.0f:t - kForwardSampleDelta;
-				float tNext = (t + kForwardSampleDelta > 1.0f)?1.0f:t + kForwardSampleDelta;
-				Vector3 forward = ComputePositionOnRail(rail.controlPoints,tNext) - ComputePositionOnRail(rail.controlPoints,tPrev);
-
-				// 判定は水平方向(XZ平面)のみで行うため、進行方向に垂直な水平ベクトルを求める
-				Vector3 horizontalRight = {forward.z, 0.0f, -forward.x};
-				if(Length(horizontalRight) <= 0.0f){
-					// 真下・真上を向いている区間では左右が決まらないため描画を飛ばす
-					continue;
-				}
-				horizontalRight = Normalize(horizontalRight) * landingRangeRadius_;
-
-				// 左右1組のオブジェクトを取り出す(作りきれていなければ、残りの点は次のフレーム以降に描く)
-				Obj3D* rightObject = AcquireSampleObject();
-				Obj3D* leftObject = AcquireSampleObject();
-				if(!rightObject || !leftObject){
-					break;
-				}
-
-				rightObject->SetTranslate(pos + horizontalRight);
-				leftObject->SetTranslate(pos - horizontalRight);
-
-				for(Obj3D* rangeObject : {rightObject, leftObject}){
-					rangeObject->SetScale({kLandingRangeScale, kLandingRangeScale, kLandingRangeScale});
-					if(Model::Material* mat = rangeObject->GetMaterial()){
-						mat->color = kLandingRangeColor;
-					}
-
-					if(activeCamera){
-						rangeObject->SetCamera(activeCamera);
-					}
-
-					rangeObject->Update();
-					rangeObject->Draw();
-				}
+		// レールの左右へその距離ぶん離した2本の管を描いて範囲の境界を示す
+		if(showLandingRange_ && rail.landingRangeModel){
+			if(Model::Material* mat = rail.landingRangeObject->GetMaterial()){
+				mat->color = kLandingRangeColor;
 			}
+			if(activeCamera){
+				rail.landingRangeObject->SetCamera(activeCamera);
+			}
+			rail.landingRangeObject->Draw();
+		}
+	}
+}
+
+// Edit中の曲線と着地できる範囲の管を、レールの形に合わせて作る
+// 制御点のドラッグ中などレールの形が変わったフレームだけ作り直し、変わっていなければ前に作った管をそのまま使う
+void RailEditor::UpdateEditTubes(Rail& rail){
+	if(rail.curveModel && rail.editTubeBuiltControlPoints == rail.controlPoints && rail.editTubeBuiltLandingRangeRadius == landingRangeRadius_){
+		return;
+	}
+
+	// 曲線の上に輪の中心を並べる(着地できる範囲の管も、この点から左右へずらして作る)
+	const size_t ringCount = GetCurveSampleCount(rail.controlPoints.size());
+	std::vector<Vector3> curveCenters(ringCount);
+	for(size_t i = 0; i < ringCount; ++i){
+		const float t = static_cast<float>(i) / static_cast<float>(ringCount - 1);
+		curveCenters[i] = ComputePositionOnRail(rail.controlPoints,t);
+	}
+
+	Model::ModelData curveData;
+	curveData.material.textureFilePath = kTubeTexturePath;
+	AppendTubeMesh(curveCenters,kCurveTubeRadius,curveData);
+	ApplyEditTubeModel(rail.curveModel,rail.curveObject,std::move(curveData));
+
+	// 着地できる範囲の境界は、曲線の各点から進行方向に垂直な水平方向へlandingRangeRadius_だけ離した左右2列の点を通す
+	// 判定は水平方向(XZ平面)のみで行うため、左右の向きも水平に求める
+	std::vector<Vector3> rightCenters;
+	std::vector<Vector3> leftCenters;
+	rightCenters.reserve(ringCount);
+	leftCenters.reserve(ringCount);
+	for(size_t i = 0; i < ringCount; ++i){
+		// 進行方向を前後の点の差から求める(両端は片側だけを使う)
+		const Vector3 forward = curveCenters[(std::min)(i + 1,ringCount - 1)] - curveCenters[(i > 0)?i - 1:0];
+		Vector3 horizontalRight = {forward.z, 0.0f, -forward.x};
+		if(Length(horizontalRight) < kMinTubeDirectionLength){
+			// 真下・真上を向いている区間では左右が決まらないため、その点は飛ばして前後の点をつなぐ
+			continue;
+		}
+		horizontalRight = Normalize(horizontalRight) * landingRangeRadius_;
+		rightCenters.push_back(curveCenters[i] + horizontalRight);
+		leftCenters.push_back(curveCenters[i] - horizontalRight);
+	}
+
+	Model::ModelData landingRangeData;
+	landingRangeData.material.textureFilePath = kTubeTexturePath;
+	AppendTubeMesh(rightCenters,kLandingRangeTubeRadius,landingRangeData);
+	AppendTubeMesh(leftCenters,kLandingRangeTubeRadius,landingRangeData);
+	ApplyEditTubeModel(rail.landingRangeModel,rail.landingRangeObject,std::move(landingRangeData));
+
+	rail.editTubeBuiltControlPoints = rail.controlPoints;
+	rail.editTubeBuiltLandingRangeRadius = landingRangeRadius_;
+}
+
+// Edit中の管のモデルを新しい頂点に差し替える
+// 制御点の数が変わらなければ頂点の数もインデックスも同じため、頂点バッファを書き換えるだけにする
+// (制御点のドラッグ中は毎フレーム形が変わるため、そのたびにGPUのバッファを作り直すと重くなる)
+void RailEditor::ApplyEditTubeModel(std::unique_ptr<Model>& model,std::unique_ptr<Obj3D>& object,Model::ModelData&& data){
+	// 頂点が無い(管にできる点が足りない)ときは描かない
+	// 毎フレームGPUの処理完了を待ってから次のフレームを積むため、ここでモデルを破棄してよい
+	if(data.vertices.empty()){
+		model.reset();
+		if(object){
+			object->SetModel(nullptr);
+		}
+		return;
+	}
+
+	if(model && model->GetModelData().vertices.size() == data.vertices.size()){
+		model->UpdateVertices(data.vertices);
+		return;
+	}
+
+	model = std::make_unique<Model>();
+	model->Initialize(ModelManager::GetInstance()->GetModelCommon(),std::move(data));
+	if(!object){
+		object = std::make_unique<Obj3D>();
+		object->Initialize(objCommon_);
+	}
+	object->SetModel(model.get());
+}
+
+// 輪の中心ringCentersを順に通る管の頂点とインデックスを、modelDataの末尾に足す
+// 輪の中心ごとにレールを囲む輪の頂点を置き、隣り合う輪どうしを三角形でつなぐ
+// 頂点は輪の順に並ぶため、ある区間からある区間までのインデックスは連続した範囲になる(塗った区間だけを描くのに使う)
+void RailEditor::AppendTubeMesh(const std::vector<Vector3>& ringCenters,float radius,Model::ModelData& modelData){
+	if(ringCenters.size() < kMinTubeRingCount){
+		return;
+	}
+
+	const uint32_t segmentCount = static_cast<uint32_t>(ringCenters.size() - 1);
+	// 輪の継ぎ目でテクスチャ座標が1周して戻れるよう、輪の最初と最後に同じ位置の頂点を置く
+	const uint32_t ringVertexCount = kTubeSideCount + 1;
+	// 先に足した管の頂点の後ろに並べるため、インデックスはその数だけずらす
+	const uint32_t baseVertex = static_cast<uint32_t>(modelData.vertices.size());
+
+	// 輪の頂点を置く
+	Vector3 tangent = kDefaultTubeTangent;
+	Vector3 side = {0.0f, 0.0f, 0.0f};
+	for(uint32_t i = 0; i <= segmentCount; ++i){
+		// 輪の向き(レールの進む向き)は、前後の輪の中心の差から求める(両端は片側だけを使う)
+		// 制御点が重なっていて向きが定まらないときは、前の輪の向きをそのまま使う
+		const Vector3 direction = ringCenters[(std::min)(i + 1,segmentCount)] - ringCenters[(i > 0)?i - 1:0];
+		if(Length(direction) >= kMinTubeDirectionLength){
+			tangent = Normalize(direction);
+		}
+
+		// 輪の横向きは、前の輪の横向きから進む向きの成分を取り除いて引き継ぐ
+		// 輪ごとに真上から決め直すと、螺旋などで向きが急に変わる所で管がねじれて見えるため
+		side = side - tangent * Dot(side,tangent);
+		if(Length(side) < kMinTubeDirectionLength){
+			// 最初の輪と、引き継げないほど向きが変わったときは、基準の上方向から決め直す
+			side = Cross(kTubeFrameUp,tangent);
+			if(Length(side) < kMinTubeDirectionLength){
+				side = Cross(kTubeFrameFallbackUp,tangent);
+			}
+		}
+		side = Normalize(side);
+		const Vector3 up = Cross(tangent,side);
+
+		const float texcoordV = static_cast<float>(i) / static_cast<float>(segmentCount);
+		for(uint32_t j = 0; j < ringVertexCount; ++j){
+			const float sideRate = static_cast<float>(j) / static_cast<float>(kTubeSideCount);
+			const float angle = kTwoPi * sideRate;
+			// 輪の中心から外へ向かう向きを、そのまま頂点の法線にする
+			const Vector3 normal = side * std::cos(angle) + up * std::sin(angle);
+			const Vector3 position = ringCenters[i] + normal * radius;
+
+			Model::VertexData vertex = {};
+			vertex.position = {position.x, position.y, position.z, 1.0f};
+			vertex.texcoord = {sideRate, texcoordV};
+			vertex.normal = normal;
+			modelData.vertices.push_back(vertex);
+		}
+	}
+
+	// 隣り合う輪の頂点を、区間の順に四角形(三角形2つ)でつなぐ
+	for(uint32_t i = 0; i < segmentCount; ++i){
+		const uint32_t ringStart = baseVertex + i * ringVertexCount;
+		const uint32_t nextRingStart = ringStart + ringVertexCount;
+		for(uint32_t j = 0; j < kTubeSideCount; ++j){
+			const uint32_t current = ringStart + j;
+			const uint32_t currentNext = current + 1;
+			const uint32_t forward = nextRingStart + j;
+			const uint32_t forwardNext = forward + 1;
+			// 管の外側から見て表になる向きで並べる
+			modelData.indices.insert(modelData.indices.end(),{current, currentNext, forward, currentNext, forwardNext, forward});
 		}
 	}
 }
@@ -708,7 +767,7 @@ void RailEditor::BuildTubes(){
 
 		// 区間数に比例した数に分け、レールを延長しても管が角ばらないようにする
 		const uint32_t segmentCount = static_cast<uint32_t>(rail.controlPoints.size() - kCatmullRomExtraPointCount) * static_cast<uint32_t>(kTubeSegmentsPerRailSegment);
-		// 輪の継ぎ目でテクスチャ座標が1周して戻れるよう、輪の最初と最後に同じ位置の頂点を置く
+		// 輪の継ぎ目でテクスチャ座標が1周して戻れるよう、輪の最初と最後に同じ位置の頂点を置く(頂点の数を見積もるのに使う)
 		const uint32_t ringVertexCount = kTubeSideCount + 1;
 
 		// 輪の中心(区間の境目)の座標を先に求めておき、輪の向きを求めるときに同じ座標を何度も計算しないようにする
@@ -729,59 +788,8 @@ void RailEditor::BuildTubes(){
 		modelData.vertices.reserve(static_cast<size_t>(segmentCount + 1) * ringVertexCount);
 		modelData.indices.reserve(static_cast<size_t>(segmentCount) * kTubeSideCount * kTubeIndicesPerQuad);
 
-		// 輪の頂点を置く
-		Vector3 tangent = kDefaultTubeTangent;
-		Vector3 side = {0.0f, 0.0f, 0.0f};
-		for(uint32_t i = 0; i <= segmentCount; ++i){
-			// 輪の向き(レールの進む向き)は、前後の輪の中心の差から求める(両端は片側だけを使う)
-			// 制御点が重なっていて向きが定まらないときは、前の輪の向きをそのまま使う
-			const Vector3 direction = ringCenters[(std::min)(i + 1,segmentCount)] - ringCenters[(i > 0)?i - 1:0];
-			if(Length(direction) >= kMinTubeDirectionLength){
-				tangent = Normalize(direction);
-			}
-
-			// 輪の横向きは、前の輪の横向きから進む向きの成分を取り除いて引き継ぐ
-			// 輪ごとに真上から決め直すと、螺旋などで向きが急に変わる所で管がねじれて見えるため
-			side = side - tangent * Dot(side,tangent);
-			if(Length(side) < kMinTubeDirectionLength){
-				// 最初の輪と、引き継げないほど向きが変わったときは、基準の上方向から決め直す
-				side = Cross(kTubeFrameUp,tangent);
-				if(Length(side) < kMinTubeDirectionLength){
-					side = Cross(kTubeFrameFallbackUp,tangent);
-				}
-			}
-			side = Normalize(side);
-			const Vector3 up = Cross(tangent,side);
-
-			const float texcoordV = static_cast<float>(i) / static_cast<float>(segmentCount);
-			for(uint32_t j = 0; j < ringVertexCount; ++j){
-				const float sideRate = static_cast<float>(j) / static_cast<float>(kTubeSideCount);
-				const float angle = kTwoPi * sideRate;
-				// 輪の中心から外へ向かう向きを、そのまま頂点の法線にする
-				const Vector3 normal = side * std::cos(angle) + up * std::sin(angle);
-				const Vector3 position = ringCenters[i] + normal * kTubeRadius;
-
-				Model::VertexData vertex = {};
-				vertex.position = {position.x, position.y, position.z, 1.0f};
-				vertex.texcoord = {sideRate, texcoordV};
-				vertex.normal = normal;
-				modelData.vertices.push_back(vertex);
-			}
-		}
-
-		// 隣り合う輪の頂点を、区間の順に四角形(三角形2つ)でつなぐ
-		for(uint32_t i = 0; i < segmentCount; ++i){
-			const uint32_t ringStart = i * ringVertexCount;
-			const uint32_t nextRingStart = ringStart + ringVertexCount;
-			for(uint32_t j = 0; j < kTubeSideCount; ++j){
-				const uint32_t current = ringStart + j;
-				const uint32_t currentNext = current + 1;
-				const uint32_t forward = nextRingStart + j;
-				const uint32_t forwardNext = forward + 1;
-				// 管の外側から見て表になる向きで並べる
-				modelData.indices.insert(modelData.indices.end(),{current, currentNext, forward, currentNext, forwardNext, forward});
-			}
-		}
+		// 輪の中心を通る管の頂点とインデックスを作る
+		AppendTubeMesh(ringCenters,kTubeRadius,modelData);
 
 		// 出ていないレールの点線は、管と同じ頂点のうち、点線の区間の三角形だけを持つ別のモデルにする
 		// 点線の区間ごとに描く範囲を分けると描画の命令が線の本数だけ増えるため、点線の区間だけを詰めて1回で描けるようにする

@@ -54,6 +54,10 @@ public:
 	/// <param name="skipTitle">trueならタイトル・カメラの回り込み・出発ゲートを飛ばして、すぐプレイ可能にする(デバッグ用。ゲートは閉じたままで、プレイヤーは GameScene 側でレールの始点に乗せる)</param>
 	void Start(bool skipTitle = false);
 
+	// タイトル・カメラの回り込みを飛ばして、スタート台の上を動ける段階(出発ゲートは閉じている)から始める
+	// ゴールの的を壊し、大ジャンプでスタート台へ戻ってきたときに使う
+	void StartFromStandby();
+
 	// 演出を止めて何も行わない状態に戻す(Editモードに戻ったときに呼ぶ)
 	void Stop();
 
@@ -135,6 +139,9 @@ public:
 	static float GetSeVolume();
 
 private:
+	// Start()・StartFromStandby()で共通の、始める前の状態に戻す処理(演出の経過・表示を戻し、出発ゲートを閉じて台のインクを消す)
+	void ResetForStart();
+
 	Input* input_ = nullptr;
 
 	// 現在の段階
