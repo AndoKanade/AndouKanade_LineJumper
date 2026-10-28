@@ -19,6 +19,9 @@
 // レールエディター
 #include "Editor/RailEditor.h"
 #include "Editor/EditorDocumentManager.h"
+// 的・敵の配置エディター(下段の選択パネルで選ぶときのパネル名を使う)
+#include "Editor/TargetEditor.h"
+#include "Editor/EnemyEditor.h"
 // ステージ開始演出(タイトル → カメラの回り込み → スタート台で準備 → レールへ乗り込む)
 #include "Title/StartSequence.h"
 // 出発の演出(スタート台からステージのレールへ移るときの演出)
@@ -50,7 +53,13 @@
 #include "UI/DamageInkEffect.h"
 #include "UI/HelpOverlay.h"
 #include <algorithm>
+#include <cstdio>
+#include <cstring>
 #include <iterator>
+#ifdef USE_IMGUI
+// 選んだエディターを imgui.ini に書き出してもらうのに使う(ImGui::MarkIniSettingsDirty)
+#include "imgui_internal.h"
+#endif
 
 namespace{
 	// スカイボックスのテクスチャパス
@@ -142,6 +151,25 @@ namespace{
 	};
 	const char* kRespawnRevealNames[] = {"Stripes", "Sweep"};
 	static_assert(std::size(kRespawnRevealStyles) == std::size(kRespawnRevealNames),"復活の見せ方の候補と名前の数が合っていない");
+
+	// デバッグ用のメインウィンドウのパネル名
+	constexpr const char* kGameSceneDebugPanelName = "GameScene Debug";
+	// 下段の選択パネルで選べるエディター
+	struct ToolPanelEntry{
+		const char* panelName;    // 各エディターが EditorWidgets::BeginToolPanel() に渡すパネル名
+		const char* documentName; // 未保存の印を付けるのに使う、編集履歴の名前(IEditorDocument::GetDocumentName()。保存する物が無ければnullptr)
+	};
+	// エディターを増やしたらここに足す。先頭のエディターが初めて起動したときに選ばれる。上から順に Ctrl+1, Ctrl+2... で切り替えられる
+	constexpr ToolPanelEntry kToolPanels[] = {
+		{kGameSceneDebugPanelName, nullptr},
+		{TargetEditor::kPanelName, "Target"},
+		{EnemyEditor::kPanelName, "Enemy"},
+		{Application::kPostProcessPanelName, nullptr},
+	};
+	// Ctrl+数字キーで切り替えられるエディターの数(数字キーは1〜9)
+	constexpr int kMaxToolPanelShortcutCount = 9;
+	// パネル名の後ろに未保存の印を付けたラベルを作るときの、文字列の長さの上限
+	constexpr size_t kToolPanelLabelSize = 64;
 #endif
 }
 
@@ -627,6 +655,12 @@ void GameScene::Update(){
 	// 的・敵の配置エディターの更新(配置モード中のドラッグ移動と、編集結果の反映もここで処理される)
 	targetManager_->UpdateEditor();
 	enemyManager_->UpdateEditor();
+
+	// Target Editorの「Focus」・F キー・一覧のダブルクリックで、選択中の的に俯瞰デバッグカメラを寄せる
+	Vector3 targetFocusPosition{};
+	if(targetManager_->ConsumeFocusRequest(targetFocusPosition)){
+		debugTopCamera_->FocusOnPoint(targetFocusPosition);
+	}
 
 	// レール進行・カメラ・プレイヤー・敵・弾・的の更新
 	if(railEditor_){
@@ -1146,18 +1180,85 @@ void GameScene::ShowEditorPanels(){
 		return;
 	}
 
-	EditorWidgets::Layout L = EditorWidgets::ComputeLayout();
-	// デバッグ用のメインウィンドウ(下段・左)
-	EditorWidgets::BeginFixedPanel("GameScene Debug",L.bottomLeft);
+	// 操作するエディターの選択パネル(下段・左半分)
+	ShowEditorSelector();
 
-	// ONにすると、Playを押したときにタイトル・スタート演出を飛ばし、レールの上からすぐプレイを始める(デバッグ用)
-	ImGui::Checkbox("Skip Title",&skipTitle_);
-	// ONにすると、Playを押したときにRail Editorで選んでいる制御点からプレイを始める(タイトル・スタート台も飛ばす。落ちたときも同じ制御点から始め直す)
-	ImGui::Checkbox("Start From Selected Point",&startsFromSelectedPoint_);
-	ImGui::TextDisabled("(未選択ならいつも通り)");
+	// デバッグ用のメインウィンドウ(選択パネルで選ばれているときだけ右の列に出す)
+	if(EditorWidgets::BeginToolPanel(kGameSceneDebugPanelName)){
+		ShowDebugPanelContents(activeCamera);
+		ImGui::End();
+	}
+
+	Application::GetInstance()->ShowPostProcessUI();
+}
+
+// 操作するエディターの選択パネル
+// どのエディターを選んでいても使えるよう、Undo/Redo・まとめて保存と未保存の一覧もここに置く
+void GameScene::ShowEditorSelector(){
+	EditorContext* editorContext = EditorContext::GetInstance();
+	EditorDocumentManager* documentManager = EditorDocumentManager::GetInstance();
+	// 選んだエディターが変わったら、次に起動したときも同じエディターを開けるよう imgui.ini に書き出してもらう
+	const std::string previousPanel = editorContext->GetActiveToolPanel();
+
+	// Sceneビューで、選んでいないエディターの物(的・敵)をクリックしていたら、そのエディターへ切り替える
+	editorContext->ResolveScenePicks();
+
+	// Ctrl+数字キーで、上から順にエディターを切り替える(文字入力中は数字を打てるよう受け付けない)
+	if(!ImGui::GetIO().WantTextInput){
+		const int shortcutCount = std::min(static_cast<int>(std::size(kToolPanels)),kMaxToolPanelShortcutCount);
+		for(int i = 0; i < shortcutCount; ++i){
+			if(ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | static_cast<ImGuiKey>(ImGuiKey_1 + i))){
+				editorContext->SetActiveToolPanel(kToolPanels[i].panelName);
+			}
+		}
+	}
+
+	// まだ何も選ばれていない(初めての起動)・一覧に無い名前が選ばれているときは、先頭のエディターを選ぶ
+	bool isKnownPanel = false;
+	for(const ToolPanelEntry& entry : kToolPanels){
+		if(editorContext->IsActiveToolPanel(entry.panelName)){
+			isKnownPanel = true;
+		}
+	}
+	if(!isKnownPanel){
+		editorContext->SetActiveToolPanel(kToolPanels[0].panelName);
+	}
+
+	EditorWidgets::BeginFixedPanel("Editors",EditorWidgets::ComputeLayout().editorSelector);
+
+	// 選んだエディターの操作パネルを右の列に出す(次のフレームから切り替わる)
+	for(size_t i = 0; i < std::size(kToolPanels); ++i){
+		const ToolPanelEntry& entry = kToolPanels[i];
+
+		// 保存していない変更があるエディターは、名前の後ろに * を付ける
+		bool isModified = false;
+		if(entry.documentName){
+			for(const IEditorDocument* document : documentManager->GetDocuments()){
+				if(std::strcmp(document->GetDocumentName(),entry.documentName) == 0 && document->IsModified()){
+					isModified = true;
+				}
+			}
+		}
+		// ### 以降をIDにして、* が付いても同じボタンとして扱われるようにする
+		char label[kToolPanelLabelSize];
+		snprintf(label,sizeof(label),"%s%s###%s",entry.panelName,isModified?" *":"",entry.panelName);
+
+		if(i > 0){
+			ImGui::SameLine();
+		}
+		if(ImGui::RadioButton(label,editorContext->IsActiveToolPanel(entry.panelName))){
+			editorContext->SetActiveToolPanel(entry.panelName);
+		}
+	}
+	ImGui::TextDisabled("(Ctrl+1〜%d: 切り替え / Sceneビューで的・敵をクリックすると、そのエディターに切り替わる)",std::min(static_cast<int>(std::size(kToolPanels)),kMaxToolPanelShortcutCount));
+
+	if(editorContext->GetActiveToolPanel() != previousPanel){
+		ImGui::MarkIniSettingsDirty();
+	}
+
+	ImGui::Separator();
 
 	// レール・的・敵の編集のUndo/Redoと、まとめて保存(Ctrl+Z / Ctrl+Y / Ctrl+Sでも操作できる)
-	EditorDocumentManager* documentManager = EditorDocumentManager::GetInstance();
 	documentManager->HandleShortcuts();
 	ImGui::BeginDisabled(!documentManager->CanUndo());
 	if(ImGui::Button("Undo")){
@@ -1188,6 +1289,17 @@ void GameScene::ShowEditorPanels(){
 		ImGui::SameLine();
 		ImGui::TextUnformatted(document->GetDocumentName());
 	}
+
+	ImGui::End();
+}
+
+// デバッグ用のメインウィンドウの中身(デバッグ用の開始設定・演出の切り替えとプレビュー・カメラ・ライティング)
+void GameScene::ShowDebugPanelContents(Camera* activeCamera){
+	// ONにすると、Playを押したときにタイトル・スタート演出を飛ばし、レールの上からすぐプレイを始める(デバッグ用)
+	ImGui::Checkbox("Skip Title",&skipTitle_);
+	// ONにすると、Playを押したときにRail Editorで選んでいる制御点からプレイを始める(タイトル・スタート台も飛ばす。落ちたときも同じ制御点から始め直す)
+	ImGui::Checkbox("Start From Selected Point",&startsFromSelectedPoint_);
+	ImGui::TextDisabled("(未選択ならいつも通り)");
 
 	// 落下リスタートの演出を切り替える。Preview を押すと落ちなくてもその場で演出だけを確認できる
 	// 選んだ演出は調整項目に書き込み、"Global Variables" ウィンドウの Save で JSON に保存する
@@ -1265,19 +1377,6 @@ void GameScene::ShowEditorPanels(){
 	}
 
 	ModelManager::GetInstance()->UpdateLightGui();
-	ImGui::End();
-
-	Application::GetInstance()->ShowPostProcessUI();
-
-	// シーン階層(Hierarchy)の最小版(左・上段に配置)
-	EditorWidgets::BeginFixedPanel("Hierarchy",L.hierarchy);
-	targetManager_->ShowHierarchy();
-	ImGui::End();
-
-	// Inspectorの最小版(右・上段に配置)
-	EditorWidgets::BeginFixedPanel("Inspector",L.inspector);
-	targetManager_->ShowInspector();
-	ImGui::End();
 }
 #endif
 

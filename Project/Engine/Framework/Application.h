@@ -12,6 +12,9 @@
 /// </summary>
 class Application : public Framework{
 public:
+	// ポストプロセスのデバッグUIのパネル名(下段の選択パネルで選ぶときに使う)
+	static constexpr const char* kPostProcessPanelName = "PostProcess Settings";
+
 	// --- コンストラクタ・デストラクタ ---
 
 	Application();

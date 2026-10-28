@@ -7,6 +7,7 @@
 #include <vector>
 
 // 前方宣言
+class Camera;
 class Input;
 class Obj3dCommon;
 class SpriteCommon;
@@ -113,8 +114,12 @@ private:
 #ifdef USE_IMGUI
 	// レール・プレイヤー・敵の状態確認用のデバッグウィンドウを表示する(Playモード中も含めて常に表示する)
 	void ShowStatusWindow();
-	// Editモード中の編集用パネル(カメラ・ライティング・的のHierarchy/Inspector)を表示する
+	// Editモード中の編集用パネル(エディターの選択パネル・デバッグ用のメインウィンドウ・ポストプロセス)を表示する
 	void ShowEditorPanels();
+	// 操作するエディターの選択パネル(Undo/Redo・まとめて保存・未保存の一覧も含む)を表示する
+	void ShowEditorSelector();
+	// デバッグ用のメインウィンドウの中身(開始設定・演出の切り替えとプレビュー・カメラ・ライティング)を表示する
+	void ShowDebugPanelContents(Camera* activeCamera);
 #endif
 
 	// 外部から受け取るポインタ

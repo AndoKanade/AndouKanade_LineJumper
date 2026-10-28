@@ -34,6 +34,9 @@ public:
 	// 配置エディターの更新と、編集結果(追加・削除・ドラッグ移動)の的リストへの反映
 	void UpdateEditor();
 
+	// 配置エディターで「Focus」が押されていれば、選択中の的の位置を返す(1回読むと消える)
+	bool ConsumeFocusRequest(Vector3& outPosition);
+
 	/// <summary>
 	/// 照準判定・弾との当たり判定・描画用の行列更新
 	/// </summary>
@@ -79,13 +82,6 @@ public:
 	// 壊された的の数を取得
 	int GetDestroyedCount() const;
 
-#ifdef USE_IMGUI
-	// Hierarchyパネルの中身(的の一覧。クリックで選択できる)を表示する
-	void ShowHierarchy();
-	// Inspectorパネルの中身(選択中の的の座標・生存フラグの編集)を表示する
-	void ShowInspector();
-#endif
-
 private:
 	// 的
 	struct Target{
@@ -128,6 +124,8 @@ private:
 	// 普通の的と、鍵の的(壊すとレールが出る的)の色(モデルの模様に掛ける色。鍵の的は出ていないレールの点線と見比べやすい水色にする)
 	static constexpr Vector4 kNormalTargetColor = {1.0f, 1.0f, 1.0f, 1.0f};
 	static constexpr Vector4 kKeyTargetColor = {0.3f, 0.85f, 1.0f, 1.0f};
+	// Editモードで配置エディターが選択中の的の色(どの的を選んでいるかSceneビューで分かるよう、普通の的・鍵の的と違う黄色にする)
+	static constexpr Vector4 kSelectedTargetColor = {1.0f, 0.85f, 0.1f, 1.0f};
 	// カメラと的が重なっているとみなす距離(向きが定まらないため照準判定をしない)
 	static constexpr float kMinAimDistance = 0.001f;
 };

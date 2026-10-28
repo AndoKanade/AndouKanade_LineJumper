@@ -1,4 +1,5 @@
 #pragma once
+#include <string>
 
 /// <summary>
 /// エディタの状態を保持するシングルトン(ヘッダーオンリー)
@@ -39,6 +40,37 @@ public:
 	void SetSceneViewRect(float x,float y,float w,float h){ sceneViewRect_ = {x, y, w, h}; }
 	void ClearSceneViewRect(){ sceneViewRect_ = {}; }
 
+	// 右の列に出して操作するエディターのパネル名(下段のエディター選択パネルで切り替える)
+	// 選ばれていないエディターはパネルを出さず、Sceneビューでのドラッグ・ショートカットも受け付けない
+	const std::string& GetActiveToolPanel() const{ return activeToolPanel_; }
+	void SetActiveToolPanel(const std::string& panelName){ activeToolPanel_ = panelName; }
+	bool IsActiveToolPanel(const char* panelName) const{ return activeToolPanel_ == panelName; }
+
+	// Sceneビューのクリックで物を掴めたエディターを報告する(選んでいないエディターへ自動で切り替えるのに使う)
+	// 選んでいるエディターが掴めたときは切り替えないよう覚えておき、ほかはカメラに一番近い物を掴んだエディターを候補にする
+	void ReportScenePick(const char* panelName,float distance){
+		if(IsActiveToolPanel(panelName)){
+			isActivePanelPicked_ = true;
+			return;
+		}
+		if(pickedPanel_.empty() || distance < pickedDistance_){
+			pickedPanel_ = panelName;
+			pickedDistance_ = distance;
+		}
+	}
+	// このフレームの報告から切り替え先を決めて切り替える(選んでいるエディターが掴めていれば切り替えない)
+	// 報告は毎フレーム消す。切り替えたときtrue
+	bool ResolveScenePicks(){
+		bool isSwitched = false;
+		if(!isActivePanelPicked_ && !pickedPanel_.empty()){
+			activeToolPanel_ = pickedPanel_;
+			isSwitched = true;
+		}
+		isActivePanelPicked_ = false;
+		pickedPanel_.clear();
+		return isSwitched;
+	}
+
 private:
 	EditorContext() = default;
 	~EditorContext() = default;
@@ -52,4 +84,10 @@ private:
 #endif
 	float editViewScale_ = 0.6f;  // 編集モードの縮小率(将来用)
 	EditorRect sceneViewRect_{};  // 中央Sceneパネルの領域
+	std::string activeToolPanel_; // 右の列に出しているエディターのパネル名(空なら選択パネルが先頭のエディターを選ぶ)
+
+	// このフレームのSceneビューのクリックで物を掴めたエディターの報告
+	bool isActivePanelPicked_ = false; // 選んでいるエディターが掴めたか
+	std::string pickedPanel_;          // 選んでいないエディターのうち、一番手前の物を掴んだエディターのパネル名(空なら無し)
+	float pickedDistance_ = 0.0f;      // pickedPanel_ が掴んだ物までの、レイに沿った距離
 };

@@ -79,4 +79,12 @@ private:
 
 	// 保存先ディレクトリ(resource配下の相対パス。LevelManagerと同じ流儀)
 	const std::string kDirectoryPath = "resource/GlobalVariables/";
+
+	// 調整パネルの表示の絞り込み
+	static constexpr size_t kSearchTextSize = 64;          // 検索欄に入力できる文字数(終端を含む)
+	static constexpr const char* kAllGroupsLabel = "All";  // 全グループを出すときのグループ選択の表示
+	static constexpr float kGroupComboWidthInFonts = 8.0f; // グループ選択の幅(文字の大きさの何倍か)
+	static constexpr float kSearchFieldWidthInFonts = 10.0f; // 検索欄の幅(文字の大きさの何倍か)
+	std::string shownGroupName_;          // 1つに絞って出すグループの名前(空なら全グループを出す)
+	char searchText_[kSearchTextSize] = {}; // 検索欄に入力された文字(空なら絞り込まない)
 };

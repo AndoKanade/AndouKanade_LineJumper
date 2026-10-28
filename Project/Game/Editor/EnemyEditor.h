@@ -29,6 +29,9 @@ public:
 	// 体力の最大値として設定できる下限(0以下にすると生成直後に撃破されてしまうため)
 	static constexpr int kMinMaxHp = 1;
 
+	// 下段の選択パネルで選ぶときの、このエディターのパネル名
+	static constexpr const char* kPanelName = "Enemy Editor";
+
 	EnemyEditor();
 	~EnemyEditor() override;
 
@@ -83,6 +86,8 @@ private:
 	int PickEnemyIndex(const PickRay& ray) const;
 	// マウスドラッグによる敵の移動処理
 	void UpdateMouseDrag();
+	// 選んでいないときに、Sceneビューで敵をクリックしたかを調べ、掴めたらEnemy Editorへの切り替えの候補として報告する
+	void ReportScenePickWhileInactive();
 	// 配置内容をJSONファイルから読み込む(編集履歴には触れない。起動時とLoadFromJsonで使う。ファイルが無ければfalse)
 	bool LoadEnemiesFromFile();
 	// 配置内容が、最後に確定した状態から変わっていれば確定して履歴に積む
@@ -98,6 +103,7 @@ private:
 	static inline std::optional<std::vector<EnemyPoint>> unsavedStash_;
 
 	int selectedIndex_ = -1;      // 選択中の敵のインデックス(-1: 未選択)
+	int pendingPickIndex_ = -1;   // 選んでいないときにSceneビューでクリックした敵(切り替わった次のフレームで選ぶ。-1: 無し)
 	bool isPlacementMode_ = true; // 配置モード(ONの間だけマウスドラッグでの移動を受け付ける)
 
 	// マウスドラッグ中の状態
