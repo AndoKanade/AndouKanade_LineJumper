@@ -277,7 +277,7 @@ void RailEditor::Update(){
 	// Playモード中はレール編集UIを出さない
 	if(EditorContext::GetInstance()->IsPlayMode()){ return; }
 
-	// 固定タイルレイアウトの左・下段に配置
+	// 固定タイルレイアウトの左の列に縦いっぱいで配置
 	EditorWidgets::BeginFixedPanel("Rail Editor",EditorWidgets::ComputeLayout().railEditor);
 
 	// レールの切り替え・新規作成UI

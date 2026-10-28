@@ -4,14 +4,46 @@
 #include "WinAPI.h"
 #include "DXCommon.h"
 #include "SrvManager.h"
+#include "EditorContext.h"
 
 // ImGuiライブラリ
 #include <imgui.h>
 #include <imgui_impl_win32.h>
 #include <imgui_impl_dx12.h>
+// imgui.ini に独自の項目を読み書きする仕組み(ImGuiSettingsHandler)を使う
+#include <imgui_internal.h>
 
 // 安全確認用
 #include <cassert>
+#include <cstring>
+
+#ifdef USE_IMGUI
+namespace{
+	// imgui.ini に書き出すエディターの状態の、種類名と項目名
+	// 下段の選択パネルで選んだエディターを覚えておき、次に起動したときも同じエディターを開く
+	constexpr const char* kEditorSettingsTypeName = "EditorContext";
+	constexpr const char* kActiveToolPanelKey = "ActiveToolPanel=";
+
+	// imgui.ini の [EditorContext][...] の見出しを読んだとき(nullptr 以外を返すと、続く行が EditorSettingsReadLine に渡される)
+	void* EditorSettingsReadOpen(ImGuiContext*,ImGuiSettingsHandler*,const char*){
+		return EditorContext::GetInstance();
+	}
+
+	// 見出しに続く1行を読んで、選んでいたエディターを戻す
+	void EditorSettingsReadLine(ImGuiContext*,ImGuiSettingsHandler*,void*,const char* line){
+		const size_t keyLength = std::strlen(kActiveToolPanelKey);
+		if(std::strncmp(line,kActiveToolPanelKey,keyLength) == 0){
+			EditorContext::GetInstance()->SetActiveToolPanel(line + keyLength);
+		}
+	}
+
+	// imgui.ini を書き出すときに、選んでいるエディターを書き込む
+	void EditorSettingsWriteAll(ImGuiContext*,ImGuiSettingsHandler* handler,ImGuiTextBuffer* buffer){
+		buffer->appendf("[%s][State]\n",handler->TypeName);
+		buffer->appendf("%s%s\n\n",kActiveToolPanelKey,EditorContext::GetInstance()->GetActiveToolPanel().c_str());
+	}
+}
+#endif
 
 // ==========================================================================
 // シングルトンインスタンスの取得
@@ -37,6 +69,15 @@ void ImGuiManager::Initialize([[maybe_unused]] WinAPI* winApi,[[maybe_unused]] D
 
 	// 1. ImGuiコンテキストの作成
 	ImGui::CreateContext();
+
+	// 下段の選択パネルで選んだエディターを imgui.ini に読み書きする(imgui.ini は最初の NewFrame で読まれるため、その前に登録する)
+	ImGuiSettingsHandler editorSettingsHandler;
+	editorSettingsHandler.TypeName = kEditorSettingsTypeName;
+	editorSettingsHandler.TypeHash = ImHashStr(kEditorSettingsTypeName);
+	editorSettingsHandler.ReadOpenFn = EditorSettingsReadOpen;
+	editorSettingsHandler.ReadLineFn = EditorSettingsReadLine;
+	editorSettingsHandler.WriteAllFn = EditorSettingsWriteAll;
+	ImGui::AddSettingsHandler(&editorSettingsHandler);
 
 	// 2. スタイルの設定
 	ImGui::StyleColorsDark();

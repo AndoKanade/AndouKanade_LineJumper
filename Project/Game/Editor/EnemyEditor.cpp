@@ -98,8 +98,22 @@ void EnemyEditor::Update(){
 		selectedIndex_ = -1;
 	}
 
-	// 固定タイルレイアウトの下段・中央右に配置(Target Editorの隣に並ぶ)
-	EditorWidgets::BeginFixedPanel("Enemy Editor",EditorWidgets::ComputeLayout().bottomCenterRight);
+	// 下段の選択パネルで選ばれているときだけ右の列に出す
+	// 選ばれていないときは、Sceneビューでのドラッグも受け付けない(的などと一緒に掴まないようにする)
+	// 選ばれていなくても、Sceneビューで敵をクリックしたらEnemy Editorへ切り替えられるよう報告する
+	if(!EditorWidgets::BeginToolPanel(kPanelName)){
+		isDragging_ = false;
+		ReportScenePickWhileInactive();
+		return;
+	}
+
+	// 選んでいないときにSceneビューでクリックした敵があれば、切り替わったこのフレームで選ぶ
+	if(pendingPickIndex_ >= static_cast<int>(enemies_.size())){
+		pendingPickIndex_ = -1;
+	}
+	if(pendingPickIndex_ >= 0){
+		selectedIndex_ = pendingPickIndex_;
+	}
 
 	// 配置モードのON/OFF切り替え(ONの間だけSceneビュー上のドラッグ移動を受け付ける)
 	ImGui::Checkbox("Placement Mode",&isPlacementMode_);
@@ -166,6 +180,8 @@ void EnemyEditor::Update(){
 
 	// パネルの外(Sceneビュー上)でのマウスドラッグによる移動処理
 	UpdateMouseDrag();
+	// 切り替わったときに選んだ敵は、掴み終えたので忘れる
+	pendingPickIndex_ = -1;
 
 	// ImGuiの操作中・ドラッグ中は値が動いている途中のため、操作を終えてから1回の編集として履歴に積む
 	// Inspectorなど他の場所からの編集もまとめて拾えるよう、変更があったかは状態を比べて判定する
@@ -356,23 +372,32 @@ void EnemyEditor::UpdateMouseDrag(){
 	}
 
 	// 左ボタンを押した瞬間、レイ上に敵があれば掴む
+	int grabIndex = -1;
 	if(!isDragging_ && ImGui::IsMouseClicked(ImGuiMouseButton_Left)){
 		int hitIndex = PickEnemyIndex(ray);
 		if(hitIndex >= 0){
-			selectedIndex_ = hitIndex;
-			isDragging_ = true;
+			// 選んでいるエディターが掴んだことを伝え、後ろにある的などのエディターへ切り替わらないようにする
+			EditorContext::GetInstance()->ReportScenePick(kPanelName,Dot(enemies_[hitIndex].position - ray.origin,ray.direction));
+			grabIndex = hitIndex;
+		}
+	} else if(!isDragging_ && pendingPickIndex_ >= 0 && ImGui::IsMouseDown(ImGuiMouseButton_Left)){
+		// 選んでいないときにクリックして切り替わった敵は、ボタンを押したままならそのまま掴んで動かせるようにする
+		grabIndex = pendingPickIndex_;
+	}
+	if(grabIndex >= 0){
+		selectedIndex_ = grabIndex;
+		isDragging_ = true;
 
-			// 掴んだ瞬間のレイ方向を法線とする平面上で動かす(画面に平行な移動になる)
-			dragPlaneNormal_ = ray.direction;
-			dragPlanePoint_ = enemies_[hitIndex].position;
+		// 掴んだ瞬間のレイ方向を法線とする平面上で動かす(画面に平行な移動になる)
+		dragPlaneNormal_ = ray.direction;
+		dragPlanePoint_ = enemies_[grabIndex].position;
 
-			// 掴んだ位置と敵の座標とのずれを保持し、掴んだ瞬間に敵が跳ばないようにする
-			Vector3 hitPos{};
-			if(IntersectRayPlane(ray.origin,ray.direction,dragPlanePoint_,dragPlaneNormal_,hitPos)){
-				dragOffset_ = enemies_[hitIndex].position - hitPos;
-			} else{
-				dragOffset_ = {0.0f, 0.0f, 0.0f};
-			}
+		// 掴んだ位置と敵の座標とのずれを保持し、掴んだ瞬間に敵が跳ばないようにする
+		Vector3 hitPos{};
+		if(IntersectRayPlane(ray.origin,ray.direction,dragPlanePoint_,dragPlaneNormal_,hitPos)){
+			dragOffset_ = enemies_[grabIndex].position - hitPos;
+		} else{
+			dragOffset_ = {0.0f, 0.0f, 0.0f};
 		}
 	}
 
@@ -383,6 +408,29 @@ void EnemyEditor::UpdateMouseDrag(){
 			enemies_[selectedIndex_].position = hitPos + dragOffset_;
 		}
 	}
+#endif
+}
+
+// 選んでいないときに、Sceneビューで敵をクリックしたかを調べ、掴めたらEnemy Editorへの切り替えの候補として報告する
+void EnemyEditor::ReportScenePickWhileInactive(){
+#ifdef USE_IMGUI
+	pendingPickIndex_ = -1;
+	if(!isPlacementMode_ || ImGui::IsAnyItemActive() || ImGui::IsAnyItemHovered() || !ImGui::IsMouseClicked(ImGuiMouseButton_Left)){
+		return;
+	}
+
+	PickRay ray{};
+	if(!ComputeMouseRay(ray)){
+		return;
+	}
+	int hitIndex = PickEnemyIndex(ray);
+	if(hitIndex < 0){
+		return;
+	}
+
+	// 切り替わった次のフレームで、この敵を選ぶ
+	pendingPickIndex_ = hitIndex;
+	EditorContext::GetInstance()->ReportScenePick(kPanelName,Dot(enemies_[hitIndex].position - ray.origin,ray.direction));
 #endif
 }
 

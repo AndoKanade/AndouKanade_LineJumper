@@ -9,6 +9,7 @@
 #include "GlobalVariables.h"
 #include "ImGuiManager.h"
 #include "EditorWidgets.h"
+#include "EditorContext.h"
 #include "Editor/RailEditor.h"
 #include "Editor/TargetEditor.h"
 #include <algorithm>
@@ -37,6 +38,17 @@ void TargetManager::Initialize(Obj3dCommon* objCommon,const RailEditor* railEdit
 	// 的の配置エディターの生成と初期化(保存済みJSONがあればここで読み込まれる)
 	editor_ = std::make_unique<TargetEditor>();
 	editor_->Initialize();
+
+#ifdef USE_IMGUI
+	// Target Editorの選択中の的の編集欄に、生存フラグ(OFFで非表示、ONで復活)を出す
+	// 追加・複製した直後は的のリストへの反映が次のSyncFromEditorになるため、範囲外なら何も出さない
+	editor_->SetSelectedTargetExtraUI([this](int index){
+		if(index < 0 || index >= static_cast<int>(targets_.size())){
+			return;
+		}
+		ImGui::Checkbox("Alive",&targets_[index].isAlive);
+	});
+#endif
 
 	// 保存済みの配置が無い初回起動時のみ、従来どおりレール沿いの自動配置で初期データを作る
 	if(railEditor && editor_->GetTargetCount() == 0){
@@ -96,6 +108,14 @@ void TargetManager::UpdateEditor(){
 	SyncFromEditor();
 }
 
+// 配置エディターで「Focus」が押されていれば、選択中の的の位置を返す(1回読むと消える)
+bool TargetManager::ConsumeFocusRequest(Vector3& outPosition){
+	if(!editor_){
+		return false;
+	}
+	return editor_->ConsumeFocusRequest(outPosition);
+}
+
 // 配置エディターの内容を的のリストに反映する
 // 個数が変わったときだけ描画用オブジェクトを生成・削除し、毎フレームの生成を避ける
 void TargetManager::SyncFromEditor(){
@@ -120,13 +140,20 @@ void TargetManager::SyncFromEditor(){
 		targets_.pop_back();
 	}
 
+	// Editモード中だけ、配置エディターで選択中の的を色で目立たせる(Playモード中は普段の色に戻す)
+	const int highlightIndex = EditorContext::GetInstance()->IsPlayMode()?-1:editor_->GetSelectedIndex();
+
 	// 座標と壊すと出るレールをエディターの配置内容で上書きし、鍵の的は色を変えて普通の的と見分けられるようにする
 	for(size_t i = 0; i < targets_.size(); ++i){
 		Target& target = targets_[i];
 		target.position = editor_->GetTargetPosition(static_cast<int>(i));
 		target.unlockRailIndex = editor_->GetUnlockRailIndex(static_cast<int>(i));
 		if(Model::Material* mat = target.obj->GetMaterial()){
-			mat->color = (target.unlockRailIndex >= 0)?kKeyTargetColor:kNormalTargetColor;
+			if(static_cast<int>(i) == highlightIndex){
+				mat->color = kSelectedTargetColor;
+			} else{
+				mat->color = (target.unlockRailIndex >= 0)?kKeyTargetColor:kNormalTargetColor;
+			}
 		}
 	}
 }
@@ -270,46 +297,3 @@ void TargetManager::Draw(){
 	}
 }
 
-#ifdef USE_IMGUI
-// シーン階層(Hierarchy)の最小版
-// Unity/Unreal風の「一覧から選択 → Inspectorで編集」フロー
-void TargetManager::ShowHierarchy(){
-	ImGui::Text("Targets: %d",static_cast<int>(targets_.size()));
-	ImGui::Separator();
-	for(int i = 0; i < static_cast<int>(targets_.size()); ++i){
-		ImGui::PushID(i);
-		// 行ラベル(鍵の的は出すレールの番号を、倒された的は (dead) を付ける)
-		char label[48];
-		if(targets_[i].unlockRailIndex >= 0){
-			snprintf(label,sizeof(label),"Target %d (Key: Rail %d)%s",i,targets_[i].unlockRailIndex,targets_[i].isAlive?"":" (dead)");
-		} else{
-			snprintf(label,sizeof(label),"Target %d%s",i,targets_[i].isAlive?"":" (dead)");
-		}
-		// クリックで選択。選択中の行はハイライトされる(選択状態は配置エディターが保持する)
-		if(ImGui::Selectable(label,editor_ && editor_->GetSelectedIndex() == i)){
-			if(editor_){
-				editor_->SetSelectedIndex(i);
-			}
-		}
-		ImGui::PopID();
-	}
-}
-
-// Inspectorの最小版
-void TargetManager::ShowInspector(){
-	int selectedTargetIndex = editor_?editor_->GetSelectedIndex():-1;
-	if(selectedTargetIndex >= 0 && selectedTargetIndex < static_cast<int>(targets_.size())){
-		ImGui::Text("Target %d",selectedTargetIndex);
-		ImGui::Separator();
-		// 位置は配置エディターのデータを直接編集する(次フレームのSyncFromEditorで反映される)
-		EditorWidgets::ButtonVector3("Position",editor_->GetTargetPositionRef(selectedTargetIndex),0.1f,1.0f);
-		// 生存フラグ(OFFで非表示、ONで復活)
-		ImGui::Checkbox("Alive",&targets_[selectedTargetIndex].isAlive);
-		// 壊すと出るレール(配置エディターのデータを直接編集する。同じレールを指定した的をすべて壊すとレールが出る)
-		ImGui::InputInt("Unlock Rail",&editor_->GetUnlockRailIndexRef(selectedTargetIndex));
-		ImGui::TextDisabled("(-1で鍵の的ではない。壊すと出るレールのIndexを指定)");
-	} else{
-		ImGui::TextDisabled("Select a target in Hierarchy");
-	}
-}
-#endif

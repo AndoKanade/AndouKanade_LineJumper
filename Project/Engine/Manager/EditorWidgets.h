@@ -1,5 +1,6 @@
 #pragma once
 #include "MyMath.h"
+#include "EditorContext.h"
 
 #ifdef USE_IMGUI
 #include "imgui.h"
@@ -100,12 +101,11 @@ namespace EditorWidgets{
 	// 中央 sceneView は背景透過パネルにして、その領域にゲーム画面を合わせる。
 	// -----------------------------------------------------------------------
 	struct PanelRect{ float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f; };
+	// 左の列: Rail Editor(縦いっぱい) / 右の列: 選んだエディターの操作パネル(縦いっぱい)
+	// 下段の左半分: 操作するエディターの選択パネル / 下段の右半分: Global Variables
 	struct Layout{
-		// ここから変更: 下段に並ぶパネルが4枚(GameScene Debug / Target Editor / Enemy Editor / PostProcess Settings)になったため、
-		// 下段を4分割して重ならないようにする
-		PanelRect toolbar, hierarchy, railEditor, inspector, globalVars, sceneView;
-		PanelRect bottomLeft, bottomCenterLeft, bottomCenterRight, bottomRight;
-		// ここまで変更
+		PanelRect toolbar, railEditor, toolPanel, sceneView;
+		PanelRect editorSelector, globalVars;
 	};
 
 #ifdef USE_IMGUI
@@ -124,26 +124,20 @@ namespace EditorWidgets{
 
 		const float contentY = toolbarH;
 		const float contentH = H - toolbarH;
-		const float half = contentH * 0.5f;
 		const float centerX = leftW;
 		const float centerW = W - leftW - rightW;
 
 		Layout L;
 		L.toolbar     = {ox,                            oy,                    W,                      toolbarH};
-		L.hierarchy   = {ox,                            oy + contentY,         leftW,                  half};
-		L.railEditor  = {ox,                            oy + contentY + half,  leftW,                  contentH - half};
-		L.inspector   = {ox + W - rightW,               oy + contentY,         rightW,                 half};
-		L.globalVars  = {ox + W - rightW,               oy + contentY + half,  rightW,                 contentH - half};
+		L.railEditor  = {ox,                            oy + contentY,         leftW,                  contentH};
+		L.toolPanel   = {ox + W - rightW,               oy + contentY,         rightW,                 contentH};
 		L.sceneView   = {ox + centerX,                  oy + contentY,         centerW,                contentH - bottomH};
 
-		// ここから変更: 下段を4等分して、パネル同士が重なって見えなくなるのを防ぐ
-		// 右端のパネルだけは割り算の余りを含めた幅にして、下段に隙間ができないようにする
-		const float bottomW = centerW * 0.25f;
-		L.bottomLeft        = {ox + centerX,                       oy + H - bottomH, bottomW,                       bottomH};
-		L.bottomCenterLeft  = {ox + centerX + bottomW,             oy + H - bottomH, bottomW,                       bottomH};
-		L.bottomCenterRight = {ox + centerX + bottomW * 2.0f,      oy + H - bottomH, bottomW,                       bottomH};
-		L.bottomRight       = {ox + centerX + bottomW * 3.0f,      oy + H - bottomH, centerW - bottomW * 3.0f,      bottomH};
-		// ここまで変更
+		// 下段を左右に2等分する
+		// 右側のパネルは割り算の余りを含めた幅にして、下段に隙間ができないようにする
+		const float bottomHalfW = centerW * 0.5f;
+		L.editorSelector = {ox + centerX,                oy + H - bottomH,      bottomHalfW,            bottomH};
+		L.globalVars     = {ox + centerX + bottomHalfW,  oy + H - bottomH,      centerW - bottomHalfW,  bottomH};
 
 		return L;
 	}
@@ -154,6 +148,17 @@ namespace EditorWidgets{
 		ImGui::SetNextWindowSize(ImVec2(r.w,r.h),ImGuiCond_Always);
 		ImGuiWindowFlags flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus | extraFlags;
 		return ImGui::Begin(title,nullptr,flags);
+	}
+
+	// 選んだエディターの操作パネルを右の列に開始する
+	// 下段の選択パネルで選ばれていないときは何も開かずに false を返す(このときは ImGui::End() を呼ばない)
+	// 選ばれているときは true を返すので、呼び出し側で ImGui::End() を呼ぶ
+	inline bool BeginToolPanel(const char* title){
+		if(!EditorContext::GetInstance()->IsActiveToolPanel(title)){
+			return false;
+		}
+		BeginFixedPanel(title,ComputeLayout().toolPanel);
+		return true;
 	}
 #endif
 

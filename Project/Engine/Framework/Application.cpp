@@ -254,8 +254,10 @@ void Application::Draw(){
 // -------------------------------------------------
 void Application::ShowPostProcessUI(){
 #ifdef USE_IMGUI
-	// 固定タイルレイアウトの下段・右に配置
-	EditorWidgets::BeginFixedPanel("PostProcess Settings",EditorWidgets::ComputeLayout().bottomRight);
+	// 下段の選択パネルで選ばれているときだけ右の列に出す
+	if(!EditorWidgets::BeginToolPanel(kPostProcessPanelName)){
+		return;
+	}
 
 	const char* typeNames[] = {"Default", "BoxFilter", "Grayscale", "Vignette", "GaussianBlur", "LuminanceOutline", "DepthOutline", "RadialBlur", "Dissolve", "Random", "Glitch", "DamageInk"};
 	int currentIdx = static_cast<int>(currentPPType_);

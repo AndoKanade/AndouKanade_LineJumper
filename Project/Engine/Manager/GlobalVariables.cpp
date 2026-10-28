@@ -4,8 +4,23 @@
 #include "EditorWidgets.h"
 #include "EditorContext.h"
 #include "externals/json.hpp"
+#include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <iomanip>
+
+#ifdef USE_IMGUI
+namespace{
+	// 文字列に、検索する文字が含まれているか(大文字・小文字は区別しない。検索する文字が空なら含まれているとみなす)
+	bool ContainsIgnoreCase(const std::string& text,const char* pattern){
+		const std::string patternText = pattern;
+		auto toLower = [](char c){ return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); };
+		auto it = std::search(text.begin(),text.end(),patternText.begin(),patternText.end(),
+			[&toLower](char a,char b){ return toLower(a) == toLower(b); });
+		return it != text.end() || patternText.empty();
+	}
+}
+#endif
 
 // シングルトンのインスタンス取得
 GlobalVariables* GlobalVariables::GetInstance(){
@@ -119,7 +134,7 @@ void GlobalVariables::Update(){
 	// Playモード中は調整パネルを隠す(値の反映自体は上のCheckFileUpdate/GetValueで有効なまま)
 	if(EditorContext::GetInstance()->IsPlayMode()){ return; }
 
-	// 固定タイルレイアウトの右・下段に配置
+	// 固定タイルレイアウトの下段・右半分に配置
 	EditorWidgets::BeginFixedPanel("Global Variables",EditorWidgets::ComputeLayout().globalVars);
 
 	// 全グループを一括保存するボタン
@@ -128,16 +143,65 @@ void GlobalVariables::Update(){
 			SaveFile(groupName);
 		}
 	}
+	ImGui::SameLine();
+
+	// 表示するグループの選択(All: 全グループ)。下段は高さが低いため、1つに絞って見やすくできるようにする
+	ImGui::SetNextItemWidth(ImGui::GetFontSize() * kGroupComboWidthInFonts);
+	if(ImGui::BeginCombo("Group",shownGroupName_.empty()?kAllGroupsLabel:shownGroupName_.c_str())){
+		if(ImGui::Selectable(kAllGroupsLabel,shownGroupName_.empty())){
+			shownGroupName_.clear();
+		}
+		for(const auto& [groupName, group] : datas_){
+			if(ImGui::Selectable(groupName.c_str(),shownGroupName_ == groupName)){
+				shownGroupName_ = groupName;
+			}
+		}
+		ImGui::EndCombo();
+	}
+	ImGui::SameLine();
+
+	// 項目名の検索欄(大文字・小文字は区別しない。グループ名に一致したときは、そのグループの項目をすべて出す)
+	ImGui::SetNextItemWidth(ImGui::GetFontSize() * kSearchFieldWidthInFonts);
+	ImGui::InputTextWithHint("##Search","Search",searchText_,sizeof(searchText_));
+	const bool isSearching = (searchText_[0] != '\0');
 	ImGui::Separator();
 
 	// グループごとに折りたたみ表示
 	for(auto& [groupName, group] : datas_){
+		// グループを1つに絞っているときは、ほかのグループを出さない
+		if(!shownGroupName_.empty() && groupName != shownGroupName_){
+			continue;
+		}
+
+		// 検索中は、グループ名か項目名のどれかに一致するグループだけを出す
+		const bool isGroupNameMatched = ContainsIgnoreCase(groupName,searchText_);
+		if(isSearching && !isGroupNameMatched){
+			bool hasMatchedItem = false;
+			for(const auto& [key, item] : group.items){
+				if(ContainsIgnoreCase(key,searchText_)){
+					hasMatchedItem = true;
+					break;
+				}
+			}
+			if(!hasMatchedItem){
+				continue;
+			}
+		}
+
 		// グループをまたいだ同名キーのID衝突を防ぐ
 		ImGui::PushID(groupName.c_str());
 
+		// 1つに絞っているときと検索中は、開く手間を省くため開いた状態で出す
+		if(!shownGroupName_.empty() || isSearching){
+			ImGui::SetNextItemOpen(true);
+		}
 		if(ImGui::CollapsingHeader(groupName.c_str())){
 			// 各項目を型に応じたウィジェットで編集([-]/[+]ボタン方式)
 			for(auto& [key, item] : group.items){
+				// 検索中は、一致した項目だけを出す(グループ名に一致したときはすべて出す)
+				if(isSearching && !isGroupNameMatched && !ContainsIgnoreCase(key,searchText_)){
+					continue;
+				}
 				if(std::holds_alternative<int32_t>(item)){
 					// int32_t は int と同一なので参照をそのまま渡せる
 					EditorWidgets::ButtonInt(key.c_str(),std::get<int32_t>(item));
