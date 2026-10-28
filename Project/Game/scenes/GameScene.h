@@ -23,15 +23,18 @@ class ScreenImpact;
 class DebugTopCamera;
 class PlayerBulletManager;
 class TargetManager;
+class GoalTarget;
 class EnemyManager;
 class Reticle;
 class InkEffectManager;
 class ComboCounter;
 class StageHUD;
+class StageClearUI;
 class SpeedLines;
 class DamageInkEffect;
 class HelpOverlay;
 class DepartureDirector;
+class ReturnJump;
 struct DepartureContext;
 
 /// <summary>
@@ -94,6 +97,13 @@ private:
 	/// <param name="boardedPos">乗り込んだ位置</param>
 	void PlayBoardedEffects(const Vector3& boardedPos);
 
+	/// <summary>
+	/// ゴールの的を壊して大ジャンプでスタート台へ戻ってきたときに、ステージを始め直し、着地の演出を出す
+	/// 的・敵・レールを初期状態に戻し、タイトルを飛ばしてスタート台の上を動ける段階から始める
+	/// </summary>
+	/// <param name="landedPos">着地した位置</param>
+	void RestartFromReturnJump(const Vector3& landedPos);
+
 	// マウスカーソルの表示/非表示を切り替える
 	void UpdateCursorVisibility(bool isPlayMode);
 
@@ -145,6 +155,9 @@ private:
 	// 的
 	std::unique_ptr<TargetManager> targetManager_;
 
+	// ゴールの的(ゴールのレールに乗ると現れて先を並走し、壊すとステージクリア)
+	std::unique_ptr<GoalTarget> goalTarget_;
+
 	// 雑魚敵
 	std::unique_ptr<EnemyManager> enemyManager_;
 
@@ -152,6 +165,8 @@ private:
 	std::unique_ptr<StartSequence> startSequence_;
 	// 出発の演出(スタート台からステージのレールへ移るときの演出。ImGui で切り替える)
 	std::unique_ptr<DepartureDirector> departureDirector_;
+	// ゴールの的を壊したあと、大ジャンプでスタート台へ戻る演出
+	std::unique_ptr<ReturnJump> returnJump_;
 
 	// 画面中央固定のレティクル(照準)
 	std::unique_ptr<Reticle> reticle_;
@@ -164,6 +179,9 @@ private:
 
 	// プレイ中の画面表示(残機・壊した的の数・連鎖数)
 	std::unique_ptr<StageHUD> stageHUD_;
+
+	// ゴールの的を壊したときに出す「STAGE CLEAR!」の表示
+	std::unique_ptr<StageClearUI> stageClearUI_;
 
 	// レールを進んでいる間に出すスピード線
 	std::unique_ptr<SpeedLines> speedLines_;
@@ -228,6 +246,16 @@ private:
 	// 自機が弾けた瞬間に、自機を中心にかける放射ブラーの強さと消えるまでの時間
 	static constexpr float kDefeatRadialBlurWidth = 0.03f;
 	static constexpr float kDefeatRadialBlurDuration = 0.5f;
+	// ゴールの的を壊した瞬間の衝撃(動きを止める時間、画面の揺れの幅・収まるまでの時間)
+	// ステージクリアの瞬間なので、出発ゲートが開く瞬間・やられ演出より強くする
+	static constexpr float kGoalBreakHitStopDuration = 0.2f;
+	static constexpr float kGoalBreakShakeAmplitude = 0.35f;
+	static constexpr float kGoalBreakShakeDuration = 0.7f;
+	// ゴールの的を壊した瞬間に、的を中心にかける放射ブラーの強さと消えるまでの時間
+	static constexpr float kGoalBreakRadialBlurWidth = 0.04f;
+	static constexpr float kGoalBreakRadialBlurDuration = 0.6f;
+	// ゴールの的を壊してから大ジャンプで跳ぶまでの間の、破片・しぶきの時間の進み方(通常の何倍か)
+	static constexpr float kGoalBreakTimeScale = 0.3f;
 	// 射撃に使うマウスボタン(左ボタン)
 	static constexpr int kShootMouseButton = 0;
 	// 押しっぱなしで連射するときの弾の発射間隔(秒)
@@ -252,4 +280,11 @@ private:
 	// 遮断棒が跳ね上がった瞬間に、ゲートを中心にかける放射ブラーの強さと消えるまでの時間
 	static constexpr float kGateRadialBlurWidth = 0.02f;
 	static constexpr float kGateRadialBlurDuration = 0.35f;
+	// 大ジャンプでスタート台に着地した瞬間の衝撃(動きを止める時間、画面の揺れの幅・収まるまでの時間)
+	static constexpr float kReturnLandHitStopDuration = 0.1f;
+	static constexpr float kReturnLandShakeAmplitude = 0.25f;
+	static constexpr float kReturnLandShakeDuration = 0.5f;
+	// 大ジャンプでスタート台に着地した瞬間に、着地点を中心にかける放射ブラーの強さと消えるまでの時間
+	static constexpr float kReturnLandRadialBlurWidth = 0.025f;
+	static constexpr float kReturnLandRadialBlurDuration = 0.4f;
 };

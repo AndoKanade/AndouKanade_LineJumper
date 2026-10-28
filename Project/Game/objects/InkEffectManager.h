@@ -72,6 +72,13 @@ public:
 	/// <param name="position">弾ける中心の座標(自機の体の中心)</param>
 	void EmitDefeatBurst(const Vector3& position);
 
+	/// <summary>
+	/// ゴールの的を壊したときの演出(普通の的より大きな破片・多くのしぶき・大きな閃光)
+	/// ステージクリアの瞬間なので、普通の的よりはっきり派手にする
+	/// </summary>
+	/// <param name="position">壊れたゴールの的の座標</param>
+	void EmitGoalBreak(const Vector3& position);
+
 	// 移動・回転・縮小・寿命の更新
 	void Update(float deltaTime);
 
@@ -211,6 +218,28 @@ private:
 	static constexpr float kDefeatDropletLifeMax = 1.4f;
 	static constexpr float kDefeatFlashScale = 0.35f;
 	static constexpr float kDefeatFlashLife = 0.25f;
+	// ゴールの的を壊したときの破片の数・速さ・上への速さ・大きさ・寿命
+	// ゴールの的は普通の的の2.5倍の大きさなので、破片も大きく、遠くまで長く飛ばす
+	static constexpr int kGoalBreakShardCount = 24;
+	static constexpr float kGoalBreakShardSpeedMin = 5.0f;
+	static constexpr float kGoalBreakShardSpeedMax = 12.0f;
+	static constexpr float kGoalBreakShardUpSpeed = 4.0f;
+	static constexpr float kGoalBreakShardScaleMin = 0.2f;
+	static constexpr float kGoalBreakShardScaleMax = 0.4f;
+	static constexpr float kGoalBreakShardLifeMin = 1.0f;
+	static constexpr float kGoalBreakShardLifeMax = 1.5f;
+	// ゴールの的を壊したときのしぶきの数・速さ・上への速さ・大きさ・寿命
+	static constexpr int kGoalBreakDropletCount = 40;
+	static constexpr float kGoalBreakDropletSpeedMin = 4.0f;
+	static constexpr float kGoalBreakDropletSpeedMax = 10.0f;
+	static constexpr float kGoalBreakDropletUpSpeed = 3.0f;
+	static constexpr float kGoalBreakDropletScaleMin = 0.1f;
+	static constexpr float kGoalBreakDropletScaleMax = 0.2f;
+	static constexpr float kGoalBreakDropletLifeMin = 0.8f;
+	static constexpr float kGoalBreakDropletLifeMax = 1.2f;
+	// ゴールの的を壊したときの閃光の大きさ・寿命
+	static constexpr float kGoalBreakFlashScale = 0.6f;
+	static constexpr float kGoalBreakFlashLife = 0.3f;
 	// しぶきが面に着いたときに塗るインクの半径(しぶきの大きさに対する倍率)
 	// しぶきは画面の邪魔にならないよう小さめにし、その分倍率を上げて、台に残る跡は見える大きさにする
 	static constexpr float kLandingInkRadiusRate = 6.0f;

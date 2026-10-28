@@ -3,6 +3,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 82.80000305175781,
                 5.5,
@@ -18,6 +19,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 87.0,
                 6.300000190734863,
@@ -33,6 +35,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 97.9000015258789,
                 6.5,
@@ -64,6 +67,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 108.25435638427734,
                 9.387499809265137,
@@ -79,6 +83,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 108.01509094238281,
                 10.375,
@@ -94,6 +99,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 106.12236785888672,
                 11.362499237060547,
@@ -109,6 +115,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 103.68490600585938,
                 12.34999942779541,
@@ -124,6 +131,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 102.13054656982422,
                 13.337499618530273,
@@ -139,6 +147,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 102.36981201171875,
                 14.324999809265137,
@@ -154,6 +163,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 104.26253509521484,
                 15.3125,
@@ -169,6 +179,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 106.69999694824219,
                 16.299999237060547,
@@ -184,6 +195,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 108.25435638427734,
                 17.287498474121094,
@@ -199,6 +211,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 108.01509094238281,
                 18.274999618530273,
@@ -214,6 +227,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 106.12236785888672,
                 19.262500762939453,
@@ -229,6 +243,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 103.68490600585938,
                 20.25,
@@ -244,6 +259,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 102.13054656982422,
                 21.237499237060547,
@@ -259,6 +275,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 102.36981201171875,
                 22.224998474121094,
@@ -274,6 +291,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 104.26253509521484,
                 23.212499618530273,
@@ -289,6 +307,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 106.69999694824219,
                 24.200000762939453,
@@ -304,6 +323,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 114.55400085449219,
                 25.187999725341797,
@@ -319,6 +339,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 120.00900268554688,
                 25.875,
@@ -334,6 +355,7 @@
         {
             "branchTargetPointIndex": -1,
             "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
             "position": [
                 134.16299438476563,
                 27.062000274658203,

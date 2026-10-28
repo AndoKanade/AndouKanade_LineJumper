@@ -23,6 +23,8 @@
 #include "Title/StartSequence.h"
 // 出発の演出(スタート台からステージのレールへ移るときの演出)
 #include "Title/Departure/DepartureDirector.h"
+// ゴールの的を壊したあと、大ジャンプでスタート台へ戻る演出
+#include "Title/ReturnJump.h"
 // ゲームオブジェクト
 #include "objects/Ground.h"
 #include "objects/Sun.h"
@@ -30,10 +32,10 @@
 #include "objects/StartPlatform.h"
 #include "objects/PlayerBulletManager.h"
 #include "objects/TargetManager.h"
+#include "objects/GoalTarget.h"
 #include "objects/EnemyManager.h"
 #include "objects/InkEffectManager.h"
 #include "objects/ComboCounter.h"
-#include "objects/StageResult.h"
 #include "objects/ContinuePoint.h"
 // カメラ
 #include "Camera/RailCamera.h"
@@ -43,6 +45,7 @@
 // UI
 #include "UI/Reticle.h"
 #include "UI/StageHUD.h"
+#include "UI/StageClearUI.h"
 #include "UI/SpeedLines.h"
 #include "UI/DamageInkEffect.h"
 #include "UI/HelpOverlay.h"
@@ -73,6 +76,8 @@ namespace{
 	constexpr float kAimConvergeDistance = 12.0f;
 	// 弾を向ける的・敵は、手元からカメラの前方へこの距離より先にあるものに限る(すぐ近くや後ろのものへ向けて、弾が横や後ろへ飛ばないようにする)
 	constexpr float kMinAimAheadOfMuzzle = 1.0f;
+	// レティクルの中心を赤くするかを決めるときは、カメラより前にあるものをすべて狙えているものとして扱う
+	constexpr float kReticleAimMinDistance = 0.0f;
 
 	// レールに乗り込んで出発した瞬間のインクのしぶきを飛ばす向き(真上)
 	constexpr Vector3 kWorldUp = {0.0f, 1.0f, 0.0f};
@@ -222,6 +227,10 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	targetManager_ = std::make_unique<TargetManager>();
 	targetManager_->Initialize(object3dCommon_,railEditor_.get(),kGameSceneGroup);
 
+	// ゴールの的の生成(ゴールのレールに乗るまでは出さない)
+	goalTarget_ = std::make_unique<GoalTarget>();
+	goalTarget_->Initialize(object3dCommon_,kGameSceneGroup);
+
 	// 雑魚敵の生成(保存済みの配置が無い初回起動時はレールの中間地点に自動配置する)
 	enemyManager_ = std::make_unique<EnemyManager>();
 	enemyManager_->Initialize(object3dCommon_,railEditor_.get());
@@ -254,6 +263,10 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	stageHUD_ = std::make_unique<StageHUD>();
 	stageHUD_->Initialize(spriteCommon_);
 
+	// ゴールの的を壊したときに出す「STAGE CLEAR!」の表示
+	stageClearUI_ = std::make_unique<StageClearUI>();
+	stageClearUI_->Initialize(spriteCommon_);
+
 	// レールを進んでいる間に出すスピード線
 	speedLines_ = std::make_unique<SpeedLines>();
 	speedLines_->Initialize(spriteCommon_);
@@ -277,6 +290,9 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// 出発の演出(使う演出は出発ゲートが開いた瞬間に、ImGui で選んだものに決める)
 	departureDirector_ = std::make_unique<DepartureDirector>();
 	departureDirector_->Initialize();
+
+	// ゴールの的を壊したあと、大ジャンプでスタート台へ戻る演出
+	returnJump_ = std::make_unique<ReturnJump>();
 }
 
 // シーンの終了処理
@@ -306,6 +322,8 @@ void GameScene::ResetPlayState(){
 	railCamera_->Reset();
 	// 的を復活させる
 	targetManager_->Reset();
+	// ゴールの的も、体力満タンでゴールのレールに乗るまで出ていない状態に戻す
+	goalTarget_->Reset();
 	// 開始時に残っている弾もリセットし、次に押したときすぐ撃てるようにする
 	bulletManager_->Clear();
 	fireCooldown_ = 0.0f;
@@ -328,8 +346,10 @@ void GameScene::ResetPlayState(){
 	inkEffect_->Reset();
 	screenImpact_->Reset();
 	departureDirector_->Reset();
+	returnJump_->Reset();
 	comboCounter_->Reset();
 	speedLines_->Reset();
+	stageClearUI_->Reset();
 
 	// 雑魚敵も撃破前の初期状態(体力満タン)から始める
 	enemyManager_->Reset();
@@ -523,6 +543,25 @@ void GameScene::PlayBoardedEffects(const Vector3& boardedPos){
 	inkEffect_->EmitLaunchBurst(boardedPos,kLaunchBurstCount);
 }
 
+// ゴールの的を壊して大ジャンプでスタート台へ戻ってきたときに、ステージを始め直し、着地の演出を出す
+void GameScene::RestartFromReturnJump(const Vector3& landedPos){
+	// 新しく始め直すため、通ったチェックポイントも忘れ、残機も満タンに戻す
+	checkpoint_ = Checkpoint{};
+	lives_ = kMaxLives;
+	// 的・敵・レールの塗り・ゴールの的などを初期状態に戻し、プレイヤーをスタート台の上に立たせる
+	// (演出・画面の揺れもここで消えるため、着地の演出はこの後に出す)
+	ResetPlayState();
+	// タイトルを飛ばし、出発ゲートを閉じてスタート台の上を動ける段階から始める
+	startSequence_->StartFromStandby();
+
+	// 着地点から輪とインクのしぶきを広げて台にインクの跡を残し、一瞬動きを止めて画面を揺らし、着地点を中心に放射ブラーをかける
+	PlayBoardedEffects(landedPos);
+	screenImpact_->Trigger(kReturnLandHitStopDuration,kReturnLandShakeAmplitude,kReturnLandShakeDuration);
+	if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
+		Application::GetInstance()->TriggerRadialBlur(CameraPoseMath::WorldToScreenUv(landedPos,activeCamera->GetViewProjectionMatrix()),kReturnLandRadialBlurWidth,kReturnLandRadialBlurDuration);
+	}
+}
+
 // シーンの更新処理
 void GameScene::Update(){
 	// 操作説明の開閉(H キー)
@@ -698,6 +737,9 @@ void GameScene::UpdateGameplay(){
 	} else if(!isPlayMode && wasPlayMode_){
 		startSequence_->Stop();
 		departureDirector_->Reset();
+		returnJump_->Reset();
+		// Play中に現れたゴールの的が、Editモードで出たままにならないよう消す
+		goalTarget_->Reset();
 		// Editモードに戻ったら、Play前に見ていた位置のまま俯瞰デバッグカメラに戻す
 		debugTopCamera_->Enable();
 		// Play前に編集していたレールと制御点を選び直し、続けて編集できるようにする
@@ -734,7 +776,8 @@ void GameScene::UpdateGameplay(){
 	// レール進行・操作・射撃・勝敗判定は、開始演出が終わってプレイ可能になってから動かす
 	// 暗転中(クリア・ゲームオーバーへの切り替え中、落下リスタート中)も、入力や判定が二重に起きないよう止めておく
 	// やられ演出の最中も、自機は弾けて消えているため止めておく
-	const bool isGameplayActive = isPlayMode && startSequence_->IsPlayable() && !sceneManager_->IsTransitioning() && !isDefeated_;
+	// ゴールの的を壊してスタート台へ大ジャンプで戻っている最中も、自機を演出側で動かすため止めておく
+	const bool isGameplayActive = isPlayMode && startSequence_->IsPlayable() && !sceneManager_->IsTransitioning() && !isDefeated_ && !returnJump_->IsRunning();
 	// 開始演出のうち、スタート台の上を自由に動ける段階か(出発ゲートの前で準備中と、ゲートが開いてレールへ乗り込むまで)
 	// 動き方(WASD・ジャンプ・台から落ちたときのリスタート)はプレイ中と同じで、敵・射撃・勝敗判定はまだ動かさない
 	const bool isPlayerMovable = isPlayMode && startSequence_->IsPlayerMovable() && !sceneManager_->IsTransitioning();
@@ -773,19 +816,6 @@ void GameScene::UpdateGameplay(){
 		debugTopCamera_->Enable();
 	}
 
-	// クリア判定
-	// アクティブなレールが最後まで到達したらクリアとする(オフレール中は判定しない)
-	// 切り替えは次フレームに行われるため、以降の判定(ゲームオーバー・落下リスタートなど)で上書きされないようここで抜ける
-	if(isGameplayActive && player_->HasReachedGoal()){
-		// クリア画面で結果を表示できるよう、シーンが作り直される前に書き込んでおく
-		StageResult::destroyedTargetCount = targetManager_->GetDestroyedCount();
-		StageResult::totalTargetCount = targetManager_->GetTotalCount();
-		StageResult::maxCombo = comboCounter_->GetMaxCombo();
-		// クリアは ImGui で選んだ演出(初期値は黄色いインクが弾けて画面を塗りつぶす InkBurst)で切り替える
-		sceneManager_->ChangeScene("CLEAR",GetTransitionStyle(kClearTransitionKey));
-		return;
-	}
-
 #ifdef USE_IMGUI
 	// レールの状態確認用デバッグ表示(Playモード中も含めて常に表示する)
 	ShowStatusWindow();
@@ -820,10 +850,31 @@ void GameScene::UpdateGameplay(){
 		}
 	}
 
+	// ゴールの的を壊したあとの、スタート台へ戻る大ジャンプを進める
+	// 出発の演出と同じく、プレイヤーの行列更新の後・カメラの上書きの前に行う
+	if(isPlayMode && returnJump_->IsRunning()){
+		returnJump_->Update(screenImpact_->IsHitStopping()?0.0f:kDeltaTime,{cameraPos, railCamera_->GetRotation()});
+		// 打ち上がった瞬間に、プレイヤーをスタート台の上へ移し、照準を正面に戻しておく
+		// プレイ用カメラが着地後の画(スタート台の上の画)へ動き始め、演出のカメラを最後にその画へ戻せる(表示は演出側で上書きする)
+		if(returnJump_->ConsumeLaunched()){
+			railEditor_->SwitchActiveRail(0);
+			player_->Reset();
+			player_->StartOnPlatform(startPlatform_->GetSpawnPosition(),railEditor_->GetRotationOnRail(0.0f));
+			railCamera_->Reset();
+			// 撃破演出を見せ終えてスタート台へ跳ぶときに「STAGE CLEAR!」を押しつけるように出し、ステージをクリアしたことをはっきり伝える
+			stageClearUI_->Begin();
+		}
+		Vector3 landedPos;
+		if(returnJump_->ConsumeLanded(landedPos)){
+			RestartFromReturnJump(landedPos);
+		}
+	}
+
 	// 開始演出中は、プレイ用カメラをプレイヤー中心に回転させた位置・向きでカメラを上書きする
 	// (カメラの行列はシーン更新の後にまとめて更新されるため、ここで上書きしてもこのフレームの描画に反映される)
 	// タイトルロゴも同じくプレイヤーの位置・向きを基準に配置する
 	CameraPose departureCamera;
+	CameraPose returnJumpCamera;
 	if(isPlayMode && startSequence_->IsControllingCamera()){
 		startSequence_->UpdateLogo(playerPos,railCamera_->GetRotation());
 
@@ -839,6 +890,12 @@ void GameScene::UpdateGameplay(){
 		if(Camera* mainCamera = CameraManager::GetInstance()->GetCamera(kDefaultCameraName)){
 			mainCamera->SetTranslate(departureCamera.position);
 			mainCamera->SetRotate(departureCamera.rotate);
+		}
+	} else if(isPlayMode && returnJump_->GetCameraPose(returnJumpCamera)){
+		// スタート台へ戻る大ジャンプの最中は、演出が決めた画にする(跳んでいるプレイヤーを追いかけ、最後にスタート台の上の画へ戻す)
+		if(Camera* mainCamera = CameraManager::GetInstance()->GetCamera(kDefaultCameraName)){
+			mainCamera->SetTranslate(returnJumpCamera.position);
+			mainCamera->SetRotate(returnJumpCamera.rotate);
 		}
 	} else if(isPlayMode && startSequence_->IsGateCameraActive()){
 		// 出発ゲートを開けている間は、ゲートの斜め前からの画へ寄せ、開ききったらプレイ用カメラへ戻す
@@ -952,13 +1009,21 @@ void GameScene::UpdateGameplay(){
 		Vector3 aimedTargetPos;
 		float aimedTargetDistance = 0.0f;
 		const bool isAimingTarget = targetManager_->FindAimedTarget(cameraPos,cameraForward,minAimDistance,aimedTargetPos,aimedTargetDistance);
+		// 的・敵・ゴールの的のどれかを狙えているか(狙えているもののうち、一番手前のものの奥行きを狙う)
+		bool isAimingAny = isAimingTarget;
 		if(isAimingTarget){
 			aimDistance = aimedTargetDistance;
 		}
 		Vector3 aimedEnemyPos;
 		float aimedEnemyDistance = 0.0f;
-		if(enemyManager_->FindAimedEnemy(cameraPos,cameraForward,minAimDistance,aimedEnemyPos,aimedEnemyDistance) && (!isAimingTarget || aimedEnemyDistance < aimedTargetDistance)){
+		if(enemyManager_->FindAimedEnemy(cameraPos,cameraForward,minAimDistance,aimedEnemyPos,aimedEnemyDistance) && (!isAimingAny || aimedEnemyDistance < aimDistance)){
 			aimDistance = aimedEnemyDistance;
+			isAimingAny = true;
+		}
+		// ゴールの的は左右・上下に揺れながら並走するため、狙えているときは同じように奥行きを合わせて当てやすくする
+		float aimedGoalDistance = 0.0f;
+		if(goalTarget_->FindAimed(cameraPos,cameraForward,minAimDistance,aimedGoalDistance) && (!isAimingAny || aimedGoalDistance < aimDistance)){
+			aimDistance = aimedGoalDistance;
 		}
 		Vector3 aimPoint = cameraPos + cameraForward * aimDistance;
 		Vector3 shootDirection = Normalize(aimPoint - muzzlePos);
@@ -983,6 +1048,28 @@ void GameScene::UpdateGameplay(){
 		comboCounter_->AddHit();
 	}
 
+	// ゴールの的の並走と弾との当たり判定
+	// プレイヤーがゴールのレールに乗っている間だけ、プレイヤーより先を並走させる(Edit中・開始演出中は出さない)
+	const bool isOnGoalRail = isGameplayActive && player_->IsOnRail() && railEditor_->GetActiveRailIndex() == Player::kGoalRailIndex;
+	goalTarget_->Update(railEditor_.get(),player_->GetRailT(),isOnGoalRail,cameraPos,*bulletManager_,isGameplayActive?kDeltaTime:0.0f);
+
+	// クリア判定
+	// ゴールの的の体力を0にして壊したらステージクリアとし、撃破演出を見せてから大ジャンプでスタート台へ戻る
+	// スタート台へ戻る大ジャンプの最中はプレイ可能でなくなるため、クリアの処理が二重に起きることはない
+	if(isGameplayActive && goalTarget_->IsDestroyed()){
+		// 普通の的より大きな破片・多くのしぶき・大きな閃光を出し、連鎖数を増やす
+		const Vector3 goalBreakPosition = goalTarget_->GetPosition();
+		inkEffect_->EmitGoalBreak(goalBreakPosition);
+		comboCounter_->AddHit();
+		// 一瞬動きを止めて画面を大きく揺らし、的を中心に放射ブラーをかけて、倒した手応えを見せる
+		screenImpact_->Trigger(kGoalBreakHitStopDuration,kGoalBreakShakeAmplitude,kGoalBreakShakeDuration);
+		if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
+			Application::GetInstance()->TriggerRadialBlur(CameraPoseMath::WorldToScreenUv(goalBreakPosition,activeCamera->GetViewProjectionMatrix()),kGoalBreakRadialBlurWidth,kGoalBreakRadialBlurDuration);
+		}
+		// 壊れた的の破片を少し見せてから、大ジャンプでスタート台へ戻る
+		returnJump_->Begin(MakeDepartureContext());
+	}
+
 	// 鍵の的を壊したら、そのレールを出す(始点から終点へ管を伸ばす)
 	ApplyRailLocks(false);
 
@@ -992,13 +1079,20 @@ void GameScene::UpdateGameplay(){
 	// 飛んでいる弾の描画用の行列を更新する(命中・生存時間切れの弾は未使用に戻り、次の発射で使い回す)
 	bulletManager_->UpdateTransforms();
 
-	// 狙えているときはレティクル中心を赤くする
-	reticle_->SetAiming(isAimingAtAnyTarget);
+	// 狙えているときはレティクル中心を赤くする(ゴールの的は、レティクルの方向が当たり判定の球を通っていれば狙えているとする)
+	float goalAimDistance = 0.0f;
+	reticle_->SetAiming(isAimingAtAnyTarget || goalTarget_->FindAimed(cameraPos,cameraForward,kReticleAimMinDistance,goalAimDistance));
 
 	// 演出の更新(このフレームで出した分も含めて行列を求めるため、出す処理がすべて終わってから行う)
 	// ヒットストップ中は、飛び散ったインクも空中で止める
 	// やられ演出の最中は、弾けたインクがゆっくり飛び散っていくように見せる
-	const float inkTimeScale = isDefeated_?kDefeatTimeScale:1.0f;
+	// ゴールの的を壊してから跳ぶまでの間も、壊れた的の破片がゆっくり飛び散っていくように見せる
+	float inkTimeScale = 1.0f;
+	if(isDefeated_){
+		inkTimeScale = kDefeatTimeScale;
+	} else if(returnJump_->IsWaiting()){
+		inkTimeScale = kGoalBreakTimeScale;
+	}
 	inkEffect_->Update(screenImpact_->IsHitStopping()?0.0f:kDeltaTime * inkTimeScale);
 
 	// スピード線はレールを進んでいる間だけ出す
@@ -1009,6 +1103,8 @@ void GameScene::UpdateGameplay(){
 
 	// 画面表示の更新(左上のアイコンには残機を出す)
 	stageHUD_->Update(lives_,kMaxLives,targetManager_->GetDestroyedCount(),targetManager_->GetTotalCount(),*comboCounter_);
+	// 「STAGE CLEAR!」の表示の動きを進める(出していないときは何もしない)
+	stageClearUI_->Update(kDeltaTime);
 }
 
 #ifdef USE_IMGUI
@@ -1225,6 +1321,9 @@ void GameScene::Draw(){
 	// 生存している的だけ描画
 	targetManager_->Draw();
 
+	// ゴールの的を描画(現れていて、まだ壊れていないときだけ)
+	goalTarget_->Draw();
+
 	// 発射中の弾を描画
 	bulletManager_->Draw();
 
@@ -1247,17 +1346,21 @@ void GameScene::Draw(){
 	// スタート台の上では試し撃ちができるため表示する(ゲートが開く間も、出たり消えたりしないよう表示したままにする)
 	bool isTitleShowing = startSequence_ && startSequence_->IsControllingCamera();
 	bool isDeparting = startSequence_ && startSequence_->IsDeparting();
+	// スタート台へ戻る大ジャンプの最中も撃てないため表示しない
+	bool isReturning = returnJump_ && returnJump_->IsRunning();
 
 	// スピード線はレティクル・画面表示より奥に見えるよう先に描く
 	speedLines_->Draw();
 
-	if(!isTitleShowing && !isDeparting){
+	if(!isTitleShowing && !isDeparting && !isReturning){
 		reticle_->Draw();
 	}
 
 	// 体力・壊した的の数・連鎖数はPlay中だけ表示する(タイトル中・カメラの回り込み中は出さない)
 	if(EditorContext::GetInstance()->IsPlayMode() && !isTitleShowing){
 		stageHUD_->Draw();
+		// 「STAGE CLEAR!」は画面表示より手前に出す
+		stageClearUI_->Draw();
 	}
 
 	// 開始演出のタイトル表示(PRESS SPACE)と、出発までの表示(操作案内・GO!)を最前面に描画する

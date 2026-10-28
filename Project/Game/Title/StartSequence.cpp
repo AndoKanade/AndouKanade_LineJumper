@@ -70,8 +70,8 @@ void StartSequence::Initialize(Obj3dCommon* object3dCommon,SpriteCommon* spriteC
 	gv->AddItem(kTitleGroup,kGateCameraTargetKey,kDefaultGateCameraTarget);
 }
 
-// タイトルから始める
-void StartSequence::Start(bool skipTitle){
+// Start()・StartFromStandby()で共通の、始める前の状態に戻す処理
+void StartSequence::ResetForStart(){
 	playerHopTimer_ = 0.0f;
 	lastCountdownNumber_ = 0;
 	cameraDirector_.Reset();
@@ -85,6 +85,11 @@ void StartSequence::Start(bool skipTitle){
 		startPlatform_->ResetGate();
 		startPlatform_->ClearInk();
 	}
+}
+
+// タイトルから始める
+void StartSequence::Start(bool skipTitle){
+	ResetForStart();
 
 	// タイトル演出を飛ばす場合は、BGMも鳴らさずにそのままプレイ中にする
 	// プレイヤーはレールの始点から始めるため、カウントダウンやゲートが開く演出は出さず、ゲートは開ききった状態にしておく
@@ -106,6 +111,12 @@ void StartSequence::Start(bool skipTitle){
 	}
 	// タイトルBGMを最初からループ再生する
 	SoundManager::GetInstance()->PlayAudio(kTitleBgmPath,GetVolume(kBgmVolumeKey),true);
+}
+
+// タイトル・カメラの回り込みを飛ばして、スタート台の上を動ける段階から始める
+void StartSequence::StartFromStandby(){
+	ResetForStart();
+	phase_ = Phase::Standby;
 }
 
 // 演出を止める

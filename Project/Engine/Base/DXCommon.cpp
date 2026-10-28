@@ -45,12 +45,20 @@ void DXCommon::Initialize(WinAPI* winApi){
 void DXCommon::InitDevice(){
 	HRESULT hr;
 
-	// デバッグレイヤーの有効化
+#ifndef NDEBUG
+	// デバッグレイヤーの有効化(Debug・Development)
+	// API呼び出し時の引数やバリアの間違いをCPU側で調べ、出力ウィンドウに知らせる(Releaseでは重くなるため使わない)
 	ComPtr<ID3D12Debug1> debugController = nullptr;
 	if(SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)))){
 		debugController->EnableDebugLayer();
+#ifdef _DEBUG
+		// シェーダー実行中のリソースアクセスの間違いをGPU側で調べる(Debugのみ)
+		// シェーダーに確認処理を書き足して描画のたびに調べるため、描画命令が多いと大きく重くなる
+		// Developmentでは普段の作業の軽さを優先して使わず、描画がおかしいときはDebugで確認する
 		debugController->SetEnableGPUBasedValidation(TRUE);
+#endif
 	}
+#endif
 
 	// DXGIファクトリーの生成
 	hr = CreateDXGIFactory(IID_PPV_ARGS(&dxgiFactory));
