@@ -3,6 +3,8 @@
 #include "Camera.h"
 #include "Input.h"
 #include "GlobalVariables.h"
+#include "objects/StartPlatform.h"
+#include <algorithm>
 #include <cmath>
 
 namespace{
@@ -57,7 +59,7 @@ void RailCamera::Reset(){
 
 // 更新処理
 // プレイヤーの基準位置を回転の中心にし、カメラの向きの後ろ側へ離して置くことで、照準を動かすとプレイヤーの周りを回り込む
-void RailCamera::Update(const Vector3& basePosition,const Vector3& baseRotation,bool isInputEnabled,Input* input,float deltaTime){
+void RailCamera::Update(const Vector3& basePosition,const Vector3& baseRotation,bool isInputEnabled,Input* input,float deltaTime,float groundHeight,const StartPlatform* startPlatform){
 	// 調整項目から最新の値を取得(ImGui編集/ホットリロードが即反映される)
 	GlobalVariables* gv = GlobalVariables::GetInstance();
 	float heightOffset = gv->GetFloatValue(paramGroup_,"cameraHeightOffset");
@@ -106,8 +108,23 @@ void RailCamera::Update(const Vector3& basePosition,const Vector3& baseRotation,
 	// カメラの右方向ベクトルをオフレール中のWASD移動に使用するため、前方ベクトルと同じ回転行列から算出する
 	right_ = RotateVector(kBaseRight,rotateMatrix);
 
-	// 三人称視点用に、基準位置より少し上を中心にして、カメラの向きの後ろ側へ離して置く
-	position_ = basePosition + Vector3{0.0f, heightOffset, 0.0f} - forward_ * distance;
+	// 三人称視点用に、基準位置より少し上を回転の中心にして、カメラの向きの後ろ側へ離して置く
+	const Vector3 pivot = basePosition + Vector3{0.0f, heightOffset, 0.0f};
+	const Vector3 backward = -forward_;
+
+	// 上を向いてカメラが下がったときに地面・台へめり込まないよう、回転の中心からカメラへのレイが最初に当たる距離まで寄せる
+	// 面そのものではなく面から kCollisionRadius だけ離した位置で止め、近平面が面を越えないようにする
+	float cameraDistance = distance;
+	// 地面はカメラが下へ向かうときだけ当たる
+	if(backward.y < 0.0f){
+		float groundDistance = (pivot.y - (groundHeight + kCollisionRadius)) / -backward.y;
+		cameraDistance = (std::min)(cameraDistance,(std::max)(groundDistance,0.0f));
+	}
+	if(startPlatform){
+		cameraDistance = startPlatform->Raycast(pivot,backward,cameraDistance,kCollisionRadius);
+	}
+
+	position_ = pivot + backward * cameraDistance;
 
 	if(Camera* mainCamera = CameraManager::GetInstance()->GetCamera(kDefaultCameraName)){
 		mainCamera->SetTranslate(position_);

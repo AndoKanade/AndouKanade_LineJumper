@@ -38,6 +38,10 @@ namespace{
 	static_assert(std::size(kGatePillarCanvasNames) == kPillarCount,"柱の塗りテクスチャの名前と柱の数が合っていない");
 	// 大きさから、中心から面までの距離や立方体(-1〜1)に掛けるスケールを求める倍率(半分)
 	constexpr float kHalf = 0.5f;
+	// レイとの交差を調べる軸の数(右・上・前)
+	constexpr int kAxisCount = 3;
+	// レイが面と平行とみなす、向きの成分の大きさ(0 で割らないようにする)
+	constexpr float kParallelEpsilon = 1.0e-6f;
 	// 輪の板の半径(板は -1〜1 なので1)
 	constexpr float kRingPlaneRadius = 1.0f;
 	// 半透明の板は完全に透明なピクセルだけ捨てる
@@ -510,6 +514,45 @@ Vector3 StartPlatform::ClampBehindClosedGate(const Vector3& position) const{
 		return position;
 	}
 	return position - forwardXZ_ * overshoot;
+}
+
+// 台の本体とレイの交差を調べる
+// レイを台の向きの座標(x: 右、y: 上、z: 前)に直し、軸ごとの面の間に入っている区間が3軸すべてで重なる最初の距離を求める
+float StartPlatform::Raycast(const Vector3& origin,const Vector3& direction,float maxDistance,float radius) const{
+	// 台の本体の中心は上面から厚みの半分だけ下になる
+	const Vector3 diff = origin - Vector3{topCenter_.x, topCenter_.y - kHalfHeight, topCenter_.z};
+	const float localOrigin[kAxisCount] = {Dot(diff,rightXZ_), diff.y, Dot(diff,forwardXZ_)};
+	const float localDirection[kAxisCount] = {Dot(direction,rightXZ_), direction.y, Dot(direction,forwardXZ_)};
+	const float halfSize[kAxisCount] = {kHalfWidth + radius, kHalfHeight + radius, kHalfLength + radius};
+
+	// 3軸すべての面の間に入っている区間(入る距離と出る距離)
+	float enterDistance = 0.0f;
+	float exitDistance = maxDistance;
+	for(int i = 0; i < kAxisCount; ++i){
+		// レイがこの軸の面と平行なときは、始点が面の間に入っていなければ当たらない
+		if(std::abs(localDirection[i]) < kParallelEpsilon){
+			if(std::abs(localOrigin[i]) > halfSize[i]){
+				return maxDistance;
+			}
+			continue;
+		}
+		float nearDistance = (-halfSize[i] - localOrigin[i]) / localDirection[i];
+		float farDistance = (halfSize[i] - localOrigin[i]) / localDirection[i];
+		if(nearDistance > farDistance){
+			std::swap(nearDistance,farDistance);
+		}
+		enterDistance = (std::max)(enterDistance,nearDistance);
+		exitDistance = (std::min)(exitDistance,farDistance);
+		if(enterDistance > exitDistance){
+			return maxDistance;
+		}
+	}
+
+	// 始点が範囲の中にあるときは、どちらへ押し出すか決まらないため当たっていないものとする
+	if(enterDistance <= 0.0f){
+		return maxDistance;
+	}
+	return enterDistance;
 }
 
 // 台の上を歩いている間に端から落ちないよう、台の上面の範囲に押し戻す
