@@ -5,7 +5,7 @@
 
 ---
 
-## 現在の状況（2026-10-28時点）
+## 現在の状況（2026-10-30時点）
 
 ### できていること
 
@@ -40,7 +40,8 @@
 - レール・的・敵をエディターで配置・ドラッグ移動し、JSON に保存・読み込みできる。Rail Editor では螺旋の制御点をまとめて作れる。
 - レール・的・敵の編集は Ctrl+Z / Ctrl+Y で戻せる。保存していない変更は「未保存」と出し、Save All（Ctrl+S）でまとめて保存できる。シーンが切り替わっても保存していない変更は消えない。
 - GlobalVariables による調整項目は、実行中の ImGui 編集と外部ファイルの書き換えが反映される。
-- Debug / Development / Release（x64）のすべてでビルドが通る（2026-10-24 確認）。
+- Edit モードの ImGui は、左に Rail Editor、右に「Editors」パネルで選んだエディター 1 つを出す。Scene ビューで的・敵をクリックするとそのエディターに切り替わる。
+- Debug / Development / Release（x64）のすべてでビルドが通る（2026-10-30 確認）。
 
 ### これからやること
 
@@ -70,6 +71,7 @@
 - 大ジャンプで着地したとき、プレイヤーの向きが跳んでいた向きからレールの向きへ一瞬で切り替わる。
 
 **敵の設定**
+- ステージ1には敵を置かない方針（`enemy.json` は空）。
 - 攻撃の種類が全ての敵で共通のローテーション。
 - 体力以外のパラメータ（移動速度・検知範囲・発射間隔など）が `Enemy.h` の定数固定で、敵ごとの設定や実行中の調整に対応していない。
 
@@ -77,6 +79,7 @@
 - Edit 中の曲線の点列（1 区間あたり 20 個の球）とインクのしぶき・破片は、1 個ずつ別の Obj3D で描いていて描画命令が多い。重くなったら、レールの管と同じく 1 つのモデルにまとめるか、インスタンシングで描く。
 - RailEditor の分岐設定 UI と `rail.json` の分岐先データが、実行時には使われないまま残っている。
 - ImGui のデバッグウィンドウ名が `"Rail Branch Debug"` のまま。
+- ImGui の日本語が「????」と表示される（日本語フォントを読み込んでいない）。
 - `StartSequence::IsIntroRunning()` がどこからも使われていない。
 - Play 中の R キーでタイトルからやり直す処理が、確認用の一時的な処理のまま残っている。
 - 放射ブラーをかけた後は、ポストエフェクトの種類を Default に戻す。ImGui で別の種類を選んでいても戻ってしまう。
@@ -1588,3 +1591,54 @@ Development|x64 でビルドが通ることを確認した。実機での見た�
 ### ビルド確認（2.〜4.）
 
 Development|x64 でビルドが通ることを確認した。
+
+### 5. Edit モードの ImGui を使いやすくした（PR #39）
+
+対象ファイル: `Engine/Manager/EditorContext.h`、`Engine/Manager/EditorWidgets.h`、`Engine/Manager/GlobalVariables.h/.cpp`、`Engine/Manager/ImGuiManager.cpp`、`Engine/Framework/Application.h/.cpp`、`Game/Editor/TargetEditor.h/.cpp`、`Game/Editor/EnemyEditor.h/.cpp`、`Game/Editor/RailEditor.cpp`、`Game/objects/TargetManager.h/.cpp`、`Game/scenes/GameScene.h/.cpp`、`resource/enemy/enemy.json`
+
+- 下段にパネルが 4 枚並んで狭かったため、画面の割り振りを変えた。
+  - 左の列は Rail Editor（縦いっぱい）、右の列は「Editors」パネルで選んだエディター 1 つ（縦いっぱい）。下段の左半分は Editors、右半分は Global Variables。
+  - Editors では GameScene Debug / Target Editor / Enemy Editor / PostProcess Settings から選ぶ（Ctrl+1〜4 でも切り替えられる）。保存していないエディターは名前に * を付ける。Undo / Redo / Save All と未保存の一覧も Editors に移した。
+  - 選んでいないエディターは、パネルを出さず、Scene ビューでのドラッグ・ショートカットも受け付けない。Scene ビューで的・敵をクリックすると、そのエディターに切り替わってその物を選ぶ（`EditorContext::ReportScenePick()` / `ResolveScenePicks()`）。
+  - 選んだエディターは imgui.ini に書き出し、次に起動したときも同じものを開く。
+- Hierarchy / Inspector パネルをなくし、的の一覧と選択中の的の編集を Target Editor にまとめた。
+  - Keep Height・Snap・Duplicate（Ctrl+D）・Delete キー・F キーの Focus・Shift+ドラッグで高さだけを動かす操作を足した。何も無い所をクリックすると選択を外す。
+  - 的の一覧のダブルクリックでも Focus する。選択中の的は Scene ビューで黄色く描く。
+  - 生存フラグ（Alive）は TargetManager が Target Editor の選択中の欄の下に足す（`SetSelectedTargetExtraUI()`）。
+- Global Variables に、表示するグループの選択（All か 1 つ）と、項目名の検索欄を足した。
+- ステージ1には敵を置かない方針にしたため、`resource/enemy/enemy.json` の敵 2 体を消して空にした。
+
+### 6. 起動して確認して分かったこと（2026-10-30 に追記）
+
+- ImGui はフォントを読み込んでいないため、5. で足した説明文などの日本語が「????」と表示される。
+
+## 2026-10-29
+
+### 1. カメラが地面・スタート台にめり込んで裏側が映るのを直した
+
+対象ファイル: `Game/Camera/RailCamera.h/.cpp`、`Game/objects/StartPlatform.h/.cpp`、`Game/scenes/GameScene.cpp`
+
+- 上を向いてカメラが下がると、カメラが地面やスタート台の中に入り、モデルの裏側が映っていた。
+- 回転の中心（プレイヤーの基準位置の `cameraHeightOffset` 上）からカメラへ伸ばしたレイが、地面かスタート台に当たるときは、当たった所より手前までカメラを寄せるようにした。
+  - 地面は、カメラが下へ向かうとき（後ろ向きのレイが下を向くとき）だけ、地面の高さとの交点を求める。
+  - スタート台は `StartPlatform::Raycast()` で、台の本体を各面から広げた直方体とレイの交差を、台の向きの座標に直して軸ごとに求める（始点が中にあるときは当たっていないものとする）。
+  - 面そのものではなく、面から `kCollisionRadius` だけ手前で止め、近平面が面を越えないようにした。
+- `RailCamera::Update()` に地面の高さとスタート台を渡すようにした。
+
+| 定数 | 値 | 内容 |
+| --- | --- | --- |
+| `RailCamera.h::kCollisionRadius` | 0.3 | カメラを地面・スタート台の面から離しておく距離 |
+
+## 2026-10-30
+
+### 1. 現状の確認とドキュメントの更新
+
+対象ファイル: `CLAUDE.md`、`GameClassSpec.md`、`successed.md`、`resource/rail/rail5.json`
+
+- コードを読み、Development で起動して「タイトル → ゲート前で SPACE → カウントダウン → CountdownFlip で出発 → レール走行」まで動くことを確かめ、CLAUDE.md の現状と課題を書き直した。
+- GameClassSpec.md の古い記述を直した（RailCamera の左右の照準は制限していない、めり込み防止、Hierarchy / Inspector パネルが無くなったこと、Editors パネル、Target Editor の操作）。
+- Rail 5（ゴールのレール）の螺旋を出た後の制御点が 1 点ごとに 0.5 ずつ下がり続け、終点が高さ -3.5 と雲の高さ（-3.0）より下に入っていたため、制御点 46〜55 の高さを制御点 45 と同じ 1.5 にそろえて平らにした。ゴールの的の並走区間で、的も雲の中へ沈まなくなる。
+
+### ビルド確認（1.）
+
+Debug / Development / Release（x64）のすべてでビルドが通ることを確認した（rail5.json の変更後の動作はまだ見ていない）。

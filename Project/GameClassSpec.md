@@ -1,6 +1,6 @@
 # Game フォルダ クラス仕様書
 
-最終更新: 2026-10-28
+最終更新: 2026-10-30
 
 `Game/` 以下の各クラスについて、「何ができるか」「外から何を呼べるか」「中でどう動いているか」をまとめる。
 エンジン側（`Engine/`）のクラスは対象外（Game のために追加したものだけ、使う側の項目で触れる）。
@@ -197,7 +197,7 @@ Game/
    2. Play 中は `startSequence_->Update()` にプレイヤーの座標を渡して呼び、`isGameplayActive`（Play 中かつ開始演出が終わってプレイ可能。大ジャンプの最中は false）と `isPlayerMovable`（開始演出のうちスタート台の上を動ける段階）を求める。ゲートを開け始めた瞬間に始める出発の演出（CountdownFlip）は、ここで `Prepare()` と `Begin()` を呼んで始める。
    3. マウスカーソルの表示を切り替える（`UpdateCursorVisibility()`）。
    4. `Player::UpdateRailProgress()` でレールを進め、`Player::UpdateBasePose()` で基準位置・基準向きを求める。
-   5. `RailCamera::Update()` でカメラをプレイヤーの後ろ上に置き、照準の入力を反映する（スタート台の上を動ける間も照準を動かせる）。
+   5. `RailCamera::Update()` でカメラをプレイヤーの後ろ上に置き、照準の入力を反映する（スタート台の上を動ける間も照準を動かせる）。地面の高さとスタート台を渡し、カメラがめり込まないようにする。
    6. 状態確認用のデバッグウィンドウ（`ShowStatusWindow()`）。
    7. `Player::UpdateTransform()` でプレイヤーをレールの上に立たせ、照準の方向へ向ける。出発の演出中は `DepartureDirector::Update()`、大ジャンプの最中は `ReturnJump::Update()` でプレイヤーの表示を上書きする。大ジャンプで跳び上がった瞬間（`ConsumeLaunched()`）にプレイヤーをスタート台の上へ移して照準を戻し、「STAGE CLEAR!」を出す。着地した瞬間（`ConsumeLanded()`）に `RestartFromReturnJump()` を呼ぶ。カメラは「タイトル・回り込み（StartSequence）→ 出発の演出 → 大ジャンプ → ゲートを映すカメラ」の優先順で上書きし、最後に画面の揺れを足す。
    8. 敵の更新、敵弾とプレイヤーの当たり判定、ゲームオーバー判定。
@@ -240,7 +240,7 @@ Game/
 | `UpdateGameplay()` | レール進行・カメラ・プレイヤー・敵・弾・的・勝敗判定を、決まった順番で呼び出す |
 | `UpdateCursorVisibility(isPlayMode)` | Edit 中はカーソルを常に表示し、Play 中は TAB で表示を切り替える |
 | `ShowStatusWindow()` | 「Rail Branch Debug」ウィンドウを表示する（ImGui がある構成のみ） |
-| `ShowEditorPanels()` | 「GameScene Debug」「Hierarchy」「Inspector」パネルを表示する（ImGui がある構成のみ） |
+| `ShowEditorPanels()` | 「Editors」（`ShowEditorSelector()`）と、選ばれていれば「GameScene Debug」（`ShowDebugPanelContents()`）・「PostProcess Settings」を表示する（ImGui がある構成のみ） |
 
 #### GlobalVariables の調整項目（グループ `GameScene`）
 
@@ -270,9 +270,11 @@ Game/
 | ウィンドウ | 表示するモード | 内容 |
 | --- | --- | --- |
 | Rail Branch Debug | 常時 | レールの本数、アクティブレール、進行度、オンレール状態、敵の体力（EnemyManager が表示）、プレイヤーの体力・残機など |
-| GameScene Debug | Edit のみ | タイトルを飛ばす設定、選んだ制御点から始める設定（Start From Selected Point）、レール・的・敵の編集の Undo / Redo / Save All と未保存のエディター名の表示、落下リスタート・クリアへの切り替えの演出の選択と Preview、出発の演出の選択（Departure。次にゲートを開けたときから使われる）、カメラ座標・回転の編集、ライティング |
-| Hierarchy | Edit のみ | 的の一覧。クリックで選択できる（TargetManager が表示） |
-| Inspector | Edit のみ | 選択中の的の座標・生存フラグの編集（TargetManager が表示） |
+| Editors | Edit のみ | 下段の左半分。右の列に出すエディター（GameScene Debug / Target Editor / Enemy Editor / PostProcess Settings）を選ぶ。Ctrl+1〜4 でも切り替えられ、Scene ビューで的・敵をクリックするとそのエディターに切り替わる。保存していない変更があるエディターは名前の後ろに * を付ける。レール・的・敵の編集の Undo / Redo / Save All と、未保存のエディター名（Unsaved:）もここに出す。選んだエディターは imgui.ini に書き出し、次に起動したときも同じものを開く |
+| GameScene Debug | Edit のみ（Editors で選んだとき） | タイトルを飛ばす設定、選んだ制御点から始める設定（Start From Selected Point）、落下リスタート・クリアへの切り替えの演出の選択と Preview、復活の見せ方（Respawn Reveal）の選択と Preview、出発の演出の選択（Departure。次にゲートを開けたときから使われる）、カメラ座標・回転の編集、ライティング |
+
+- Edit モードの画面は、左の列に Rail Editor（縦いっぱい）、右の列に Editors で選んだエディター（縦いっぱい）、中央に Scene ビュー、下段の左半分に Editors、右半分に Global Variables を並べる（`EditorWidgets::ComputeLayout()`）。
+- ImGui はフォントを読み込んでおらず標準フォントのため、説明文の日本語は「????」と表示される。
 
 ### ClearScene（`scenes/ClearScene.h/.cpp`）
 
@@ -659,7 +661,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | 照準判定 | 「カメラ → 的」の向きとカメラの前方ベクトルのなす角が `aimHitAngle` 以内なら狙えている。的が大きくなり、レティクルの中心ドットが赤くなる |
 | 命中 | 弾と的の境界球が重なったら撃破し、火花パーティクルを出す。壊れた位置は `GetDestroyedPositions()` で受け取れる（GameScene が破片・しぶきの演出と連鎖数の加算に使う） |
 | 初回の自動配置 | 保存データが無いとき、レール上の 16 か所に左右交互・上下・奥行きをずらして配置する |
-| 鍵の的 | 壊すと出るレール（`unlockRailIndex`）を持つ的。水色（0.3, 0.85, 1.0）で描き、Hierarchy に (Key: Rail N) と出す。同じレールを指定した的をすべて壊すとそのレールが出る |
+| 鍵の的 | 壊すと出るレール（`unlockRailIndex`）を持つ的。水色（0.3, 0.85, 1.0）で描き、Target Editor の的の一覧に (Key: Rail N) と出す。同じレールを指定した的をすべて壊すとそのレールが出る |
 
 | 関数 | 内容 |
 | --- | --- |
@@ -672,7 +674,10 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `FillLockedRails(lockedRails)` | 生きている鍵の的が指定しているレールに true を入れる（範囲外のレールの指定は無視する） |
 | `GetDestroyedPositions()` | 直前の `Update()` で壊れた的の座標の一覧を取得する |
 | `GetTotalCount()` / `GetDestroyedCount()` | 的の総数 / 壊された的の数を取得する |
-| `ShowHierarchy()` / `ShowInspector()` | Hierarchy / Inspector パネルの中身を表示する（ImGui がある構成のみ） |
+| `ConsumeFocusRequest(outPosition)` | Target Editor で Focus の操作があれば、選択中の的の位置を返す（GameScene が俯瞰カメラを寄せる） |
+
+- Edit モードでは、Target Editor で選択中の的を黄色（1, 0.85, 0.1）で描く。
+- Target Editor の選択中の的の編集欄の下に、生存フラグ（Alive）のチェックボックスを足す（`TargetEditor::SetSelectedTargetExtraUI()`）。
 
 ### GoalTarget（`objects/GoalTarget.h/.cpp`）
 
@@ -765,6 +770,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Update(float)` | ランプ・遮断棒・目印・輪の動きを進める |
 | `Draw()` / `DrawEffects()` | 台とゲートを描画 / 半透明の目印と輪を描画（3D オブジェクトの最後のほうで呼ぶ） |
 | `IsInsideTop(position)` / `GetTopHeight()` | 上面の範囲に入っているか / 上面の高さ（Player が台の上に立たせるのに使う） |
+| `Raycast(origin, direction, maxDistance, radius)` | 台の本体を各面から `radius` だけ広げた直方体に、レイが最初に当たる距離（当たらない・始点が中にあるときは `maxDistance`）。RailCamera のめり込み防止に使う |
 | `IsInGateArea(position)` | ゲートが閉じていて、目印の上（中心から 0.6 以内、上面との高さの差 0.1 以内）に立っているか |
 | `ClampBehindClosedGate(position)` | ゲートが閉じている間は、ゲートより先へ進めないよう押し戻した座標を返す |
 | `GetSpawnPosition()` | プレイヤーの開始位置 |
@@ -818,14 +824,15 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | 項目 | 内容 |
 | --- | --- |
 | 位置 | プレイヤーの基準位置から `cameraHeightOffset` だけ上の点を中心に、カメラの向きの後ろ側へ `cameraDistance` だけ離した位置。照準を動かすとプレイヤーの周りを回り込む |
+| めり込み防止 | 回転の中心からカメラへのレイが地面（地面の高さより下へ向かうときだけ）かスタート台（`StartPlatform::Raycast()`）に当たるときは、面から 0.3（`kCollisionRadius`）手前までカメラを寄せる。ほかの物は調べない |
 | 向き | 基準向きへ `cameraFollowSharpness` で少し遅れて追従させた向き＋マウスの照準オフセット。リセット直後は遅れなしで合わせる |
-| 照準 | マウス移動量 × `mouseSensitivity`。左右は `aimYawLimit`、上下は `aimPitchLimit` の範囲に制限する |
+| 照準 | マウス移動量 × `mouseSensitivity`。左右は制限せず 360° 振り向ける。上下は `aimPitchLimit` の範囲に制限する |
 
 | 関数 | 内容 |
 | --- | --- |
-| `Initialize(paramGroup)` | 調整項目（`cameraHeightOffset` / `cameraDistance` / `cameraFollowSharpness` / `mouseSensitivity` / `aimYawLimit` / `aimPitchLimit`）の登録 |
+| `Initialize(paramGroup)` | 調整項目（`cameraHeightOffset` / `cameraDistance` / `cameraFollowSharpness` / `mouseSensitivity` / `aimPitchLimit`）の登録 |
 | `Reset()` | 照準オフセットを 0 に戻し、次の更新で追従の遅れなしにレールの向きへ合わせる |
-| `Update(basePosition, baseRotation, isInputEnabled, input, deltaTime)` | 位置・向き・前方ベクトル・右方向ベクトルを計算し、カメラに反映する |
+| `Update(basePosition, baseRotation, isInputEnabled, input, deltaTime, groundHeight, startPlatform)` | 位置・向き・前方ベクトル・右方向ベクトルを計算し、カメラに反映する。`groundHeight` と `startPlatform`（nullptr なら調べない）はめり込み防止に使う |
 | `GetPosition` / `GetRotation` / `GetForward` / `GetRight` | 計算結果の取得 |
 
 ### ScreenImpact（`Camera/ScreenImpact.h/.cpp`）
@@ -1043,13 +1050,19 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | 操作 | 内容 |
 | --- | --- |
 | Placement Mode | ON の間だけ、マウスでのドラッグ移動を受け付ける |
+| Keep Height | ON なら、ドラッグで高さを変えずに水平に動かす（初期は OFF） |
+| Snap | ON なら、ドラッグで動かした座標を指定した間隔（初期値 0.5、下限 0.05）のグリッドに合わせる |
 | Add Target | カメラの前方 15.0 の位置に的を追加し、選択する |
-| Delete Target | 選択中の的を削除する |
+| Duplicate（Ctrl+D） | 選択中の的を、カメラの右方向へ 1.5 ずらして複製する |
+| Delete Target（Delete キー） | 選択中の的を削除する |
 | Save / Load | `resource/target/target.json` への保存・読み込み |
-| マウスドラッグ | Scene ビュー上で的を左ドラッグして動かす。レイから 1.0 以内の的を掴み、画面に平行な面の上で動かす |
+| 選択中の的 | Position（座標）・Unlock Rail（壊すと出るレール）・Alive（生存フラグ。TargetManager が足す）を編集する |
+| 的の一覧 | 高さ 100 の枠の中でスクロールする。クリックで選択、ダブルクリックで Focus |
+| F キー | 選択中の的へ俯瞰カメラを寄せる（Focus） |
+| マウスドラッグ | Scene ビュー上で的を左ドラッグして動かす。レイから 1.0 以内の的を掴み、画面に平行な面の上で動かす。Shift を押しながら掴むと高さだけを動かす。何も無い所をクリックすると選択を外す |
 
-- 選択中の的の座標は、GameScene の Inspector パネルからも編集できる（`GetTargetPositionRef()`）。
-- 的ごとに、壊すと出るレール（`unlockRailIndex`、-1 は鍵の的ではない）を持つ。Inspector パネルの「Unlock Rail」で編集し、JSON に保存する（無い古いデータは -1 として読む）。
+- 的ごとに、壊すと出るレール（`unlockRailIndex`、-1 は鍵の的ではない）を持つ。JSON に保存する（無い古いデータは -1 として読む）。
+- Editors で Target Editor を選んでいない間は、パネルを出さず、ドラッグ・ショートカットも受け付けない。そのときに Scene ビューで的をクリックすると Target Editor に切り替わり、その的を選ぶ（押したままならそのまま掴める）。
 - 起動時に保存データを自動で読み込む。
 
 ### EnemyEditor（`Editor/EnemyEditor.h/.cpp`）
@@ -1074,9 +1087,11 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | Save / Load | `resource/enemy/enemy.json` への保存・読み込み |
 | 敵一覧 | クリックで選択する |
 | 選択中の敵 | Position / Patrol Dir / Max HP をボタン UI で編集する |
-| マウスドラッグ | TargetEditor と同じ |
+| マウスドラッグ | 掴める距離・動かし方は TargetEditor と同じ（Keep Height・Snap・Shift での高さだけの移動は無い） |
 
 - 古い保存データに `patrolDirection` や `maxHp` が無くても、初期値で補って読み込める。
+- Editors で選んでいないときの動き（Scene ビューで敵をクリックすると Enemy Editor に切り替わる）は TargetEditor と同じ。
+- ステージ1には敵を置かない方針のため、今の `resource/enemy/enemy.json` は空（敵 0 体）。
 
 ### EditHistory / EditorDocumentManager（`Editor/EditHistory.h`、`Editor/EditorDocumentManager.h`）
 
@@ -1084,7 +1099,7 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 
 - 各エディターは `IEditorDocument`（`UndoEdit()` / `RedoEdit()` / `SaveToJson()` / `IsModified()` / `GetDocumentName()`）を実装し、初期化時に `EditorDocumentManager` に登録、破棄時に登録を外す。
 - `EditHistory<T>` は確定した状態を履歴に積む（1 エディターあたり最大 100 件）。状態ごとに番号を振り、保存したときの番号と比べて未保存かどうかを判定する。Undo で保存したときの状態まで戻れば未保存の表示も消える。
-- 各エディターは毎フレームの最後に、ImGui の操作中・ドラッグ中でなければ今の状態と最後に確定した状態を比べ、変わっていれば 1 回の編集として確定する。Inspector など他の場所からの編集もこれで拾う。Load も 1 回の編集として積むため、Ctrl+Z で読み込む前に戻せる。
+- 各エディターは毎フレームの最後に、ImGui の操作中・ドラッグ中でなければ今の状態と最後に確定した状態を比べ、変わっていれば 1 回の編集として確定する。パネルの入力欄での編集もこれで拾う（的の生存フラグは配置データではないため履歴に積まない）。Load も 1 回の編集として積むため、Ctrl+Z で読み込む前に戻せる。
 - `EditorDocumentManager` は「どのエディターを編集したか」の順番を覚え、Ctrl+Z ではレール・的・敵をまたいで編集した順に戻す。
 - クリア・ゲームオーバーなどでシーンが切り替わると、エディターは作り直されてファイルから読み込み直す。保存していない変更が消えないよう、エディターは破棄されるときに未保存の内容を static な置き場（`unsavedStash_`）に取っておき、次に作ったエディターが読み込みの後で戻す。ファイルには書き込まず、戻した内容は「未保存」のまま（Ctrl+Z でファイルの状態に戻せる）。アプリを終了したときは取っておかない。
 
