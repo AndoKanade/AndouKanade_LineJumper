@@ -839,7 +839,7 @@ void GameScene::UpdateGameplay(){
 
 	// カメラを基準位置の後ろ上に置き、照準の入力を反映する
 	// スタート台の上を動ける間も照準(カメラの向き)を動かせるようにして、周りを見回せるようにする
-	railCamera_->Update(player_->GetBasePosition(),player_->GetBaseRotation(),isGameplayActive || isPlayerMovable,input_,kDeltaTime);
+	railCamera_->Update(player_->GetBasePosition(),player_->GetBaseRotation(),isGameplayActive || isPlayerMovable,input_,kDeltaTime,ground_->GetHeight(),startPlatform_.get());
 	const Vector3& cameraPos = railCamera_->GetPosition();
 	const Vector3& cameraForward = railCamera_->GetForward();
 

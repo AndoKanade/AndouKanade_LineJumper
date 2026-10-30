@@ -5,11 +5,13 @@
 
 // 前方宣言
 class Input;
+class StartPlatform;
 
 /// <summary>
 /// レール追従カメラ(三人称視点のプレイ用カメラ)
 /// プレイヤーの基準位置を中心に、基準向きにマウスでの照準オフセットを上乗せした向きで、プレイヤーの後ろ上から映す。
 /// レールの曲がりに合わせて向きを少し遅れて追従させ、急に画面が回らないようにする。
+/// 回転の中心からカメラまでの間に地面・スタート台があるときは、めり込んで裏側が映らないようカメラを手前へ寄せる。
 /// 計算した位置・向きはプレイ用カメラ("default")に反映する。
 /// </summary>
 class RailCamera{
@@ -34,7 +36,9 @@ public:
 	/// <param name="isInputEnabled">照準の入力を受け付けるかどうか(プレイ可能な間のみtrue)</param>
 	/// <param name="input">入力</param>
 	/// <param name="deltaTime">経過時間(秒)。基準向きへの追従の速さに使う</param>
-	void Update(const Vector3& basePosition,const Vector3& baseRotation,bool isInputEnabled,Input* input,float deltaTime);
+	/// <param name="groundHeight">地面の高さ(カメラがこれより下へめり込まないようにする)</param>
+	/// <param name="startPlatform">スタート台(カメラが台にめり込まないようにする。nullptrなら調べない)</param>
+	void Update(const Vector3& basePosition,const Vector3& baseRotation,bool isInputEnabled,Input* input,float deltaTime,float groundHeight,const StartPlatform* startPlatform);
 
 	// カメラの位置を取得
 	const Vector3& GetPosition() const{ return position_; }
@@ -75,6 +79,9 @@ private:
 	static constexpr float kDefaultMouseSensitivity = 0.0004f;
 	// 上下の可動範囲(約29度)
 	static constexpr float kDefaultAimPitchLimit = 0.5f;
+
+	// カメラを地面・スタート台の面から離しておく距離(近平面がめり込んで裏側が映らない距離)
+	static constexpr float kCollisionRadius = 0.3f;
 
 	// 回転前の前方ベクトル
 	static constexpr Vector3 kBaseForward = {0.0f, 0.0f, 1.0f};

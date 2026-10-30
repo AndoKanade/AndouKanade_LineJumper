@@ -147,6 +147,17 @@ public:
 	/// <returns>押し戻した後の座標</returns>
 	Vector3 ClampInsideTop(const Vector3& position) const;
 
+	/// <summary>
+	/// 台の本体(直方体)を各面から radius だけ外側へ広げた範囲に、レイが最初に当たる距離を求める
+	/// 始点が範囲の中にあるとき・maxDistance までに当たらないときは maxDistance を返す
+	/// </summary>
+	/// <param name="origin">レイの始点</param>
+	/// <param name="direction">レイの向き(正規化済み)</param>
+	/// <param name="maxDistance">調べる最大の距離</param>
+	/// <param name="radius">台を各面から外側へ広げる距離</param>
+	/// <returns>当たった距離</returns>
+	float Raycast(const Vector3& origin,const Vector3& direction,float maxDistance,float radius) const;
+
 	// 台の上面の高さを取得
 	float GetTopHeight() const{ return topCenter_.y; }
 	// プレイヤーを立たせる開始位置(台の上面の、ゲートから離れた後ろ寄りの位置)を取得
