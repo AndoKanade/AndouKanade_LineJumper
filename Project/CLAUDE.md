@@ -88,7 +88,6 @@
 - **仮素材**：PRESS SPACE（`resource/Title/pressSpace.png`）、出発ゲートの目印・輪、操作案内・GO!・カウントダウンの数字（`tools/generate_start_stage_assets.py`）、「STAGE CLEAR!」（`tools/generate_stage_clear_assets.py`）、クリア・ゲームオーバー画面の画像（`tools/generate_result_assets.py`）、落下リスタートの「RETRY」の文字。本番の素材ができたら差し替える。
 - **確認用の処理**：Play 中の R キーでタイトルからやり直す処理が、一時的な処理のまま残っている（操作説明の画像にも R が載っている）。
 - **ゴールのレール**：ゴールの的（`GoalTarget`）が現れるのは `Player::kGoalRailIndex`（今は Rail 5）に乗ったときだけで、レールの番号を定数で決めている。ステージごとにレールを分けるときは、ゴールのレールをレールのデータ側に持たせる。
-- **操作説明の画像が古い**：`help.png`（`tools/generate_help_texture.py` の `FLOWS`）が「レールの終点に着く → ステージクリア」「クリア → SPACE でタイトルへ戻る」のままで、ゴールの的を壊して大ジャンプで戻る今の流れと合っていない。ESC でゲーム終了も載っていない。
 - **ImGui の日本語が表示されない**：ImGui はフォントを読み込んでおらず標準フォントのままのため、エディターの説明文（`TextDisabled` の日本語など）が「????」と出る。`resource/fonts/` に日本語フォントはあるので、`ImGuiManager::Initialize()` で日本語の文字範囲つきで読み込めば直る。
 
 ### 3.2 不足点（2026-10-30 にコードと起動で確認、要優先度調整）
