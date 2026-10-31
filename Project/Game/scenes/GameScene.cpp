@@ -40,6 +40,7 @@
 #include "objects/InkEffectManager.h"
 #include "objects/ComboCounter.h"
 #include "objects/ContinuePoint.h"
+#include "objects/StageResult.h"
 // カメラ
 #include "Camera/RailCamera.h"
 #include "Camera/DebugTopCamera.h"
@@ -385,6 +386,8 @@ void GameScene::ResetPlayState(){
 	// やられ演出の最中にRキーなどでやり直したときも、自機を出して操作できる状態に戻す
 	isDefeated_ = false;
 	defeatTimer_ = 0.0f;
+	isStageCleared_ = false;
+	stageClearTimer_ = 0.0f;
 }
 
 // 遠くの物を空の色に溶け込ませる距離を、全オブジェクト共通の設定にする
@@ -582,11 +585,37 @@ void GameScene::RestartFromReturnJump(const Vector3& landedPos){
 	// タイトルを飛ばし、出発ゲートを閉じてスタート台の上を動ける段階から始める
 	startSequence_->StartFromStandby();
 
-	// 着地点から輪とインクのしぶきを広げて台にインクの跡を残し、一瞬動きを止めて画面を揺らし、着地点を中心に放射ブラーをかける
+	PlayReturnLandEffects(landedPos);
+}
+
+// 大ジャンプでスタート台に着地した瞬間の演出
+// 着地点から輪とインクのしぶきを広げて台にインクの跡を残し、一瞬動きを止めて画面を揺らし、着地点を中心に放射ブラーをかける
+void GameScene::PlayReturnLandEffects(const Vector3& landedPos){
 	PlayBoardedEffects(landedPos);
 	screenImpact_->Trigger(kReturnLandHitStopDuration,kReturnLandShakeAmplitude,kReturnLandShakeDuration);
 	if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
 		Application::GetInstance()->TriggerRadialBlur(CameraPoseMath::WorldToScreenUv(landedPos,activeCamera->GetViewProjectionMatrix()),kReturnLandRadialBlurWidth,kReturnLandRadialBlurDuration);
+	}
+}
+
+// 大ジャンプでスタート台に着地したときに、着地の演出を出してクリア画面へ移るのを待ち始める
+// 今はステージ選択の仕組みがまだ無いため、スタート台から始め直さずにクリア画面へ移る
+void GameScene::StartStageClear(const Vector3& landedPos){
+	isStageCleared_ = true;
+	stageClearTimer_ = 0.0f;
+	PlayReturnLandEffects(landedPos);
+}
+
+// 着地の演出を見せ終えたら、結果を書き込んでクリア画面へ移る
+// シーンが作り直される前に、クリア画面で出す結果を書き込んでおく
+void GameScene::UpdateStageClear(){
+	const bool wasWaiting = stageClearTimer_ < kStageClearDuration;
+	stageClearTimer_ += kDeltaTime;
+	if(wasWaiting && stageClearTimer_ >= kStageClearDuration){
+		StageResult::destroyedTargetCount = targetManager_->GetDestroyedCount();
+		StageResult::totalTargetCount = targetManager_->GetTotalCount();
+		StageResult::maxCombo = comboCounter_->GetMaxCombo();
+		sceneManager_->ChangeScene("CLEAR",GetTransitionStyle(kClearTransitionKey));
 	}
 }
 
@@ -811,7 +840,8 @@ void GameScene::UpdateGameplay(){
 	// 暗転中(クリア・ゲームオーバーへの切り替え中、落下リスタート中)も、入力や判定が二重に起きないよう止めておく
 	// やられ演出の最中も、自機は弾けて消えているため止めておく
 	// ゴールの的を壊してスタート台へ大ジャンプで戻っている最中も、自機を演出側で動かすため止めておく
-	const bool isGameplayActive = isPlayMode && startSequence_->IsPlayable() && !sceneManager_->IsTransitioning() && !isDefeated_ && !returnJump_->IsRunning();
+	// スタート台に着地してクリア画面へ移るのを待っている間も、ステージは終わっているため止めておく
+	const bool isGameplayActive = isPlayMode && startSequence_->IsPlayable() && !sceneManager_->IsTransitioning() && !isDefeated_ && !returnJump_->IsRunning() && !isStageCleared_;
 	// 開始演出のうち、スタート台の上を自由に動ける段階か(出発ゲートの前で準備中と、ゲートが開いてレールへ乗り込むまで)
 	// 動き方(WASD・ジャンプ・台から落ちたときのリスタート)はプレイ中と同じで、敵・射撃・勝敗判定はまだ動かさない
 	const bool isPlayerMovable = isPlayMode && startSequence_->IsPlayerMovable() && !sceneManager_->IsTransitioning();
@@ -899,9 +929,15 @@ void GameScene::UpdateGameplay(){
 			stageClearUI_->Begin();
 		}
 		Vector3 landedPos;
+		// スタート台へ着地したら、着地の演出を出してクリア画面へ移るのを待ち始める
 		if(returnJump_->ConsumeLanded(landedPos)){
-			RestartFromReturnJump(landedPos);
+			StartStageClear(landedPos);
 		}
+	}
+
+	// 着地の演出を見せ終えたら、クリア画面へ移る(Editモードへ戻ったときは止める)
+	if(isPlayMode && isStageCleared_){
+		UpdateStageClear();
 	}
 
 	// 開始演出中は、プレイ用カメラをプレイヤー中心に回転させた位置・向きでカメラを上書きする

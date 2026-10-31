@@ -47,7 +47,6 @@ private:
 	SpriteCommon* spriteCommon_ = nullptr;
 
 	// --- メンバ変数：内部リソース (所有するもの) ---
-	std::unique_ptr<Sprite> backgroundSprite_;
 	// 今どの画面なのか分かるよう、画面の名前(「GAME OVER」)と操作の案内を描いた画像
 	std::unique_ptr<Sprite> titleSprite_;
 	// 選べる項目の文言を描いた画像(Option の順番に並べる)

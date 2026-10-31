@@ -21,16 +21,10 @@
 
 // 定数定義 (ファイルパスやパラメータ)
 namespace{
-	// 背景演出用のテクスチャ(専用素材が無いため既存の丸テクスチャを流用)
-	const std::string kBackgroundTexture = "resource/circle.png";
-	// 背景スプライトのサイズ
-	const float kBackgroundSpriteSize = 200.0f;
 	// 画面の名前(「GAME CLEAR!」)と操作の案内を描いた画像(仮素材。tools/generate_result_assets.py で生成する)
 	const std::string kTitleTexture = "resource/UI/clearTitle.png";
 	// 画面の名前の画像の大きさ(画像そのままの大きさで表示する)
 	constexpr Vector2 kTitleSpriteSize = {1024.0f, 320.0f};
-	// クリア演出の背景色(緑がかった色で「成功」を表現)
-	const Vector4 kBackgroundColor = {0.4f, 1.0f, 0.4f, 0.6f};
 }
 
 // コンストラクタ
@@ -47,20 +41,9 @@ void ClearScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommo
 	spriteCommon_ = spriteCommon;
 
 	// --- リソースのロード ---
-	TextureManager::GetInstance()->LoadTexture(kBackgroundTexture);
 	TextureManager::GetInstance()->LoadTexture(kTitleTexture);
 
 	// --- スプライト生成と設定 ---
-	backgroundSprite_ = std::make_unique<Sprite>();
-	backgroundSprite_->Initialize(spriteCommon_,kBackgroundTexture);
-	backgroundSprite_->SetAnchorPoint({0.5f, 0.5f}); // 中心を基準点にする
-	backgroundSprite_->SetSize({kBackgroundSpriteSize, kBackgroundSpriteSize});
-	backgroundSprite_->SetPosition({
-		static_cast<float>(WinAPI::kClientWidth) * 0.5f,
-		static_cast<float>(WinAPI::kClientHeight) * 0.5f
-		});
-	backgroundSprite_->SetColor(kBackgroundColor);
-
 	// 画面の名前は画面の中央に置く(ImGui が無い Release 構成でも表示される)
 	titleSprite_ = std::make_unique<Sprite>();
 	titleSprite_->Initialize(spriteCommon_,kTitleTexture);
@@ -84,9 +67,6 @@ void ClearScene::Finalize(){
 // 更新処理
 void ClearScene::Update(){
 	// スプライトの更新
-	if(backgroundSprite_){
-		backgroundSprite_->Update();
-	}
 	if(titleSprite_){
 		titleSprite_->Update();
 	}
@@ -120,13 +100,9 @@ void ClearScene::Update(){
 // 描画処理
 void ClearScene::Draw(){
 	// 2Dスプライト描画
-	if(spriteCommon_ && backgroundSprite_){
+	if(spriteCommon_ && titleSprite_){
 		spriteCommon_->Draw(); // 描画前処理
-		backgroundSprite_->Draw();
-		// 画面の名前は背景の上に重ねる
-		if(titleSprite_){
-			titleSprite_->Draw();
-		}
+		titleSprite_->Draw();
 	}
 
 	// 操作説明(閉じている間は左下の案内)を最前面に描画する

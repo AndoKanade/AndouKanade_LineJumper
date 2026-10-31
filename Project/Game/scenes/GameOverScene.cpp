@@ -21,10 +21,6 @@
 
 // 定数定義 (ファイルパスやパラメータ)
 namespace{
-	// 背景演出用のテクスチャ(専用素材が無いためクリア画面と同じ丸テクスチャを流用)
-	const std::string kBackgroundTexture = "resource/circle.png";
-	// 背景スプライトのサイズ
-	const float kBackgroundSpriteSize = 200.0f;
 	// 画面の名前(「GAME OVER」)と操作の案内を描いた画像(仮素材。tools/generate_result_assets.py で生成する)
 	const std::string kTitleTexture = "resource/UI/gameOverTitle.png";
 	// 画面の名前の画像の大きさ(画像そのままの大きさで表示する)
@@ -48,8 +44,6 @@ namespace{
 	// 選んでいない項目の色(暗くして、選んでいる項目を目立たせる)と、大きさの倍率(画像そのままの大きさ)
 	constexpr Vector4 kUnselectedOptionColor = {0.6f, 0.6f, 0.6f, 0.8f};
 	constexpr float kUnselectedOptionScale = 1.0f;
-	// ゲームオーバー演出の背景色(赤がかった色で「失敗」を表現)
-	const Vector4 kBackgroundColor = {1.0f, 0.3f, 0.3f, 0.6f};
 }
 
 // コンストラクタ
@@ -66,23 +60,12 @@ void GameOverScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCo
 	spriteCommon_ = spriteCommon;
 
 	// --- リソースのロード ---
-	TextureManager::GetInstance()->LoadTexture(kBackgroundTexture);
 	TextureManager::GetInstance()->LoadTexture(kTitleTexture);
 	for(const std::string& optionTexture : kOptionTextures){
 		TextureManager::GetInstance()->LoadTexture(optionTexture);
 	}
 
 	// --- スプライト生成と設定 ---
-	backgroundSprite_ = std::make_unique<Sprite>();
-	backgroundSprite_->Initialize(spriteCommon_,kBackgroundTexture);
-	backgroundSprite_->SetAnchorPoint({0.5f, 0.5f}); // 中心を基準点にする
-	backgroundSprite_->SetSize({kBackgroundSpriteSize, kBackgroundSpriteSize});
-	backgroundSprite_->SetPosition({
-		static_cast<float>(WinAPI::kClientWidth) * 0.5f,
-		static_cast<float>(WinAPI::kClientHeight) * 0.5f
-		});
-	backgroundSprite_->SetColor(kBackgroundColor);
-
 	// 画面の名前は画面の中央より上に置く(ImGui が無い Release 構成でも表示される)
 	titleSprite_ = std::make_unique<Sprite>();
 	titleSprite_->Initialize(spriteCommon_,kTitleTexture);
@@ -118,9 +101,6 @@ void GameOverScene::Finalize(){
 // 更新処理
 void GameOverScene::Update(){
 	// スプライトの更新
-	if(backgroundSprite_){
-		backgroundSprite_->Update();
-	}
 	if(titleSprite_){
 		titleSprite_->Update();
 	}
@@ -178,13 +158,10 @@ void GameOverScene::ApplyOptionLook(){
 // 描画処理
 void GameOverScene::Draw(){
 	// 2Dスプライト描画
-	if(spriteCommon_ && backgroundSprite_){
+	if(spriteCommon_ && titleSprite_){
 		spriteCommon_->Draw(); // 描画前処理
-		backgroundSprite_->Draw();
-		// 画面の名前と選べる項目は背景の上に重ねる
-		if(titleSprite_){
-			titleSprite_->Draw();
-		}
+		// 画面の名前と選べる項目
+		titleSprite_->Draw();
 		for(const auto& optionSprite : optionSprites_){
 			optionSprite->Draw();
 		}
