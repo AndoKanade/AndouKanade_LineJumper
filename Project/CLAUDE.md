@@ -40,13 +40,13 @@
 #### ステージ1の今の状態（2026-10-30時点）
 - レールは Rail 0〜5 の 6 本（`resource/rail/rail.json`〜`rail5.json`）。Rail 1〜5 は鍵の的（各 1 つ）を壊すと出る。Rail 4 の螺旋の入り口にチェックポイントが 1 つある。
 - 的は 22 個（うち鍵の的 5 個）。敵は置かない方針（`resource/enemy/enemy.json` は空）。ステージ1は的とレールだけで作る。
-- クリアは、ゴールのレール（Rail 5）で並走するゴールの的（`GoalTarget`、体力 20）を壊すこと。壊すと大ジャンプでスタート台へ戻り、「STAGE CLEAR!」を出してスタート台の上から始め直す（`ReturnJump`）。
+- クリアは、ゴールのレール（Rail 5）で並走するゴールの的（`GoalTarget`、体力 20）を壊すこと。壊すと大ジャンプでスタート台へ戻り（`ReturnJump`、跳んでいる間に「STAGE CLEAR!」を出す）、着地の演出を見せてから（`GameScene::kStageClearDuration`）`StageResult` に結果を書き込んでクリア画面（ClearScene）へ移る（9. ができるまでの仮の流れ。スタート台の上から始め直す `GameScene::RestartFromReturnJump()` は今は呼んでいない）。
 - 起動から「タイトル → ゲート前で SPACE → カウントダウン → CountdownFlip で出発 → レール走行」まで動くことを、2026-10-30 に Development で起動して確認した。
 
 #### 5. ボス戦を作る（未着手）
 - 4 で作った敵の仕組みを土台にしたボス戦（専用の攻撃パターン・HP 管理・演出）。
 - Enemy の体力・弾の使い回しの仕組みはそのまま流用できる。ステージ 1 のゴールの的（`GoalTarget`。先を並走し、体力 0 で撃破）も土台にできる。
-- ボスを倒したらクリア画面（ClearScene）へ移す。クリア画面・`StageResult`・Clear Transition の設定はそのために残している（今は GameScene から CLEAR へ移る処理が無い）。移る直前に `StageResult` へ結果を書き込む。
+- ボスを倒したらクリア画面（ClearScene）へ移す。今はステージ1の大ジャンプの着地で CLEAR へ移しているので、同じ処理（`StageResult` への書き込みと Clear Transition での切り替え）を使える。
 
 #### 6. JSONホットリロード機能（一部対応・優先度低）
 - GlobalVariables による調整項目（resource/GlobalVariables/GameScene.json / Title.json）は、実行中の ImGui 編集と外部ファイル書き換えの反映に対応済み。
@@ -88,8 +88,6 @@
 - **仮素材**：PRESS SPACE（`resource/Title/pressSpace.png`）、出発ゲートの目印・輪、操作案内・GO!・カウントダウンの数字（`tools/generate_start_stage_assets.py`）、「STAGE CLEAR!」（`tools/generate_stage_clear_assets.py`）、クリア・ゲームオーバー画面の画像（`tools/generate_result_assets.py`）、落下リスタートの「RETRY」の文字。本番の素材ができたら差し替える。
 - **確認用の処理**：Play 中の R キーでタイトルからやり直す処理が、一時的な処理のまま残っている（操作説明の画像にも R が載っている）。
 - **ゴールのレール**：ゴールの的（`GoalTarget`）が現れるのは `Player::kGoalRailIndex`（今は Rail 5）に乗ったときだけで、レールの番号を定数で決めている。ステージごとにレールを分けるときは、ゴールのレールをレールのデータ側に持たせる。
-- **操作説明の画像が古い**：`help.png`（`tools/generate_help_texture.py` の `FLOWS`）が「レールの終点に着く → ステージクリア」「クリア → SPACE でタイトルへ戻る」のままで、ゴールの的を壊して大ジャンプで戻る今の流れと合っていない。ESC でゲーム終了も載っていない。
-- **ImGui の日本語が表示されない**：ImGui はフォントを読み込んでおらず標準フォントのままのため、エディターの説明文（`TextDisabled` の日本語など）が「????」と出る。`resource/fonts/` に日本語フォントはあるので、`ImGuiManager::Initialize()` で日本語の文字範囲つきで読み込めば直る。
 
 ### 3.2 不足点（2026-10-30 にコードと起動で確認、要優先度調整）
 

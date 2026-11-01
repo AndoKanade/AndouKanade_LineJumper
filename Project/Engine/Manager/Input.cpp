@@ -29,10 +29,10 @@ void Input::Initialize(WinAPI* winApi){
 	// 4. 協調レベルのセット
 	//    DISCL_FOREGROUND   : 画面が手前にある場合のみ入力を受け付ける
 	//    DISCL_NONEXCLUSIVE : 他のアプリとデバイスを共有する
-	//    DISCL_NOWINKEY     : Windowsキーを無効にする (ゲーム中の誤操作防止)
+	//    Windowsキーは無効にしない(DISCL_NOWINKEY を付けると、Win+Alt+R の録画や Win+Shift+S の画面の切り取りがゲーム中に使えなくなるため)
 	result = keyboard_->SetCooperativeLevel(
 		winApi->GetHwnd(),
-		DISCL_FOREGROUND | DISCL_NONEXCLUSIVE | DISCL_NOWINKEY);
+		DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
 	assert(SUCCEEDED(result));
 
 	// 5. マウスデバイスの作成

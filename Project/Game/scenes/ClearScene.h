@@ -35,7 +35,6 @@ private:
 	SpriteCommon* spriteCommon_ = nullptr;
 
 	// --- メンバ変数：内部リソース (所有するもの) ---
-	std::unique_ptr<Sprite> backgroundSprite_;
 	// 今どの画面なのか分かるよう、画面の名前(「GAME CLEAR!」)と操作の案内を描いた画像
 	std::unique_ptr<Sprite> titleSprite_;
 	// H キーで開く操作説明(タイトルへ戻る方法もここで確認できる)

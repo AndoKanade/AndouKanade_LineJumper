@@ -1,4 +1,6 @@
 #pragma once
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <d3d12.h>
 
@@ -36,6 +38,12 @@ private: // --- 内部変数・メソッド ---
 	// SrvManagerから借りてくるフォント用ヒープ (解放責任なし)
 	ID3D12DescriptorHeap* srvHeap_ = nullptr;
 
-	// SrvManager上のインデックス
-	uint32_t srvIndex_ = 0;
+	// フォントのテクスチャに使う SRV の数
+	// 日本語の文字は使うときにフォントのテクスチャへ読み込むため、文字が増えるとテクスチャが大きく作り直される
+	// 作り直した後も、描画中のフレームが使い終わるまで古いテクスチャが残るため、1つでは足りない
+	static constexpr size_t kFontSrvCount = 8;
+
+	// フォントのテクスチャに使う SrvManager 上のインデックスと、それぞれを今使っているか
+	std::array<uint32_t,kFontSrvCount> fontSrvIndices_ = {};
+	std::array<bool,kFontSrvCount> isFontSrvInUse_ = {};
 };

@@ -105,6 +105,20 @@ private:
 	/// <param name="landedPos">着地した位置</param>
 	void RestartFromReturnJump(const Vector3& landedPos);
 
+	/// <summary>
+	/// 大ジャンプでスタート台に着地した瞬間の演出(足元の輪・インクの跡・しぶき、画面の揺れ、放射ブラー)
+	/// </summary>
+	/// <param name="landedPos">着地した位置</param>
+	void PlayReturnLandEffects(const Vector3& landedPos);
+
+	/// <summary>
+	/// 大ジャンプでスタート台に着地したときに、着地の演出を出してクリア画面へ移るのを待ち始める
+	/// </summary>
+	/// <param name="landedPos">着地した位置</param>
+	void StartStageClear(const Vector3& landedPos);
+	// 着地の演出を見せ終えたら、結果を書き込んでクリア画面へ移る
+	void UpdateStageClear();
+
 	// マウスカーソルの表示/非表示を切り替える
 	void UpdateCursorVisibility(bool isPlayMode);
 
@@ -222,6 +236,10 @@ private:
 	bool isDefeated_ = false;
 	// やられ演出が始まってからの経過時間(秒)
 	float defeatTimer_ = 0.0f;
+	// 大ジャンプでスタート台に着地し、クリア画面へ移るのを待っている最中か(操作・判定を止める)
+	bool isStageCleared_ = false;
+	// スタート台に着地してからの経過時間(秒)
+	float stageClearTimer_ = 0.0f;
 
 	// 最後に通ったチェックポイント(レールから落ちたら、ここからやり直す)
 	struct Checkpoint{
@@ -292,4 +310,7 @@ private:
 	// 大ジャンプでスタート台に着地した瞬間に、着地点を中心にかける放射ブラーの強さと消えるまでの時間
 	static constexpr float kReturnLandRadialBlurWidth = 0.025f;
 	static constexpr float kReturnLandRadialBlurDuration = 0.4f;
+	// 大ジャンプでスタート台に着地してから、クリア画面への切り替えを始めるまでの時間(秒)
+	// 着地の揺れ(kReturnLandShakeDuration)が収まり、インクのしぶきが落ちきるのを見せてから移る
+	static constexpr float kStageClearDuration = 1.0f;
 };
