@@ -207,14 +207,13 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// 着地できる範囲の可視化に、着地判定で使っている許容距離をそのまま渡す
 	railEditor_->SetLandingRangeRadius(Player::kOnRailHorizontalThreshold);
 
-	// 簡易的な地面の生成(レール開始地点を基準に並べるため、レールエディターの初期化後に行う)
+	// 簡易的な地面の生成(ワールドに固定したスタート台の位置と正面の向きを基準に並べる)
 	ground_ = std::make_unique<Ground>();
-	ground_->Initialize(object3dCommon_,railEditor_->GetPositionOnRail(0.0f),railEditor_->GetForwardOnRail(0.0f),kGameSceneGroup);
+	ground_->Initialize(object3dCommon_,StartPlatform::kTopCenter,StartPlatform::kFrontDirection,kGameSceneGroup);
 
-	// 最初のレールの手前に置くスタート台の生成(Edit中にも見えるよう、ここで一度レールの始点に合わせて置いておく)
+	// スタート台の生成(ワールドに固定した位置に置き、各ステージのレールの始点は台の辺に合わせて作る)
 	startPlatform_ = std::make_unique<StartPlatform>();
 	startPlatform_->Initialize(object3dCommon_);
-	startPlatform_->Place(railEditor_->GetPositionOnRail(0.0f),railEditor_->GetForwardOnRail(0.0f));
 
 	// 調整項目(GlobalVariables)のグループを作成する
 	// 各クラスがこのグループに自分の調整項目を登録する
@@ -231,9 +230,9 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kObjectFadeStartKey,kDefaultObjectFadeStart);
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kObjectFadeEndKey,kDefaultObjectFadeEnd);
 
-	// 太陽の生成(方角はレール開始地点の進行方向を基準にする)
+	// 太陽の生成(方角はスタート台の正面の向きを基準にする)
 	sun_ = std::make_unique<Sun>();
-	sun_->Initialize(kGameSceneGroup,railEditor_->GetForwardOnRail(0.0f));
+	sun_->Initialize(kGameSceneGroup,StartPlatform::kFrontDirection);
 
 	// プレイヤーの生成
 	player_ = std::make_unique<Player>();
@@ -363,9 +362,7 @@ void GameScene::ResetPlayState(){
 		railEditor_->SwitchActiveRail(0);
 		railEditor_->ClearPaint();
 
-		// スタート台を最初のレールの手前に置き直し、プレイヤーを台の上から始めさせる
-		// Edit中にレールを動かしても反映されるよう、始め直すたびに置き直す
-		startPlatform_->Place(railEditor_->GetPositionOnRail(0.0f),railEditor_->GetForwardOnRail(0.0f));
+		// プレイヤーを台の真ん中から始めさせる(今のステージのレールの向き、つまりそのステージのゲートの方を向かせる)
 		player_->StartOnPlatform(startPlatform_->GetSpawnPosition(),railEditor_->GetRotationOnRail(0.0f));
 
 		// 的をすべて復活させたため、鍵の的があるレールは出ていない状態にすぐ戻す
@@ -568,6 +565,8 @@ void GameScene::SwitchStage(int stageIndex){
 	// Playから戻ったときに選び直すレール・制御点は前のステージのものなので、切り替えた先の0番のレールにする
 	editRailIndex_ = 0;
 	editPointIndex_ = -1;
+	// 通ったチェックポイントは前のステージのレールのものなので忘れる
+	checkpoint_ = Checkpoint{};
 
 	// 的をすべて復活させたため、鍵の的があるレールは出ていない状態にすぐ戻す
 	ApplyRailLocks(true);
@@ -619,8 +618,7 @@ void GameScene::PlayReturnLandEffects(const Vector3& landedPos){
 	}
 }
 
-// 大ジャンプでスタート台に着地したときに、着地の演出を出してクリア画面へ移るのを待ち始める
-// 今はステージ選択の仕組みがまだ無いため、スタート台から始め直さずにクリア画面へ移る
+// 最後のステージのゴールの的を壊し、大ジャンプでスタート台に着地したときに、着地の演出を出してクリア画面へ移るのを待ち始める
 void GameScene::StartStageClear(const Vector3& landedPos){
 	isStageCleared_ = true;
 	stageClearTimer_ = 0.0f;
@@ -817,6 +815,10 @@ void GameScene::UpdateGameplay(){
 		// 残機も満タンから始める(コンティニューで戻ってきたときも満タンにする)
 		checkpoint_ = Checkpoint{};
 		lives_ = kMaxLives;
+		// タイトルから新しく始めるときは、クリアしたステージも忘れる(コンティニューのときは残す)
+		if(!ContinuePoint::isRequested){
+			StageInfo::ResetProgress();
+		}
 		ResetPlayState();
 		// ゲームオーバー画面でコンティニューを選んで戻ってきたときは、最後に通ったチェックポイントから始める
 		if(ContinuePoint::isRequested){
@@ -839,6 +841,7 @@ void GameScene::UpdateGameplay(){
 		// 最初からやり直すため、通ったチェックポイントも忘れ、残機も満タンに戻す
 		checkpoint_ = Checkpoint{};
 		lives_ = kMaxLives;
+		StageInfo::ResetProgress();
 		ResetPlayState();
 		StartPlaySequence();
 	}
@@ -848,6 +851,12 @@ void GameScene::UpdateGameplay(){
 	// ゲートの前にいるかは、前フレームで動かしたプレイヤーの座標で判定する
 	if(isPlayMode){
 		startSequence_->Update(kDeltaTime,player_->GetPosition());
+
+		// 出発ゲートを開け始めたら、そのゲートの先のステージに切り替える(ゲートの番号とステージの番号は同じ)
+		// 出発の演出はステージのレールを使うため、演出を始めるより先に切り替える
+		if(startSequence_->IsGateOpenTriggered()){
+			SwitchStage(startPlatform_->GetSelectedGateIndex());
+		}
 
 		// ゲートのカウントダウンに合わせて飛び乗る演出は、ゲートを開け始めた瞬間に選んで始める
 		// ゲートを映すカメラの代わりに演出のカメラで映すため、始めた瞬間に映っているカメラの画から動かし始める
@@ -956,9 +965,15 @@ void GameScene::UpdateGameplay(){
 			stageClearUI_->Begin();
 		}
 		Vector3 landedPos;
-		// スタート台へ着地したら、着地の演出を出してクリア画面へ移るのを待ち始める
+		// スタート台へ着地したら、今のステージをクリアしたことにする
+		// 最後のステージなら着地の演出を出してクリア画面へ移るのを待ち始め、それ以外はスタート台の上から次のステージを選べるようにする
 		if(returnJump_->ConsumeLanded(landedPos)){
-			StartStageClear(landedPos);
+			StageInfo::clearedStages[railEditor_->GetStageIndex()] = true;
+			if(railEditor_->GetStageIndex() == StageInfo::kFinalStageIndex){
+				StartStageClear(landedPos);
+			} else{
+				RestartFromReturnJump(landedPos);
+			}
 		}
 	}
 
@@ -1147,7 +1162,7 @@ void GameScene::UpdateGameplay(){
 
 	// ゴールの的の並走と弾との当たり判定
 	// プレイヤーがゴールのレールに乗っている間だけ、プレイヤーより先を並走させる(Edit中・開始演出中は出さない)
-	const bool isOnGoalRail = isGameplayActive && player_->IsOnRail() && railEditor_->GetActiveRailIndex() == Player::kGoalRailIndex;
+	const bool isOnGoalRail = isGameplayActive && player_->IsOnRail() && railEditor_->IsGoalRail(railEditor_->GetActiveRailIndex());
 	goalTarget_->Update(railEditor_.get(),player_->GetRailT(),isOnGoalRail,cameraPos,*bulletManager_,isGameplayActive?kDeltaTime:0.0f);
 
 	// クリア判定

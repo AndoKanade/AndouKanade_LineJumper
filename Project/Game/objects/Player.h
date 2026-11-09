@@ -144,9 +144,6 @@ public:
 	// 見た目どおりに、足の裏が管に少しでも掛かっていれば乗れるよう、管の半径と足の裏の幅の半分を足した距離にする
 	// レールエディターで着地できる範囲を可視化するのにも使う
 	static constexpr float kOnRailHorizontalThreshold = RailEditor::kTubeRadius + kFootHalfWidth;
-	// ゴールのレールのインデックス(rail5。ほかのレールは終点でレールから外れるが、このレールは終点で止まる)
-	// 乗るとゴールの的が現れて先を並走し、終点で止まった後もゴールの的を壊すまで撃ち続けられる
-	static constexpr int kGoalRailIndex = 5;
 
 private:
 	/// <summary>

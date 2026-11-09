@@ -159,7 +159,7 @@ void Player::UpdateRailProgress(const RailEditor* railEditor,bool isGameplayActi
 		// その場で真下に落としたり別の場所へ移したりすると不具合に見えるため、レールの続きのように前へ飛ばす
 		// 跳ねている途中・飛び移っている途中の状態を残すと、離れた直後に同じレールへ着地し直してしまうため、ここで消しておく
 		// 上り坂で終わるレールでは、外れた位置が終点の少し手前のレールより上になり、そこへ着地し直してしまうため、外れたレールを覚えて着地先から外す
-		if(railEditor->GetActiveRailIndex() != kGoalRailIndex){
+		if(!railEditor->IsGoalRail(railEditor->GetActiveRailIndex())){
 			endedRailIndex_ = railEditor->GetActiveRailIndex();
 			isOnRail_ = false;
 			isRailHopping_ = false;

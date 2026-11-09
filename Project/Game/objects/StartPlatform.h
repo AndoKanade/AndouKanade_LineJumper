@@ -1,6 +1,8 @@
 #pragma once
 
 #include "MyMath.h"
+#include "objects/StageInfo.h"
+#include <array>
 #include <memory>
 #include <vector>
 
@@ -10,10 +12,13 @@ class Obj3dCommon;
 class PaintCanvas;
 
 /// <summary>
-/// スタート台
-/// 最初のレールの始点の手前に置く箱。プレイヤーは台の上から始まり、自由に動いてからレールに乗る。
-/// 台の前側をレールの始点と少し重ねて置き、歩いて前へ進むだけでレールに乗れるようにする。
-/// 台の上には出発ゲートを立て、閉じている間はゲートより先へ進めないようにする。
+/// スタート台(ステージ選択の場所)
+/// ワールドに固定して置く台。真上から見て「凸」の形で、正方形の部分の正面・右・左の辺と、後ろの辺の途中から伸ばした通路の先にゲートを1つずつ立てる。
+/// ゲートの番号はステージの番号と同じ(0: 正面 = ステージ1、1: 右 = ステージ2、2: 左 = ステージ3、3: 後ろの通路の先 = 最後のステージ)。
+/// 各ステージのレールの始点は、そのゲートの先の辺と少し重なる位置(GetRailStartPosition())に置き、歩いて前へ進むだけでレールに乗れるようにする。
+/// プレイヤーは台の真ん中から始まり、自由に動いてから、選んだゲートの前の目印で出発の操作をする。
+/// ゲートが閉じている間はゲートより先へ進めない。最後のステージのゲートは、ほかのステージをすべてクリアするまで開けられない。
+/// クリアしたステージのゲートはランプを点けたままにし、まだ開けられないゲートはランプを赤くする。
 /// ゲートの前の目印で出発の操作をすると、目印から床の上をインクが走って左右の柱へ向かい、柱を下から塗り上がる。
 /// 塗り上がりは 3・2・1 のカウントダウンに合わせ、合図のたびに一段ずつ一気に塗り上がってランプを下から1段ずつ点ける。
 /// 1 の後に梁まで塗り終わり、0 の合図で遮断棒がインクを散らしながら跳ね上がって、レールへ歩いて乗れるようになる。
@@ -26,27 +31,40 @@ public:
 	StartPlatform();
 	~StartPlatform();
 
-	// 初期化処理(台・ゲート・目印・輪のモデルの生成)
+	// 初期化処理(台・ゲート・目印・輪のモデルの生成と、決まった位置への配置)
 	void Initialize(Obj3dCommon* objCommon);
 
-	/// <summary>
-	/// レールの始点に合わせて台を置く(Edit中にレールを動かしても反映されるよう、Playに入るたびに呼ぶ)
-	/// </summary>
-	/// <param name="railStartPosition">レールの始点の座標(台の上面の高さもこの高さにそろえる)</param>
-	/// <param name="railStartForward">レールの始点での進行方向(台はこの向きの手前側に置く)</param>
-	void Place(const Vector3& railStartPosition,const Vector3& railStartForward);
+	// 台の上面の中央(ワールドに固定した位置。地面の格子・太陽の向きの基準にも使う)
+	static constexpr Vector3 kTopCenter = {-4.8f, 0.0f, 0.0f};
+	// 台の正面の向き(正面の辺のゲートからステージ1へ出る向き。XZ平面の正規化ベクトル)
+	// 上面の中央と正面の向きは、ステージ1のレールの始点 (1.7, 0, 0) が正面の辺の出発位置に来るように決めている
+	static constexpr Vector3 kFrontDirection = {1.0f, 0.0f, 0.0f};
+	// ゲートの数(ステージの数と同じ。ゲートの番号はステージの番号と同じ)
+	static constexpr int kGateCount = StageInfo::kStageCount;
 
 	// ゲートを閉じた状態(ランプ消灯・遮断棒が下りている・目印を表示)に戻す
+	// 選んでいるゲートは、今のステージ(StageInfo::currentStageIndex)のゲートに戻す
 	void ResetGate();
 
-	// ゲートを開け始める(目印から柱へインクを流し込み、柱と梁を塗り終わったら遮断棒を上げる)
-	void BeginOpenGate();
+	// 指定したゲートを選んで開け始める(目印から柱へインクを流し込み、柱と梁を塗り終わったら遮断棒を上げる)
+	void BeginOpenGate(int gateIndex);
 
-	// ゲートを、開ける演出を出さずにすぐ開ききった状態にする(タイトルを飛ばしてレールの上から始めるとき用)
+	// 選んでいるゲートを、開ける演出を出さずにすぐ開ききった状態にする(タイトルを飛ばしてレールの上から始めるとき用)
 	void OpenGateImmediately();
 
-	// ゲートが開ききったか(レールへ歩いて乗れる状態か)
+	// 選んでいるゲートが開ききったか(レールへ歩いて乗れる状態か)
 	bool IsGateOpened() const;
+
+	// 選んでいる(開けている・最後に開けた)ゲートの番号
+	int GetSelectedGateIndex() const{ return selectedGateIndex_; }
+
+	/// <summary>
+	/// 指定したゲートの先にあるステージの、レールの始点を置く位置(ゲートの先の辺と少し重なる位置。台の上面の高さ)
+	/// </summary>
+	/// <param name="gateIndex">ゲートの番号(ステージの番号と同じ)</param>
+	Vector3 GetRailStartPosition(int gateIndex) const;
+	// 指定したゲートから出ていく向き(XZ平面の正規化ベクトル)
+	Vector3 GetGateDirection(int gateIndex) const;
 
 	// このフレームで遮断棒が跳ね上がり始めたか(GameScene がゲートからインクを飛び散らせるのに使う)
 	bool IsBarBurstTriggered() const{ return isBarBurstTriggered_; }
@@ -63,23 +81,23 @@ public:
 	/// <returns>数を出していないとき(最初の合図の前・0 の合図の後・ゲートを開けていないとき)は 0</returns>
 	int GetCountdownNumber() const;
 
-	// 遮断棒が跳ね上がるときにインクを飛び散らせる位置(閉じた遮断棒の中央)
+	// 遮断棒が跳ね上がるときにインクを飛び散らせる位置(選んでいるゲートの、閉じた遮断棒の中央)
 	Vector3 GetGateBurstPosition() const;
 
 	/// <summary>
-	/// ゲートの中央の根元を原点にした、台の向きでの座標をワールド座標に変換する(ゲートを映すカメラの位置決めに使う)
+	/// 選んでいるゲートの中央の根元を原点にした、ゲートの向きでの座標をワールド座標に変換する(ゲートを映すカメラの位置決めに使う)
 	/// </summary>
-	/// <param name="local">x: 右、y: 上、z: 前(レールの方向)</param>
+	/// <param name="local">x: 右、y: 上、z: 前(ゲートから出ていく方向)</param>
 	Vector3 GateLocalToWorld(const Vector3& local) const;
 
 	// 出発台の目印を出すかどうか(出発の演出を使い、ゲートが開いてから演出を始めるまでの間だけ出す)
 	void SetDeparturePadVisible(bool isVisible){ isDeparturePadVisible_ = isVisible; }
 
-	// 出発台の中央の座標(台の上面の高さ)
+	// 選んでいるゲートの出発台の中央の座標(台の上面の高さ)
 	Vector3 GetDeparturePadPosition() const;
 
 	/// <summary>
-	/// 台の上で、出発台の手前の線を越えたか(出発の演出を始める判定に使う)
+	/// 台の上で、選んでいるゲートの出発台の手前の線を越えたか(出発の演出を始める判定に使う)
 	/// 線は台の幅いっぱいに引くため、出発台の横を回り込んでもレールへ乗る前に必ず越える
 	/// </summary>
 	/// <param name="position">プレイヤーの座標</param>
@@ -127,28 +145,30 @@ public:
 	bool IsInsideTop(const Vector3& position) const;
 
 	/// <summary>
-	/// ゲートが閉じていて、ゲートの前の目印の上に立っているか(出発の操作を受け付ける範囲か)
+	/// ゲートがどれも開いていないときに、どのゲートの前の目印の上に立っているか(出発の操作を受け付ける範囲か)
+	/// まだ開けられない最後のステージのゲートの前では受け付けない
 	/// </summary>
 	/// <param name="position">プレイヤーの座標</param>
-	bool IsInGateArea(const Vector3& position) const;
+	/// <returns>立っている目印のゲートの番号(どの目印の上にもいないときは -1)</returns>
+	int FindGateArea(const Vector3& position) const;
 
 	/// <summary>
-	/// ゲートが閉じている間は、ゲートより先へ進めないように押し戻す(開け始めた後はそのまま返す)
-	/// 台の幅の外やジャンプ中でも、ゲートの位置の面より先へは出られない
+	/// 閉じているゲートより先へ進めないように押し戻す(開け始めたゲートの先へはそのまま進める)
+	/// 台の範囲の外やジャンプ中でも、閉じているゲートの位置の面より先へは出られない
 	/// </summary>
 	/// <param name="position">プレイヤーの座標</param>
 	/// <returns>押し戻した後の座標</returns>
 	Vector3 ClampBehindClosedGate(const Vector3& position) const;
 
 	/// <summary>
-	/// 台の上を歩いている間に端から落ちないよう、台の上面の範囲(端から少し内側)に押し戻す
+	/// 台の上を歩いている間に端から落ちないよう、台の上面の範囲(正方形の部分か通路の、端から少し内側)に押し戻す
 	/// </summary>
 	/// <param name="position">プレイヤーの座標</param>
 	/// <returns>押し戻した後の座標</returns>
 	Vector3 ClampInsideTop(const Vector3& position) const;
 
 	/// <summary>
-	/// 台の本体(直方体)を各面から radius だけ外側へ広げた範囲に、レイが最初に当たる距離を求める
+	/// 台の本体(正方形の部分と通路の2つの直方体)を各面から radius だけ外側へ広げた範囲に、レイが最初に当たる距離を求める
 	/// 始点が範囲の中にあるとき・maxDistance までに当たらないときは maxDistance を返す
 	/// </summary>
 	/// <param name="origin">レイの始点</param>
@@ -160,26 +180,72 @@ public:
 
 	// 台の上面の高さを取得
 	float GetTopHeight() const{ return topCenter_.y; }
-	// プレイヤーを立たせる開始位置(台の上面の、ゲートから離れた後ろ寄りの位置)を取得
-	const Vector3& GetSpawnPosition() const{ return spawnPosition_; }
+	// プレイヤーを立たせる開始位置(台の上面の真ん中)を取得
+	const Vector3& GetSpawnPosition() const{ return topCenter_; }
 
 private:
+	// ゲート1つ分の、置き方と部品
+	struct Gate{
+		// ゲートから出ていく向き(XZ平面の正規化ベクトル)と、その右の向き
+		Vector3 forward = {0.0f, 0.0f, 1.0f};
+		Vector3 right = {1.0f, 0.0f, 0.0f};
+		// 部品の向き(Y軸回転。モデルの+Z方向をゲートから出ていく向きへ向ける角度)
+		float yaw = 0.0f;
+		// ゲートの中央の根元(台の上面の高さ)
+		Vector3 origin = {0.0f, 0.0f, 0.0f};
+		// 台の上面の中央から、ゲートの先の辺までの距離
+		float edgeDistance = 0.0f;
+		// 左右の柱と、上の梁
+		std::vector<std::unique_ptr<Obj3D>> frames;
+		// 柱と梁の塗りテクスチャ(frames と同じ並び。持ち主は PaintManager)
+		std::vector<PaintCanvas*> frameCanvases;
+		// ランプ(左右の柱に下から kLampCountPerPillar 個ずつ、左・右の順に並べる)
+		std::vector<std::unique_ptr<Obj3D>> lamps;
+		// 遮断棒
+		std::unique_ptr<Obj3D> bar;
+		// ゲートの前の目印(ここに立つと出発の操作ができる)
+		std::unique_ptr<Obj3D> marker;
+		// 出発台の目印(出発の演出を始める場所)
+		std::unique_ptr<Obj3D> departurePad;
+	};
+
+	// 台の上面の中央・正面の向きから、台の本体とゲートの部品を置く(動かないため、初期化のときに1回だけ行う)
+	void PlaceParts();
+
 	/// <summary>
 	/// 台の上面の中央を原点にした、台の向きでの座標をワールド座標に変換する
 	/// </summary>
-	/// <param name="local">x: 右、y: 上、z: 前(レールの方向)</param>
+	/// <param name="local">x: 右、y: 上、z: 前(正面の向き)</param>
 	Vector3 ToWorld(const Vector3& local) const;
+
+	/// <summary>
+	/// ゲートの中央の根元を原点にした、ゲートの向きでの座標をワールド座標に変換する
+	/// </summary>
+	/// <param name="gate">基準にするゲート</param>
+	/// <param name="local">x: 右、y: 上、z: 前(ゲートから出ていく方向)</param>
+	Vector3 GateToWorld(const Gate& gate,const Vector3& local) const;
 
 	/// <summary>
 	/// ゲートの部品の位置・回転・大きさを設定して行列を更新する
 	/// </summary>
 	/// <param name="obj">更新する3Dオブジェクト</param>
-	/// <param name="local">台の向きでの座標(部品の中心)</param>
+	/// <param name="gate">部品を立てるゲート</param>
+	/// <param name="local">ゲートの向きでの座標(部品の中心)</param>
 	/// <param name="size">部品の大きさ(各辺の長さ)</param>
-	void UpdatePart(Obj3D& obj,const Vector3& local,const Vector3& size);
+	void UpdatePart(Obj3D& obj,const Gate& gate,const Vector3& local,const Vector3& size);
+
+	// 水平方向で見て、指定した座標が正方形の部分・通路の上面の範囲に入っているか
+	bool IsInsideSquareTop(const Vector3& position) const;
+	bool IsInsideCorridorTop(const Vector3& position) const;
 
 	/// <summary>
-	/// ゲートを開けている間に、前のフレームから今のフレームまでにインクが進んだ分だけ、床・柱・梁にインクを塗る
+	/// 台の向きでの中心 localCenter・各辺の長さの半分 halfSize の直方体を各面から radius だけ外側へ広げた範囲に、レイが最初に当たる距離を求める
+	/// </summary>
+	/// <returns>当たった距離(始点が範囲の中にあるとき・maxDistance までに当たらないときは maxDistance)</returns>
+	float RaycastBox(const Vector3& localCenter,const Vector3& halfSize,const Vector3& origin,const Vector3& direction,float maxDistance,float radius) const;
+
+	/// <summary>
+	/// 選んでいるゲートを開けている間に、前のフレームから今のフレームまでにインクが進んだ分だけ、床・柱・梁にインクを塗る
 	/// </summary>
 	/// <param name="previousTimer">前のフレームでのゲートを開け始めてからの経過時間(秒)</param>
 	void PaintGateInk(float previousTimer);
@@ -193,35 +259,27 @@ private:
 	// カウントダウンの index 回目(0 始まり)の合図の時刻(ゲートを開け始めてからの秒数。この合図で下から index 段目のランプが点く)
 	static constexpr float GetCountTime(int index){ return kFirstCountTime + kCountdownInterval * static_cast<float>(index); }
 
-	// 描画用の3Dオブジェクト
+	// 台の本体(正方形の部分と、後ろの辺から伸ばした通路)
 	std::unique_ptr<Obj3D> obj_;
-	// ゲートの左右の柱と、上の梁
-	std::vector<std::unique_ptr<Obj3D>> gateFrames_;
-	// 柱と梁の塗りテクスチャ(gateFrames_ と同じ並び。持ち主は PaintManager)
-	std::vector<PaintCanvas*> gateFrameCanvases_;
-	// ゲートのランプ(左右の柱に下から kLampCountPerPillar 個ずつ、左・右の順に並べる)
-	std::vector<std::unique_ptr<Obj3D>> lamps_;
-	// ゲートの遮断棒
-	std::unique_ptr<Obj3D> bar_;
-	// ゲートの前の目印(ここに立つと出発の操作ができる)
-	std::unique_ptr<Obj3D> marker_;
+	std::unique_ptr<Obj3D> corridorObj_;
+	// ゲート(並びはステージの番号と同じ)
+	std::array<Gate,kGateCount> gates_;
 	// 出発の合図に広げる輪
 	std::unique_ptr<Obj3D> launchRing_;
-	// 出発台の目印(出発の演出を始める場所)
-	std::unique_ptr<Obj3D> departurePad_;
-	// 台に塗ったインクの塗りテクスチャ(持ち主は PaintManager)
+	// 台に塗ったインクの塗りテクスチャ(正方形の部分と通路。持ち主は PaintManager)
 	PaintCanvas* inkCanvas_ = nullptr;
+	PaintCanvas* corridorInkCanvas_ = nullptr;
 
 	// 台の上面の中央
-	Vector3 topCenter_ = {0.0f, 0.0f, 0.0f};
-	// プレイヤーを立たせる開始位置
-	Vector3 spawnPosition_ = {0.0f, 0.0f, 0.0f};
-	// 台の向き(XZ平面の正規化ベクトル。前方向と右方向)
-	Vector3 forwardXZ_ = {0.0f, 0.0f, 1.0f};
+	Vector3 topCenter_ = kTopCenter;
+	// 台の向き(XZ平面の正規化ベクトル。正面の向きと右の向き)
+	Vector3 forwardXZ_ = kFrontDirection;
 	Vector3 rightXZ_ = {1.0f, 0.0f, 0.0f};
-	// 台の向き(Y軸回転。モデルの+Z方向を台の前方向へ向ける角度)
+	// 台の向き(Y軸回転。モデルの+Z方向を台の正面へ向ける角度)
 	float yaw_ = 0.0f;
 
+	// 選んでいる(開けている・最後に開けた)ゲートの番号
+	int selectedGateIndex_ = 0;
 	// ゲートを開け始めてからの経過時間(秒)
 	float gateOpenTimer_ = 0.0f;
 	// ゲートを開け始めたか(開ききった後も true のまま)
@@ -239,21 +297,33 @@ private:
 	// 出発の輪の中心
 	Vector3 launchRingPosition_ = {0.0f, 0.0f, 0.0f};
 
-	// 台の左右の幅の半分
-	static constexpr float kHalfWidth = 3.0f;
-	// 台の前後の長さの半分
-	static constexpr float kHalfLength = 5.5f;
+	// 台の正方形の部分の一辺の長さの半分
+	static constexpr float kSquareHalfSize = 8.0f;
+	// 後ろの辺の真ん中から後ろへ伸ばす通路の幅の半分と長さ
+	static constexpr float kCorridorHalfWidth = 3.0f;
+	static constexpr float kCorridorLength = 8.0f;
 	// 台の厚みの半分
 	static constexpr float kHalfHeight = 0.5f;
-	// 台の前の端を、レールの始点からどれだけ先まで重ねるか(重ねた範囲に入ればレールに乗れる)
+	// ゲートの先の辺を、レールの始点からどれだけ先まで重ねるか(重ねた範囲に入ればレールに乗れる)
 	static constexpr float kRailOverlapLength = 1.5f;
-	// プレイヤーを立たせる開始位置の、台の上面の中央から後ろへの距離(ゲートまで少し歩かせる)
-	static constexpr float kSpawnBackOffset = 3.0f;
 	// 台の上を歩けるのを、端からどれだけ内側までにするか(プレイヤーの体が台からはみ出さないようにする)
 	static constexpr float kEdgeMargin = 0.3f;
 
-	// ゲートを立てる位置の、台の上面の中央から前への距離
-	static constexpr float kGateDistance = 1.4f;
+	// ゲートを立てる位置の、ゲートの先の辺から手前への距離(ゲートと辺の間に、出発台とレールに乗る範囲を取る)
+	static constexpr float kGateEdgeInset = 4.1f;
+	// ゲートの幅の半分(左右の柱の外側の端まで)
+	static constexpr float kGateHalfWidth = 3.0f;
+	// 台の向きで見た、各ゲートから出ていく向き(x: 右、z: 前。並びはステージの番号と同じ: 正面・右・左・後ろ)
+	static constexpr Vector3 kGateLocalDirections[kGateCount] = {
+		{0.0f, 0.0f, 1.0f},
+		{1.0f, 0.0f, 0.0f},
+		{-1.0f, 0.0f, 0.0f},
+		{0.0f, 0.0f, -1.0f},
+	};
+	// 正方形の部分のゲートどうしが角でぶつからない
+	static_assert(kGateHalfWidth < kSquareHalfSize - kGateEdgeInset,"正方形の部分の隣り合うゲートが角でぶつかる");
+	// 後ろの通路にゲートが収まる
+	static_assert(kGateHalfWidth <= kCorridorHalfWidth,"後ろの通路の幅にゲートが収まらない");
 	// ゲートが閉じている間に近づける、ゲートからの距離(遮断棒にめり込まない距離)
 	static constexpr float kGateWallMargin = 0.25f;
 	// ゲートの柱の大きさ(台の左右の端に立て、台の幅いっぱいをふさぐ)
@@ -332,10 +402,13 @@ private:
 	// ランプが消えているとき(暗い青)と点いたとき(明るい緑)の色
 	static constexpr Vector4 kLampOffColor = {0.15f, 0.35f, 0.6f, 1.0f};
 	static constexpr Vector4 kLampOnColor = {0.35f, 1.0f, 0.45f, 1.0f};
+	// まだ開けられないゲートのランプの色(暗い赤)
+	static constexpr Vector4 kLampLockedColor = {0.6f, 0.12f, 0.12f, 1.0f};
 	// 目印・出発の輪の色(自分のインクと同じ黄色)
 	static constexpr Vector4 kInkColor = {1.0f, 0.85f, 0.15f, 1.0f};
-	// 台の塗りテクスチャの一辺のピクセル数(上面の 1m あたりおよそ 70 ピクセル)
+	// 台の塗りテクスチャの一辺のピクセル数(正方形の部分・通路の上面の 1m あたりおよそ 60 ピクセル)
 	static constexpr uint32_t kInkCanvasSize = 1024;
+	static constexpr uint32_t kCorridorInkCanvasSize = 512;
 	// 柱・梁の塗りテクスチャの一辺のピクセル数(どちらも 1m あたりおよそ 60〜75 ピクセル)
 	static constexpr uint32_t kGatePillarCanvasSize = 256;
 	static constexpr uint32_t kGateBeamCanvasSize = 1024;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <string>
 
 /// <summary>
@@ -15,6 +16,29 @@ struct StageInfo{
 
 	// 今編集・プレイしているステージ(0始まり)
 	inline static int currentStageIndex = 0;
+	// ステージごとに、ゴールの的を壊してクリアしたか(並びはステージの番号と同じ。ゲームオーバーからのコンティニューでは残す)
+	inline static std::array<bool,kStageCount> clearedStages = {};
+
+	// 最後のステージに出られるか(ほかのステージをすべてクリアしたか)
+	static bool IsFinalStageUnlocked(){
+		for(int i = 0; i < kFinalStageIndex; ++i){
+			if(!clearedStages[i]){
+				return false;
+			}
+		}
+		return true;
+	}
+
+	// 指定したステージを選べるか(最後のステージは、ほかのステージをすべてクリアするまで選べない)
+	static bool IsStageSelectable(int stageIndex){
+		if(!IsValidStageIndex(stageIndex)){
+			return false;
+		}
+		return stageIndex != kFinalStageIndex || IsFinalStageUnlocked();
+	}
+
+	// クリアしたステージをすべて忘れる(タイトルから新しく始めるときに呼ぶ)
+	static void ResetProgress(){ clearedStages.fill(false); }
 
 	// ステージの番号を、画面に出す番号(1始まり)に直す
 	static int ToStageNumber(int stageIndex){ return stageIndex + kStageNumberOffset; }

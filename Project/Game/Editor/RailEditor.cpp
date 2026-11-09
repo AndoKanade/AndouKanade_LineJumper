@@ -338,7 +338,9 @@ void RailEditor::Update(){
 	ImGui::Text("Active Rail: %s",rails_[activeRailIndex_].name.c_str());
 	for(size_t i = 0; i < rails_.size(); ++i){
 		ImGui::PushID(static_cast<int>(i) + 10000); // 制御点側のPushIDと衝突しないようオフセット
-		if(ImGui::Selectable(rails_[i].name.c_str(),static_cast<int>(i) == activeRailIndex_)){
+		// ゴールのレールは一覧に (Goal) と出す
+		const std::string railLabel = rails_[i].isGoalRail?rails_[i].name + " (Goal)":rails_[i].name;
+		if(ImGui::Selectable(railLabel.c_str(),static_cast<int>(i) == activeRailIndex_)){
 			SwitchActiveRail(static_cast<int>(i));
 		}
 		ImGui::PopID();
@@ -351,6 +353,9 @@ void RailEditor::Update(){
 
 	// 以降はアクティブなレールに対する編集操作
 	Rail& activeRail = rails_[activeRailIndex_];
+
+	// ゴールのレールにするか(終点で止まり、乗るとゴールの的が現れる。ステージに1本だけ置く想定)
+	ImGui::Checkbox("Goal Rail",&activeRail.isGoalRail);
 
 	// 制御点の追加ボタン(レールを延長しやすいよう、原点ではなく末尾2点の向きにそのまま伸ばした位置へ追加する)
 	if(ImGui::Button("Add Control Point")){
@@ -1304,6 +1309,14 @@ int RailEditor::GetRailCount() const{
 	return static_cast<int>(rails_.size());
 }
 
+// 今のステージの指定したレールがゴールのレールか(範囲外のレールはゴールのレールではないものとする)
+bool RailEditor::IsGoalRail(int railIndex) const{
+	if(railIndex < 0 || railIndex >= static_cast<int>(rails_.size())){
+		return false;
+	}
+	return rails_[railIndex].isGoalRail;
+}
+
 // アクティブなレールの制御点数を取得
 int RailEditor::GetControlPointCount() const{
 	return static_cast<int>(rails_[activeRailIndex_].controlPoints.size());
@@ -1473,6 +1486,7 @@ bool RailEditor::SaveRailToFile(const Rail& rail,const std::string& filePath) co
 	// ルート要素。nameは読み込み時の簡易フォーマットチェック・レール名の保存用
 	nlohmann::json root;
 	root["name"] = rail.name;
+	root["isGoalRail"] = rail.isGoalRail;
 
 	// 各制御点を配列に詰める
 	nlohmann::json pointsJson = nlohmann::json::array();
@@ -1524,6 +1538,8 @@ void RailEditor::LoadRailFromFile(Rail& rail,const std::string& filePath){
 	if(root.contains("name") && root["name"].is_string()){
 		rail.name = root["name"].get<std::string>();
 	}
+	// ゴールのレールか(旧フォーマットのJSONには無いため、value()で既定値falseを補う)
+	rail.isGoalRail = root.value("isGoalRail",false);
 
 	// 読み込んだ内容で制御点を置き換える
 	rail.controlPoints.clear();
@@ -1620,7 +1636,7 @@ RailEditor::StagesSnapshot RailEditor::MakeSnapshot() const{
 		const std::vector<Rail>& rails = GetStageRails(stage);
 		snapshot[stage].reserve(rails.size());
 		for(const Rail& rail : rails){
-			snapshot[stage].push_back({rail.name, rail.controlPoints});
+			snapshot[stage].push_back({rail.name, rail.controlPoints, rail.isGoalRail});
 		}
 	}
 	return snapshot;
@@ -1645,6 +1661,7 @@ void RailEditor::ApplySnapshot(const StagesSnapshot& snapshot){
 		for(size_t i = 0; i < rails.size(); ++i){
 			rails[i].name = stageSnapshot[i].name;
 			rails[i].controlPoints = stageSnapshot[i].controlPoints;
+			rails[i].isGoalRail = stageSnapshot[i].isGoalRail;
 			SyncPointObjectsToControlPoints(rails[i]);
 		}
 	}
@@ -1667,7 +1684,7 @@ void RailEditor::CommitEditIfChanged(){
 		const RailsSnapshot& committedRails = committed[stage];
 		isChanged = (committedRails.size() != rails.size());
 		for(size_t i = 0; !isChanged && i < rails.size(); ++i){
-			isChanged = (committedRails[i].name != rails[i].name || committedRails[i].controlPoints != rails[i].controlPoints);
+			isChanged = (committedRails[i].name != rails[i].name || committedRails[i].controlPoints != rails[i].controlPoints || committedRails[i].isGoalRail != rails[i].isGoalRail);
 		}
 	}
 	if(!isChanged){

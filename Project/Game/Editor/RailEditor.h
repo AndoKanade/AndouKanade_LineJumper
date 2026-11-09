@@ -88,6 +88,9 @@ public:
 	int GetActiveRailIndex() const;
 	// 読み込まれている全レールの本数を取得(デバッグ表示用)
 	int GetRailCount() const;
+	// 今のステージの指定したレールがゴールのレールか(ほかのレールは終点でレールから外れるが、ゴールのレールは終点で止まる)
+	// 乗るとゴールの的が現れて先を並走し、終点で止まった後もゴールの的を壊すまで撃ち続けられる
+	bool IsGoalRail(int railIndex) const;
 
 	// アクティブなレールの制御点数を取得
 	int GetControlPointCount() const;
@@ -162,6 +165,7 @@ private:
 	struct RailSnapshot{
 		std::string name;
 		std::vector<ControlPoint> controlPoints;
+		bool isGoalRail = false;
 	};
 	using RailsSnapshot = std::vector<RailSnapshot>;
 	// 編集履歴に残す、全ステージ分のレールのデータ(並びはステージの番号と同じ)
@@ -179,6 +183,7 @@ private:
 	struct Rail{
 		std::string name;                                   // レール名(UI表示・保存ファイル名の目印用)
 		std::vector<ControlPoint> controlPoints;            // 制御点を保存する配列
+		bool isGoalRail = false;                            // ゴールのレールか(終点で止まり、乗るとゴールの的が現れる)
 		std::vector<std::unique_ptr<Obj3D>> pointObjects;   // 制御点描画用の3Dオブジェクト群
 
 		// Play中にレールの本体として描く管(レールに沿った1本のモデル。BuildTubes()で頂点から作る)

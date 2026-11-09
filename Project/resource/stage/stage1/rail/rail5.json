@@ -897,5 +897,6 @@
             "speed": 1.0
         }
     ],
+    "isGoalRail": true,
     "name": "Rail 5"
 }

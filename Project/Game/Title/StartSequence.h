@@ -74,7 +74,7 @@ public:
 	// 出発の演出を始めたことを伝える(Boarding・GateOpen 中なら Departure へ進め、プレイヤーを動けなくする)
 	void BeginDeparture();
 
-	// このフレームで、ゲートの前の目印で SPACE を押して出発ゲートを開け始めたか
+	// このフレームで、ゲートの前の目印で SPACE を押して出発ゲートを開け始めたか(開けたゲートは StartPlatform::GetSelectedGateIndex() で分かる)
 	bool IsGateOpenTriggered() const{ return isGateOpenTriggered_; }
 
 	// 出発ゲートを開けている最中か

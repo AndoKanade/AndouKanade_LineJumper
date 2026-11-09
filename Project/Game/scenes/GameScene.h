@@ -104,8 +104,8 @@ private:
 	void PlayBoardedEffects(const Vector3& boardedPos);
 
 	/// <summary>
-	/// ゴールの的を壊して大ジャンプでスタート台へ戻ってきたときに、ステージを始め直し、着地の演出を出す
-	/// 的・敵・レールを初期状態に戻し、タイトルを飛ばしてスタート台の上を動ける段階から始める
+	/// 最後のステージ以外のゴールの的を壊して大ジャンプでスタート台へ戻ってきたときに、ステージを始め直し、着地の演出を出す
+	/// 的・敵・レールを初期状態に戻し、タイトルを飛ばしてスタート台の上を動ける段階(次のステージのゲートを選べる)から始める
 	/// </summary>
 	/// <param name="landedPos">着地した位置</param>
 	void RestartFromReturnJump(const Vector3& landedPos);
@@ -117,7 +117,7 @@ private:
 	void PlayReturnLandEffects(const Vector3& landedPos);
 
 	/// <summary>
-	/// 大ジャンプでスタート台に着地したときに、着地の演出を出してクリア画面へ移るのを待ち始める
+	/// 最後のステージのゴールの的を壊し、大ジャンプでスタート台に着地したときに、着地の演出を出してクリア画面へ移るのを待ち始める
 	/// </summary>
 	/// <param name="landedPos">着地した位置</param>
 	void StartStageClear(const Vector3& landedPos);

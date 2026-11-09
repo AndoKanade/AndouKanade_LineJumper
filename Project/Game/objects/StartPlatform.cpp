@@ -20,8 +20,9 @@ namespace{
 	// ゲートの柱・梁に使う、インクで塗れるよう面ごとに UV を展開した立方体(同じスクリプトで生成する)
 	const std::string kGatePillarModelPath = "StartPlatform/gatePillarPaint.obj";
 	const std::string kGateBeamModelPath = "StartPlatform/gateBeamPaint.obj";
-	// 台・柱・梁の塗りテクスチャの名前(シーンを作り直しても同じ塗りテクスチャを使い回す)
+	// 台・柱・梁の塗りテクスチャの名前(シーンを作り直しても同じ塗りテクスチャを使い回す。柱・梁は後ろにゲートの番号を付ける)
 	const std::string kInkCanvasName = "StartPlatform";
+	const std::string kCorridorInkCanvasName = "StartPlatformCorridor";
 	const std::string kGatePillarCanvasNames[] = {"StartGatePillarLeft", "StartGatePillarRight"};
 	const std::string kGateBeamCanvasName = "StartGateBeam";
 	// 台の上面に塗るインクの向き(上向きの面)
@@ -107,85 +108,114 @@ void StartPlatform::Initialize(Obj3dCommon* objCommon){
 		SetColor(*obj,color);
 		return obj;
 	};
-
-	// 台の本体はインクで塗れるようにする(前のシーンで塗ったインクが残っているため消しておく)
-	obj_ = createObj(kPaintablePlatformModelPath,kPlatformColor);
-	inkCanvas_ = PaintManager::GetInstance()->GetCanvas(kInkCanvasName,kInkCanvasSize);
-	inkCanvas_->Clear();
-	obj_->SetPaintCanvas(inkCanvas_);
-
-	// 左右の柱と上の梁(ゲートを開けるときにインクで塗り上げるため、塗れるようにする)
-	PaintManager* paintManager = PaintManager::GetInstance();
-	for(int i = 0; i < kPillarCount; ++i){
-		gateFrames_.push_back(createObj(kGatePillarModelPath,kFrameColor));
-		gateFrameCanvases_.push_back(paintManager->GetCanvas(kGatePillarCanvasNames[i],kGatePillarCanvasSize));
-	}
-	gateFrames_.push_back(createObj(kGateBeamModelPath,kFrameColor));
-	gateFrameCanvases_.push_back(paintManager->GetCanvas(kGateBeamCanvasName,kGateBeamCanvasSize));
-	for(size_t i = 0; i < gateFrames_.size(); ++i){
-		gateFrameCanvases_[i]->Clear();
-		gateFrames_[i]->SetPaintCanvas(gateFrameCanvases_[i]);
-	}
-
-	// ランプは光って見えるよう、光源の影響を受けないようにする
-	for(int i = 0; i < kPillarCount * kLampCountPerPillar; ++i){
-		auto lamp = createObj(kPlatformModelPath,kLampOffColor);
-		SetUnlit(*lamp);
-		lamps_.push_back(std::move(lamp));
-	}
-
-	bar_ = createObj(kPlatformModelPath,kBarColor);
-
 	// 目印・出発の輪は半透明の画像なので、透明な部分も捨てずに描いて縁をなめらかにする
-	marker_ = createObj(kRingModelPath,kInkColor);
-	launchRing_ = createObj(kRingModelPath,kInkColor);
-	departurePad_ = createObj(kRingModelPath,kInkColor);
-	for(Obj3D* ring : {marker_.get(), launchRing_.get(), departurePad_.get()}){
+	auto createRing = [&createObj](){
+		auto ring = createObj(kRingModelPath,kInkColor);
 		SetUnlit(*ring);
 		if(Model::Material* material = ring->GetMaterial()){
 			material->alphaCutoff = kTranslucentAlphaCutoff;
 		}
-	}
+		return ring;
+	};
 
+	// 台の本体(正方形の部分と通路)はインクで塗れるようにする(前のシーンで塗ったインクが残っているため消しておく)
+	PaintManager* paintManager = PaintManager::GetInstance();
+	obj_ = createObj(kPaintablePlatformModelPath,kPlatformColor);
+	inkCanvas_ = paintManager->GetCanvas(kInkCanvasName,kInkCanvasSize);
+	inkCanvas_->Clear();
+	obj_->SetPaintCanvas(inkCanvas_);
+	corridorObj_ = createObj(kPaintablePlatformModelPath,kPlatformColor);
+	corridorInkCanvas_ = paintManager->GetCanvas(kCorridorInkCanvasName,kCorridorInkCanvasSize);
+	corridorInkCanvas_->Clear();
+	corridorObj_->SetPaintCanvas(corridorInkCanvas_);
+
+	for(int gateIndex = 0; gateIndex < kGateCount; ++gateIndex){
+		Gate& gate = gates_[gateIndex];
+		const std::string canvasSuffix = std::to_string(gateIndex);
+
+		// 左右の柱と上の梁(ゲートを開けるときにインクで塗り上げるため、塗れるようにする)
+		for(int i = 0; i < kPillarCount; ++i){
+			gate.frames.push_back(createObj(kGatePillarModelPath,kFrameColor));
+			gate.frameCanvases.push_back(paintManager->GetCanvas(kGatePillarCanvasNames[i] + canvasSuffix,kGatePillarCanvasSize));
+		}
+		gate.frames.push_back(createObj(kGateBeamModelPath,kFrameColor));
+		gate.frameCanvases.push_back(paintManager->GetCanvas(kGateBeamCanvasName + canvasSuffix,kGateBeamCanvasSize));
+		for(size_t i = 0; i < gate.frames.size(); ++i){
+			gate.frameCanvases[i]->Clear();
+			gate.frames[i]->SetPaintCanvas(gate.frameCanvases[i]);
+		}
+
+		// ランプは光って見えるよう、光源の影響を受けないようにする
+		for(int i = 0; i < kPillarCount * kLampCountPerPillar; ++i){
+			auto lamp = createObj(kPlatformModelPath,kLampOffColor);
+			SetUnlit(*lamp);
+			gate.lamps.push_back(std::move(lamp));
+		}
+
+		gate.bar = createObj(kPlatformModelPath,kBarColor);
+		gate.marker = createRing();
+		gate.departurePad = createRing();
+	}
+	launchRing_ = createRing();
+
+	// 台はワールドに固定するため、ここで1回だけ置く
+	PlaceParts();
 	ResetGate();
 }
 
-// レールの始点に合わせて台を置く
-// 上面の高さはレールの始点にそろえ、前の端がレールの始点よりkRailOverlapLengthだけ先に出るよう、進行方向の手前側に置く
-void StartPlatform::Place(const Vector3& railStartPosition,const Vector3& railStartForward){
-	// 台は水平に置くため、進行方向は上下の成分を除いた向きにする
-	forwardXZ_ = Normalize(Vector3{railStartForward.x, 0.0f, railStartForward.z});
+// 台の上面の中央・正面の向きから、台の本体とゲートの部品を置く
+void StartPlatform::PlaceParts(){
+	// 台は水平に置くため、正面の向きは上下の成分を除いた向きにする
+	forwardXZ_ = Normalize(Vector3{kFrontDirection.x, 0.0f, kFrontDirection.z});
 	rightXZ_ = {forwardXZ_.z, 0.0f, -forwardXZ_.x};
 	yaw_ = std::atan2(forwardXZ_.x,forwardXZ_.z);
+	topCenter_ = kTopCenter;
 
-	// 上面の中央は、前の端から台の長さの半分だけ手前になる
-	topCenter_ = railStartPosition - forwardXZ_ * (kHalfLength - kRailOverlapLength);
-	// プレイヤーは上面の中央より後ろに立たせ、ゲートまで歩いて向かわせる
-	spawnPosition_ = topCenter_ - forwardXZ_ * kSpawnBackOffset;
-
-	if(!obj_){
-		return;
-	}
-
-	// モデルの中心は上面から厚みの半分だけ下になる
-	obj_->SetTranslate({topCenter_.x, topCenter_.y - kHalfHeight, topCenter_.z});
-	// モデルの+Z方向を台の前方向へ向ける
+	// 台の本体は動かないため、ワールド行列はここで求めておく(カメラとの合成はDraw()の中で毎回行われる)
+	// モデルの中心は上面から厚みの半分だけ下になる。通路は正方形の部分の後ろの辺に付ける
+	obj_->SetTranslate(ToWorld({0.0f, -kHalfHeight, 0.0f}));
 	obj_->SetRotate({0.0f, yaw_, 0.0f});
-	obj_->SetScale({kHalfWidth, kHalfHeight, kHalfLength});
-	// Play中は台が動かないため、ワールド行列はここで求めておく(カメラとの合成はDraw()の中で毎回行われる)
+	obj_->SetScale({kSquareHalfSize, kHalfHeight, kSquareHalfSize});
 	obj_->Update();
+	corridorObj_->SetTranslate(ToWorld({0.0f, -kHalfHeight, -(kSquareHalfSize + kCorridorLength * kHalf)}));
+	corridorObj_->SetRotate({0.0f, yaw_, 0.0f});
+	corridorObj_->SetScale({kCorridorHalfWidth, kHalfHeight, kCorridorLength * kHalf});
+	corridorObj_->Update();
 
-	// ゲートの柱と梁も動かないため、ここで行列を求めておく
-	// 柱は台の左右の端に立て、梁は柱の外側の端から端まで渡す
-	const float pillarOffsetX = kHalfWidth - kPillarSize.x * kHalf;
-	for(int i = 0; i < kPillarCount; ++i){
-		UpdatePart(*gateFrames_[i],{pillarOffsetX * kPillarSides[i], kPillarSize.y * kHalf, kGateDistance},kPillarSize);
+	// ゲートは、台の向きで決めた向きの辺(後ろは通路の先の辺)から kGateEdgeInset だけ手前に立てる
+	const float pillarOffsetX = kGateHalfWidth - kPillarSize.x * kHalf;
+	for(int gateIndex = 0; gateIndex < kGateCount; ++gateIndex){
+		Gate& gate = gates_[gateIndex];
+		const Vector3& localDirection = kGateLocalDirections[gateIndex];
+		gate.forward = rightXZ_ * localDirection.x + forwardXZ_ * localDirection.z;
+		gate.right = {gate.forward.z, 0.0f, -gate.forward.x};
+		gate.yaw = std::atan2(gate.forward.x,gate.forward.z);
+		gate.edgeDistance = (gateIndex == StageInfo::kFinalStageIndex)?kSquareHalfSize + kCorridorLength:kSquareHalfSize;
+		gate.origin = topCenter_ + gate.forward * (gate.edgeDistance - kGateEdgeInset);
+
+		// ゲートの柱と梁も動かないため、ここで行列を求めておく
+		// 柱はゲートの幅の両端に立て、梁は柱の外側の端から端まで渡す
+		for(int i = 0; i < kPillarCount; ++i){
+			UpdatePart(*gate.frames[i],gate,{pillarOffsetX * kPillarSides[i], kPillarSize.y * kHalf, 0.0f},kPillarSize);
+		}
+		UpdatePart(*gate.frames.back(),gate,{0.0f, kPillarSize.y + kBeamHeight * kHalf, 0.0f},{kGateHalfWidth + kGateHalfWidth, kBeamHeight, kBeamDepth});
 	}
-	UpdatePart(*gateFrames_.back(),{0.0f, kPillarSize.y + kBeamHeight * kHalf, kGateDistance},{kHalfWidth + kHalfWidth, kBeamHeight, kBeamDepth});
+}
+
+// 指定したゲートの先にあるステージの、レールの始点を置く位置
+Vector3 StartPlatform::GetRailStartPosition(int gateIndex) const{
+	const Gate& gate = gates_[std::clamp(gateIndex,0,kGateCount - 1)];
+	return topCenter_ + gate.forward * (gate.edgeDistance - kRailOverlapLength);
+}
+
+// 指定したゲートから出ていく向き
+Vector3 StartPlatform::GetGateDirection(int gateIndex) const{
+	return gates_[std::clamp(gateIndex,0,kGateCount - 1)].forward;
 }
 
 // ゲートを閉じた状態に戻す
 void StartPlatform::ResetGate(){
+	selectedGateIndex_ = StageInfo::IsValidStageIndex(StageInfo::currentStageIndex)?StageInfo::currentStageIndex:0;
 	gateOpenTimer_ = 0.0f;
 	isGateOpening_ = false;
 	isBarBurstTriggered_ = false;
@@ -194,12 +224,13 @@ void StartPlatform::ResetGate(){
 	isLaunchRingActive_ = false;
 }
 
-// ゲートを開け始める
-void StartPlatform::BeginOpenGate(){
+// 指定したゲートを選んで開け始める
+void StartPlatform::BeginOpenGate(int gateIndex){
+	selectedGateIndex_ = std::clamp(gateIndex,0,kGateCount - 1);
 	gateOpenTimer_ = 0.0f;
 	isGateOpening_ = true;
 	// 出発の操作をした目印の上にインクを塗り、そこから柱へインクが走り出すようにする
-	PaintInk(ToWorld({0.0f, 0.0f, kGateDistance - kMarkerDistanceFromGate}),kGateStampRadius);
+	PaintInk(GateToWorld(gates_[selectedGateIndex_],{0.0f, 0.0f, -kMarkerDistanceFromGate}),kGateStampRadius);
 }
 
 // ゲートを、開ける演出を出さずにすぐ開ききった状態にする
@@ -228,31 +259,32 @@ int StartPlatform::GetCountdownNumber() const{
 
 // 遮断棒が跳ね上がるときにインクを飛び散らせる位置
 Vector3 StartPlatform::GetGateBurstPosition() const{
-	return ToWorld({0.0f, kBarClosedHeight, kGateDistance});
+	return GateToWorld(gates_[selectedGateIndex_],{0.0f, kBarClosedHeight, 0.0f});
 }
 
-// ゲートの中央の根元を原点にした座標をワールド座標に変換する
+// 選んでいるゲートの中央の根元を原点にした座標をワールド座標に変換する
 Vector3 StartPlatform::GateLocalToWorld(const Vector3& local) const{
-	return ToWorld({local.x, local.y, local.z + kGateDistance});
+	return GateToWorld(gates_[selectedGateIndex_],local);
 }
 
-// 出発台の中央の座標
+// 選んでいるゲートの出発台の中央の座標
 Vector3 StartPlatform::GetDeparturePadPosition() const{
-	return ToWorld({0.0f, 0.0f, kGateDistance + kDeparturePadDistance});
+	return GateToWorld(gates_[selectedGateIndex_],{0.0f, 0.0f, kDeparturePadDistance});
 }
 
-// 台の上で、出発台の手前の線を越えたか
-// 台の中心からの差の前方向の成分が、線の位置を越えたかで判定する
+// 台の上で、選んでいるゲートの出発台の手前の線を越えたか
+// ゲートの根元からの差の、ゲートから出ていく向きの成分が、線の位置を越えたかで判定する
 bool StartPlatform::IsPastDepartureLine(const Vector3& position) const{
 	// 線を越えた時点では、まだ歩いてレールに乗れる範囲に入らない位置に線を引く
-	static_assert(kHalfLength - kRailOverlapLength - (kGateDistance + kDeparturePadDistance - kDeparturePadRadius) > Player::kOnRailHorizontalThreshold,
+	static_assert(kGateEdgeInset - kRailOverlapLength - (kDeparturePadDistance - kDeparturePadRadius) > Player::kOnRailHorizontalThreshold,
 		"出発の演出を始める前に、歩いてレールへ乗れてしまう位置に出発台がある");
 
 	if(!IsInsideTop(position)){
 		return false;
 	}
-	Vector3 diff = {position.x - topCenter_.x, 0.0f, position.z - topCenter_.z};
-	return Dot(diff,forwardXZ_) >= kGateDistance + kDeparturePadDistance - kDeparturePadRadius;
+	const Gate& gate = gates_[selectedGateIndex_];
+	Vector3 diff = {position.x - gate.origin.x, 0.0f, position.z - gate.origin.z};
+	return Dot(diff,gate.forward) >= kDeparturePadDistance - kDeparturePadRadius;
 }
 
 // 出発の合図として、足元から輪を広げる
@@ -262,10 +294,11 @@ void StartPlatform::EmitLaunchRing(const Vector3& position){
 	isLaunchRingActive_ = true;
 }
 
-// 台の上面にインクを1滴塗る
+// 台の上面にインクを1滴塗る(通路の上なら通路の塗りテクスチャ、それ以外は正方形の部分の塗りテクスチャに塗る)
 void StartPlatform::PaintInk(const Vector3& position,float radius){
-	if(inkCanvas_){
-		inkCanvas_->AddSplat(position,radius,kTopNormal,kInkColor);
+	PaintCanvas* canvas = (IsInsideCorridorTop(position) && !IsInsideSquareTop(position))?corridorInkCanvas_:inkCanvas_;
+	if(canvas){
+		canvas->AddSplat(position,radius,kTopNormal,kInkColor);
 	}
 }
 
@@ -292,11 +325,15 @@ bool StartPlatform::TryLandInk(const Vector3& from,const Vector3& to,float radiu
 
 // 台・柱・梁に塗ったインクをすべて消す
 void StartPlatform::ClearInk(){
-	if(inkCanvas_){
-		inkCanvas_->Clear();
+	for(PaintCanvas* canvas : {inkCanvas_, corridorInkCanvas_}){
+		if(canvas){
+			canvas->Clear();
+		}
 	}
-	for(PaintCanvas* canvas : gateFrameCanvases_){
-		canvas->Clear();
+	for(Gate& gate : gates_){
+		for(PaintCanvas* canvas : gate.frameCanvases){
+			canvas->Clear();
+		}
 	}
 }
 
@@ -305,8 +342,13 @@ void StartPlatform::FlushInk(){
 	if(inkCanvas_ && obj_){
 		inkCanvas_->Flush(*obj_);
 	}
-	for(size_t i = 0; i < gateFrames_.size(); ++i){
-		gateFrameCanvases_[i]->Flush(*gateFrames_[i]);
+	if(corridorInkCanvas_ && corridorObj_){
+		corridorInkCanvas_->Flush(*corridorObj_);
+	}
+	for(Gate& gate : gates_){
+		for(size_t i = 0; i < gate.frames.size(); ++i){
+			gate.frameCanvases[i]->Flush(*gate.frames[i]);
+		}
 	}
 }
 
@@ -320,14 +362,15 @@ void StartPlatform::PaintGateInk(float previousTimer){
 	};
 	const float beamStartTime = kBarStartTime - kBeamFillDuration;
 
-	// 柱・梁は手前側(プレイヤーが近づいてくる側)の面を塗る
-	const Vector3 frontNormal = -forwardXZ_;
-	const float pillarOffsetX = kHalfWidth - kPillarSize.x * kHalf;
-	const float pillarFrontZ = kGateDistance - kPillarSize.z * kHalf;
+	// 開けているゲートの柱・梁の、手前側(プレイヤーが近づいてくる側)の面を塗る
+	const Gate& gate = gates_[selectedGateIndex_];
+	const Vector3 frontNormal = -gate.forward;
+	const float pillarOffsetX = kGateHalfWidth - kPillarSize.x * kHalf;
+	const float pillarFrontZ = -kPillarSize.z * kHalf;
 	const float beamCenterHeight = kPillarSize.y + kBeamHeight * kHalf;
-	const float beamFrontZ = kGateDistance - kBeamDepth * kHalf;
-	const Vector3 markerLocal = {0.0f, 0.0f, kGateDistance - kMarkerDistanceFromGate};
-	PaintCanvas* beamCanvas = gateFrameCanvases_.back();
+	const float beamFrontZ = -kBeamDepth * kHalf;
+	const Vector3 markerLocal = {0.0f, 0.0f, -kMarkerDistanceFromGate};
+	PaintCanvas* beamCanvas = gate.frameCanvases.back();
 
 	for(int i = 0; i < kPillarCount; ++i){
 		const float side = kPillarSides[i];
@@ -341,20 +384,20 @@ void StartPlatform::PaintGateInk(float previousTimer){
 		ForEachPointInRange(stageProgress(previousTimer,0.0f,kInkRunDuration) * runLength,stageProgress(gateOpenTimer_,0.0f,kInkRunDuration) * runLength,kFloorInkSpacing,
 			[&](float distance){
 				const float wobble = std::sin(distance * kFloorInkWobbleFrequency) * kFloorInkWobbleAmplitude;
-				PaintInk(ToWorld(markerLocal + runDirection * distance + runSide * wobble),kFloorInkRadius);
+				PaintInk(GateToWorld(gate,markerLocal + runDirection * distance + runSide * wobble),kFloorInkRadius);
 			});
 
 		// 2. 柱の手前の面を、下から上へ塗り上がる
-		PaintCanvas* pillarCanvas = gateFrameCanvases_[i];
+		PaintCanvas* pillarCanvas = gate.frameCanvases[i];
 		ForEachPointInRange(GetInkClimbHeight(previousTimer),GetInkClimbHeight(gateOpenTimer_),kClimbInkSpacing,
 			[&](float height){
-				pillarCanvas->AddSplat(ToWorld({pillarOffsetX * side, height, pillarFrontZ}),kClimbInkRadius,frontNormal,kInkColor);
+				pillarCanvas->AddSplat(GateToWorld(gate,{pillarOffsetX * side, height, pillarFrontZ}),kClimbInkRadius,frontNormal,kInkColor);
 			});
 
 		// 3. 柱の上から梁の中央へ向かって、梁の手前の面を塗る(左右から塗り進めて中央で合わせる)
 		ForEachPointInRange(stageProgress(previousTimer,beamStartTime,kBeamFillDuration) * pillarOffsetX,stageProgress(gateOpenTimer_,beamStartTime,kBeamFillDuration) * pillarOffsetX,kBeamInkSpacing,
 			[&](float distance){
-				beamCanvas->AddSplat(ToWorld({(pillarOffsetX - distance) * side, beamCenterHeight, beamFrontZ}),kBeamInkRadius,frontNormal,kInkColor);
+				beamCanvas->AddSplat(GateToWorld(gate,{(pillarOffsetX - distance) * side, beamCenterHeight, beamFrontZ}),kBeamInkRadius,frontNormal,kInkColor);
 			});
 	}
 }
@@ -390,49 +433,65 @@ void StartPlatform::Update(float deltaTime){
 	}
 	markerTimer_ += deltaTime;
 
-	// ランプは柱の手前側(プレイヤーが近づいてくる側)の面に貼り付け、カウントダウンの合図のたびに下から1段ずつ点ける
-	// (合図の瞬間に、塗り上がってきたインクがちょうどランプを覆う)
-	// 点いた瞬間は明るく光らせ、少しずつ点いたときの色に落ち着かせる
-	const float pillarOffsetX = kHalfWidth - kPillarSize.x * kHalf;
-	const float lampDistance = kGateDistance - (kPillarSize.z + kLampSize.z) * kHalf;
-	for(int side = 0; side < kPillarCount; ++side){
-		for(int row = 0; row < kLampCountPerPillar; ++row){
-			Obj3D& lamp = *lamps_[side * kLampCountPerPillar + row];
-			const float lampHeight = kLampBottomHeight + kLampSpacing * static_cast<float>(row);
-			const float litTime = GetCountTime(row);
-			Vector4 lampColor = kLampOffColor;
-			if(isGateOpening_ && gateOpenTimer_ >= litTime){
-				// 点いてからの時間で、光った色から点いたときの色へ戻していく
-				lampColor = LerpColor(kLampFlashColor,kLampOnColor,std::clamp((gateOpenTimer_ - litTime) / kLampFlashDuration,0.0f,1.0f));
-			}
-			SetColor(lamp,lampColor);
-			UpdatePart(lamp,{pillarOffsetX * kPillarSides[side], lampHeight, lampDistance},kLampSize);
-		}
-	}
-
-	// 遮断棒は左右の柱の内側の面の間をふさぐ長さにし、梁まで塗り終わってから跳ね上がり、少し行き過ぎてから戻って止まるように上げる
-	float barProgress = 0.0f;
-	if(isGateOpening_){
-		barProgress = std::clamp((gateOpenTimer_ - kBarStartTime) / kBarOpenDuration,0.0f,1.0f);
-	}
-	const float barHalfLength = pillarOffsetX - kPillarSize.x * kHalf;
-	float barHeight = Lerp(kBarClosedHeight,kBarOpenedHeight,Easing::EaseOutBack(barProgress));
-	UpdatePart(*bar_,{0.0f, barHeight, kGateDistance},{barHalfLength + barHalfLength, kBarThickness, kBarThickness});
-
 	// 目印はゆっくり点滅させて、ここに立てばよいことを伝える(出発台の目印も同じように点滅させる)
-	float blinkRate = (std::sin(markerTimer_ * kMarkerBlinkSpeed) + 1.0f) * kWaveToRateScale;
-	SetColor(*marker_,{kInkColor.x, kInkColor.y, kInkColor.z, kMarkerMinAlpha + (1.0f - kMarkerMinAlpha) * blinkRate});
-	SetColor(*departurePad_,{kInkColor.x, kInkColor.y, kInkColor.z, kMarkerMinAlpha + (1.0f - kMarkerMinAlpha) * blinkRate});
+	const float blinkRate = (std::sin(markerTimer_ * kMarkerBlinkSpeed) + 1.0f) * kWaveToRateScale;
+	const Vector4 blinkColor = {kInkColor.x, kInkColor.y, kInkColor.z, kMarkerMinAlpha + (1.0f - kMarkerMinAlpha) * blinkRate};
+	const float pillarOffsetX = kGateHalfWidth - kPillarSize.x * kHalf;
+	const float lampDistance = -(kPillarSize.z + kLampSize.z) * kHalf;
+	const float barHalfLength = pillarOffsetX - kPillarSize.x * kHalf;
 	const float departurePadScale = kDeparturePadRadius / kRingPlaneRadius;
-	departurePad_->SetTranslate(ToWorld({0.0f, kDecalLift, kGateDistance + kDeparturePadDistance}));
-	departurePad_->SetRotate({0.0f, yaw_, 0.0f});
-	departurePad_->SetScale({departurePadScale, departurePadScale, departurePadScale});
-	departurePad_->Update();
 	const float markerScale = kMarkerRadius / kRingPlaneRadius;
-	marker_->SetTranslate(ToWorld({0.0f, kDecalLift, kGateDistance - kMarkerDistanceFromGate}));
-	marker_->SetRotate({0.0f, yaw_, 0.0f});
-	marker_->SetScale({markerScale, markerScale, markerScale});
-	marker_->Update();
+
+	for(int gateIndex = 0; gateIndex < kGateCount; ++gateIndex){
+		Gate& gate = gates_[gateIndex];
+		const bool isOpeningThisGate = isGateOpening_ && gateIndex == selectedGateIndex_;
+
+		// 開けていないゲートのランプは、クリアしたステージなら点いたときの色、まだ開けられないなら赤、それ以外は消えている色にする
+		// (ゲートの番号とステージの番号は同じ)
+		Vector4 idleLampColor = kLampOffColor;
+		if(StageInfo::clearedStages[gateIndex]){
+			idleLampColor = kLampOnColor;
+		} else if(!StageInfo::IsStageSelectable(gateIndex)){
+			idleLampColor = kLampLockedColor;
+		}
+
+		// ランプは柱の手前側(プレイヤーが近づいてくる側)の面に貼り付け、開けているゲートではカウントダウンの合図のたびに下から1段ずつ点ける
+		// (合図の瞬間に、塗り上がってきたインクがちょうどランプを覆う)
+		// 点いた瞬間は明るく光らせ、少しずつ点いたときの色に落ち着かせる
+		for(int side = 0; side < kPillarCount; ++side){
+			for(int row = 0; row < kLampCountPerPillar; ++row){
+				Obj3D& lamp = *gate.lamps[side * kLampCountPerPillar + row];
+				const float lampHeight = kLampBottomHeight + kLampSpacing * static_cast<float>(row);
+				const float litTime = GetCountTime(row);
+				Vector4 lampColor = isOpeningThisGate?kLampOffColor:idleLampColor;
+				if(isOpeningThisGate && gateOpenTimer_ >= litTime){
+					// 点いてからの時間で、光った色から点いたときの色へ戻していく
+					lampColor = LerpColor(kLampFlashColor,kLampOnColor,std::clamp((gateOpenTimer_ - litTime) / kLampFlashDuration,0.0f,1.0f));
+				}
+				SetColor(lamp,lampColor);
+				UpdatePart(lamp,gate,{pillarOffsetX * kPillarSides[side], lampHeight, lampDistance},kLampSize);
+			}
+		}
+
+		// 遮断棒は左右の柱の内側の面の間をふさぐ長さにし、開けているゲートでは梁まで塗り終わってから跳ね上がり、少し行き過ぎてから戻って止まるように上げる
+		float barProgress = 0.0f;
+		if(isOpeningThisGate){
+			barProgress = std::clamp((gateOpenTimer_ - kBarStartTime) / kBarOpenDuration,0.0f,1.0f);
+		}
+		const float barHeight = Lerp(kBarClosedHeight,kBarOpenedHeight,Easing::EaseOutBack(barProgress));
+		UpdatePart(*gate.bar,gate,{0.0f, barHeight, 0.0f},{barHalfLength + barHalfLength, kBarThickness, kBarThickness});
+
+		SetColor(*gate.marker,blinkColor);
+		SetColor(*gate.departurePad,blinkColor);
+		gate.departurePad->SetTranslate(GateToWorld(gate,{0.0f, kDecalLift, kDeparturePadDistance}));
+		gate.departurePad->SetRotate({0.0f, gate.yaw, 0.0f});
+		gate.departurePad->SetScale({departurePadScale, departurePadScale, departurePadScale});
+		gate.departurePad->Update();
+		gate.marker->SetTranslate(GateToWorld(gate,{0.0f, kDecalLift, -kMarkerDistanceFromGate}));
+		gate.marker->SetRotate({0.0f, gate.yaw, 0.0f});
+		gate.marker->SetScale({markerScale, markerScale, markerScale});
+		gate.marker->Update();
+	}
 
 	// 出発の輪は勢いよく広がりながら薄くなって消える
 	if(isLaunchRingActive_){
@@ -458,72 +517,113 @@ void StartPlatform::Draw(){
 	}
 
 	DrawWithActiveCamera(*obj_);
-	for(auto& frame : gateFrames_){
-		DrawWithActiveCamera(*frame);
+	DrawWithActiveCamera(*corridorObj_);
+	for(Gate& gate : gates_){
+		for(auto& frame : gate.frames){
+			DrawWithActiveCamera(*frame);
+		}
+		for(auto& lamp : gate.lamps){
+			DrawWithActiveCamera(*lamp);
+		}
+		DrawWithActiveCamera(*gate.bar);
 	}
-	for(auto& lamp : lamps_){
-		DrawWithActiveCamera(*lamp);
-	}
-	DrawWithActiveCamera(*bar_);
 }
 
 // 足元の目印と出発の輪の描画処理
 void StartPlatform::DrawEffects(){
-	// 目印はゲートを開け始めたら役目を終えるので消す
-	if(marker_ && !isGateOpening_){
-		DrawWithActiveCamera(*marker_);
+	// 目印は、どれかのゲートを開け始めたら役目を終えるので消す。まだ開けられないゲートの目印は出さない
+	if(!isGateOpening_){
+		for(int gateIndex = 0; gateIndex < kGateCount; ++gateIndex){
+			if(StageInfo::IsStageSelectable(gateIndex)){
+				DrawWithActiveCamera(*gates_[gateIndex].marker);
+			}
+		}
 	}
 	if(launchRing_ && isLaunchRingActive_){
 		DrawWithActiveCamera(*launchRing_);
 	}
-	if(departurePad_ && isDeparturePadVisible_){
-		DrawWithActiveCamera(*departurePad_);
+	// 出発台の目印は、開けたゲートの先にだけ出す
+	if(isDeparturePadVisible_){
+		DrawWithActiveCamera(*gates_[selectedGateIndex_].departurePad);
 	}
 }
 
-// 水平方向(XZ平面)で見て、指定した座標が台の上面の範囲に入っているか
+// 水平方向(XZ平面)で見て、指定した座標が正方形の部分の上面の範囲に入っているか
 // 台の中心からの差を台の前方向・右方向の成分に分け、それぞれが大きさの半分以内かで判定する
-bool StartPlatform::IsInsideTop(const Vector3& position) const{
+bool StartPlatform::IsInsideSquareTop(const Vector3& position) const{
 	Vector3 diff = {position.x - topCenter_.x, 0.0f, position.z - topCenter_.z};
-	return std::abs(Dot(diff,forwardXZ_)) <= kHalfLength && std::abs(Dot(diff,rightXZ_)) <= kHalfWidth;
+	return std::abs(Dot(diff,forwardXZ_)) <= kSquareHalfSize && std::abs(Dot(diff,rightXZ_)) <= kSquareHalfSize;
 }
 
-// ゲートが閉じていて、ゲートの前の目印の上に立っているか
-bool StartPlatform::IsInGateArea(const Vector3& position) const{
+// 水平方向(XZ平面)で見て、指定した座標が通路の上面の範囲に入っているか
+bool StartPlatform::IsInsideCorridorTop(const Vector3& position) const{
+	Vector3 diff = {position.x - topCenter_.x, 0.0f, position.z - topCenter_.z};
+	const float forwardAmount = Dot(diff,forwardXZ_);
+	return forwardAmount <= -kSquareHalfSize && forwardAmount >= -(kSquareHalfSize + kCorridorLength) && std::abs(Dot(diff,rightXZ_)) <= kCorridorHalfWidth;
+}
+
+// 水平方向(XZ平面)で見て、指定した座標が台の上面の範囲(正方形の部分か通路)に入っているか
+bool StartPlatform::IsInsideTop(const Vector3& position) const{
+	return IsInsideSquareTop(position) || IsInsideCorridorTop(position);
+}
+
+// ゲートがどれも開いていないときに、どのゲートの前の目印の上に立っているか
+int StartPlatform::FindGateArea(const Vector3& position) const{
 	if(isGateOpening_ || std::abs(position.y - topCenter_.y) > kGateAreaHeightRange){
-		return false;
+		return -1;
 	}
-	Vector3 markerPosition = ToWorld({0.0f, 0.0f, kGateDistance - kMarkerDistanceFromGate});
-	Vector3 diffXZ = {position.x - markerPosition.x, 0.0f, position.z - markerPosition.z};
-	return Length(diffXZ) <= kGateAreaRadius;
+	for(int gateIndex = 0; gateIndex < kGateCount; ++gateIndex){
+		// まだ開けられないゲート(ほかのステージをクリアしていない最後のステージ)の前では受け付けない
+		if(!StageInfo::IsStageSelectable(gateIndex)){
+			continue;
+		}
+		const Vector3 markerPosition = GateToWorld(gates_[gateIndex],{0.0f, 0.0f, -kMarkerDistanceFromGate});
+		const Vector3 diffXZ = {position.x - markerPosition.x, 0.0f, position.z - markerPosition.z};
+		if(Length(diffXZ) <= kGateAreaRadius){
+			return gateIndex;
+		}
+	}
+	return -1;
 }
 
-// ゲートが閉じている間は、ゲートより先へ進めないように押し戻す
-// 台の上面の中央から見た前方向の距離が、ゲートの手前の線を越えた分だけ後ろへ戻す
+// 閉じているゲートより先へ進めないように押し戻す
+// ゲートごとに、ゲートの根元から見た出ていく向きの距離が、ゲートの手前の線を越えた分だけ手前へ戻す
 Vector3 StartPlatform::ClampBehindClosedGate(const Vector3& position) const{
 	// 押し戻す線の上にいても、まだレールの真上(歩いて乗れる範囲)には入らない位置にゲートを置く
-	static_assert(kHalfLength - kRailOverlapLength - (kGateDistance - kGateWallMargin) > Player::kOnRailHorizontalThreshold,
+	static_assert(kGateEdgeInset - kRailOverlapLength + kGateWallMargin > Player::kOnRailHorizontalThreshold,
 		"ゲートが閉じている間にレールへ乗れてしまう位置にゲートがある");
 
-	if(isGateOpening_){
-		return position;
+	Vector3 result = position;
+	for(int gateIndex = 0; gateIndex < kGateCount; ++gateIndex){
+		// 開け始めたゲートの先へは進める
+		if(isGateOpening_ && gateIndex == selectedGateIndex_){
+			continue;
+		}
+		const Gate& gate = gates_[gateIndex];
+		const Vector3 diff = {result.x - gate.origin.x, 0.0f, result.z - gate.origin.z};
+		const float overshoot = Dot(diff,gate.forward) + kGateWallMargin;
+		if(overshoot > 0.0f){
+			result = result - gate.forward * overshoot;
+		}
 	}
-	Vector3 diff = {position.x - topCenter_.x, 0.0f, position.z - topCenter_.z};
-	float overshoot = Dot(diff,forwardXZ_) - (kGateDistance - kGateWallMargin);
-	if(overshoot <= 0.0f){
-		return position;
-	}
-	return position - forwardXZ_ * overshoot;
+	return result;
 }
 
-// 台の本体とレイの交差を調べる
-// レイを台の向きの座標(x: 右、y: 上、z: 前)に直し、軸ごとの面の間に入っている区間が3軸すべてで重なる最初の距離を求める
+// 台の本体(正方形の部分と通路)とレイの交差を調べ、先に当たる方の距離を返す
 float StartPlatform::Raycast(const Vector3& origin,const Vector3& direction,float maxDistance,float radius) const{
-	// 台の本体の中心は上面から厚みの半分だけ下になる
-	const Vector3 diff = origin - Vector3{topCenter_.x, topCenter_.y - kHalfHeight, topCenter_.z};
+	// 台の本体の中心は上面から厚みの半分だけ下になる。通路は正方形の部分の後ろの辺に付いている
+	const float squareDistance = RaycastBox({0.0f, -kHalfHeight, 0.0f},{kSquareHalfSize, kHalfHeight, kSquareHalfSize},origin,direction,maxDistance,radius);
+	const float corridorDistance = RaycastBox({0.0f, -kHalfHeight, -(kSquareHalfSize + kCorridorLength * kHalf)},{kCorridorHalfWidth, kHalfHeight, kCorridorLength * kHalf},origin,direction,maxDistance,radius);
+	return (std::min)(squareDistance,corridorDistance);
+}
+
+// 台の向きでの中心・大きさの直方体とレイの交差を調べる
+// レイを台の向きの座標(x: 右、y: 上、z: 前)に直し、軸ごとの面の間に入っている区間が3軸すべてで重なる最初の距離を求める
+float StartPlatform::RaycastBox(const Vector3& localCenter,const Vector3& halfSizeLocal,const Vector3& origin,const Vector3& direction,float maxDistance,float radius) const{
+	const Vector3 diff = origin - ToWorld(localCenter);
 	const float localOrigin[kAxisCount] = {Dot(diff,rightXZ_), diff.y, Dot(diff,forwardXZ_)};
 	const float localDirection[kAxisCount] = {Dot(direction,rightXZ_), direction.y, Dot(direction,forwardXZ_)};
-	const float halfSize[kAxisCount] = {kHalfWidth + radius, kHalfHeight + radius, kHalfLength + radius};
+	const float halfSize[kAxisCount] = {halfSizeLocal.x + radius, halfSizeLocal.y + radius, halfSizeLocal.z + radius};
 
 	// 3軸すべての面の間に入っている区間(入る距離と出る距離)
 	float enterDistance = 0.0f;
@@ -556,18 +656,28 @@ float StartPlatform::Raycast(const Vector3& origin,const Vector3& direction,floa
 }
 
 // 台の上を歩いている間に端から落ちないよう、台の上面の範囲に押し戻す
-// 台の中心からの差を台の前方向・右方向の成分に分け、それぞれを端から少し内側までの範囲に収めてから座標に戻す
+// 台の中心からの差を台の前方向・右方向の成分に分け、正方形の部分と通路のそれぞれについて、端から少し内側までの範囲に収めた位置を求める
+// 2つのうち元の位置に近い方へ戻す(通路の範囲は正方形の部分の中まで伸ばしておき、つなぎ目で引っかからずに行き来できるようにする)
 Vector3 StartPlatform::ClampInsideTop(const Vector3& position) const{
-	Vector3 diff = {position.x - topCenter_.x, 0.0f, position.z - topCenter_.z};
-	const float limitForward = kHalfLength - kEdgeMargin;
-	const float limitRight = kHalfWidth - kEdgeMargin;
-	const float forwardAmount = std::clamp(Dot(diff,forwardXZ_),-limitForward,limitForward);
-	const float rightAmount = std::clamp(Dot(diff,rightXZ_),-limitRight,limitRight);
-	return {
-		topCenter_.x + forwardXZ_.x * forwardAmount + rightXZ_.x * rightAmount,
-		position.y,
-		topCenter_.z + forwardXZ_.z * forwardAmount + rightXZ_.z * rightAmount
-	};
+	const Vector3 diff = {position.x - topCenter_.x, 0.0f, position.z - topCenter_.z};
+	const float forwardAmount = Dot(diff,forwardXZ_);
+	const float rightAmount = Dot(diff,rightXZ_);
+
+	// 正方形の部分の中に収めた位置
+	const float squareLimit = kSquareHalfSize - kEdgeMargin;
+	const float squareForward = std::clamp(forwardAmount,-squareLimit,squareLimit);
+	const float squareRight = std::clamp(rightAmount,-squareLimit,squareLimit);
+	// 通路の中に収めた位置(前の端は正方形の部分の中まで伸ばす)
+	const float corridorRightLimit = kCorridorHalfWidth - kEdgeMargin;
+	const float corridorForward = std::clamp(forwardAmount,-(kSquareHalfSize + kCorridorLength - kEdgeMargin),squareLimit);
+	const float corridorRight = std::clamp(rightAmount,-corridorRightLimit,corridorRightLimit);
+
+	// 元の位置からの距離を比べ、近い方を使う(距離の2乗で比べる)
+	const float squareMove = (forwardAmount - squareForward) * (forwardAmount - squareForward) + (rightAmount - squareRight) * (rightAmount - squareRight);
+	const float corridorMove = (forwardAmount - corridorForward) * (forwardAmount - corridorForward) + (rightAmount - corridorRight) * (rightAmount - corridorRight);
+	const bool usesSquare = squareMove <= corridorMove;
+	const Vector3 clamped = ToWorld({usesSquare?squareRight:corridorRight, 0.0f, usesSquare?squareForward:corridorForward});
+	return {clamped.x, position.y, clamped.z};
 }
 
 // 台の上面の中央を原点にした、台の向きでの座標をワールド座標に変換する
@@ -575,11 +685,16 @@ Vector3 StartPlatform::ToWorld(const Vector3& local) const{
 	return topCenter_ + rightXZ_ * local.x + Vector3{0.0f, local.y, 0.0f} + forwardXZ_ * local.z;
 }
 
+// ゲートの中央の根元を原点にした、ゲートの向きでの座標をワールド座標に変換する
+Vector3 StartPlatform::GateToWorld(const Gate& gate,const Vector3& local) const{
+	return gate.origin + gate.right * local.x + Vector3{0.0f, local.y, 0.0f} + gate.forward * local.z;
+}
+
 // ゲートの部品の位置・回転・大きさを設定して行列を更新する
 // 立方体のモデルは -1〜1 なので、各辺の長さの半分をスケールにする
-void StartPlatform::UpdatePart(Obj3D& obj,const Vector3& local,const Vector3& size){
-	obj.SetTranslate(ToWorld(local));
-	obj.SetRotate({0.0f, yaw_, 0.0f});
+void StartPlatform::UpdatePart(Obj3D& obj,const Gate& gate,const Vector3& local,const Vector3& size){
+	obj.SetTranslate(GateToWorld(gate,local));
+	obj.SetRotate({0.0f, gate.yaw, 0.0f});
 	obj.SetScale(size * kHalf);
 	obj.Update();
 }

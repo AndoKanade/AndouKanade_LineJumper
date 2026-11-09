@@ -199,7 +199,7 @@ Game/
    4. `Player::UpdateRailProgress()` でレールを進め、`Player::UpdateBasePose()` で基準位置・基準向きを求める。
    5. `RailCamera::Update()` でカメラをプレイヤーの後ろ上に置き、照準の入力を反映する（スタート台の上を動ける間も照準を動かせる）。地面の高さとスタート台を渡し、カメラがめり込まないようにする。
    6. 状態確認用のデバッグウィンドウ（`ShowStatusWindow()`）。
-   7. `Player::UpdateTransform()` でプレイヤーをレールの上に立たせ、照準の方向へ向ける。出発の演出中は `DepartureDirector::Update()`、大ジャンプの最中は `ReturnJump::Update()` でプレイヤーの表示を上書きする。大ジャンプで跳び上がった瞬間（`ConsumeLaunched()`）にプレイヤーをスタート台の上へ移して照準を戻し、「STAGE CLEAR!」を出す。着地した瞬間（`ConsumeLanded()`）に `RestartFromReturnJump()` を呼ぶ。カメラは「タイトル・回り込み（StartSequence）→ 出発の演出 → 大ジャンプ → ゲートを映すカメラ」の優先順で上書きし、最後に画面の揺れを足す。
+   7. `Player::UpdateTransform()` でプレイヤーをレールの上に立たせ、照準の方向へ向ける。出発の演出中は `DepartureDirector::Update()`、大ジャンプの最中は `ReturnJump::Update()` でプレイヤーの表示を上書きする。大ジャンプで跳び上がった瞬間（`ConsumeLaunched()`）にプレイヤーをスタート台の上へ移して照準を戻し、「STAGE CLEAR!」を出す。着地した瞬間（`ConsumeLanded()`）に今のステージをクリアしたことにし（`StageInfo::clearedStages`）、最後のステージなら `StartStageClear()`、それ以外は `RestartFromReturnJump()` を呼ぶ。出発ゲートを開け始めた瞬間（`StartSequence::IsGateOpenTriggered()`）に、開けたゲートのステージへ `SwitchStage()` で切り替える。カメラは「タイトル・回り込み（StartSequence）→ 出発の演出 → 大ジャンプ → ゲートを映すカメラ」の優先順で上書きし、最後に画面の揺れを足す。
    8. 敵の更新、敵弾とプレイヤーの当たり判定、ゲームオーバー判定。
    9. `Player::UpdateMovement()` でジャンプ・WASD 移動・着地判定を行う。地面まで落ちたら、プレイ中なら `LoseLife()`、出発前のスタート台の上なら `RestartAfterMiss()` を呼ぶ。`isPlayerMovable` の間も同じく動かす。出発台を使う演出なら、出発台の手前の線を越えたら演出を始める。歩いてレールへ乗ったとき・出発の演出がレールへ乗せ終えたときは `StartSequence::NotifyBoarded()` を呼び、`PlayBoardedEffects()` で足元から輪・インクのしぶき・インクの跡を出す。
    10. 射撃（手元からインクのしぶきも出す。スタート台の上では的・敵に当たらない試し撃ち）、弾の移動、的・敵と弾の当たり判定、壊れた的ごとの演出と連鎖数の加算、ゴールの的の並走と当たり判定・クリア判定、弾の行列の更新、レティクルの色の更新。
@@ -218,8 +218,9 @@ Game/
 | 落下リスタート | どのレールにも乗れずに地面の高さまで落ちたら暗転（`SceneManager::StartTransition()`）を始め、画面を覆っている間に `ResetPlayState()` を呼ぶ（`RestartAfterMiss()`）。開始演出は挟まない。チェックポイントを通っていれば、続けて `RespawnAtCheckpoint()` でそこから始め直す。プレイ中に落ちたときは残機を 1 つ減らす（出発前にスタート台から落ちたときは減らさない） |
 | 残機 | 最大 3（`kMaxLives`）。落下・体力 0 で 1 つ減り（`LoseLife()`）、残っていれば落下リスタートと同じ暗転でやり直す（体力は満タンに戻る）。0 になったら、やられ演出のあと GAMEOVER へ移る。`ResetPlayState()` では戻さず、Play に入ったとき（コンティニューを含む）と R キーのやり直しで満タンに戻す |
 | チェックポイント | レールを進んでいる間に、チェックポイントにした制御点（`isCheckpoint`）を通ったら、レールと制御点・その時点の的ごとの生存状態を覚える（`UpdateCheckpoint()`）。落ちたらその制御点の位置からレールに乗せ、的を覚えた状態に戻す（チェックポイントより前に壊した的は壊れたまま、後の的は復活する）。体力・敵・連鎖数・レールの塗りは最初の状態に戻る。Play に入り直したときと R キーのやり直しでは忘れる。「Start From Selected Point」で始めたときは、始めた制御点より手前のチェックポイントは通ったものとしない |
-| ゴールの的 | ゴールのレール（`Player::kGoalRailIndex`、今は Rail 5）に乗ると、ゴールの的（GoalTarget）が現れてプレイヤーの先を並走する。ゴールのレールは終点でレールから外れず止まるため、壊すまで撃ち続けられる（ほかのレールの終点ではレールから外れて落ちる） |
-| クリア | ゴールの的の体力を 0 にして壊したらステージクリア。普通の的より派手な破片（`InkEffectManager::EmitGoalBreak()`）を出し、0.2 秒のヒットストップ・画面の揺れ・的を中心にした放射ブラーをかける。そのまま `ReturnJump` を始め、1.2 秒待つ間は破片・しぶきを 0.3 倍のスローにする。跳び上がった瞬間に「STAGE CLEAR!」を出す。スタート台に着地したら `RestartFromReturnJump()` で始め直す（的を全部壊すことはクリアの条件にしない） |
+| ステージ選択 | スタート台の真ん中から始まり、行きたいステージのゲートの前の目印で SPACE を押すと、そのゲートが開き、`SwitchStage()` でそのステージのレール・的・敵に切り替わる（ゲートの番号とステージの番号は同じ）。最後のステージのゲートは、ステージ1〜3をすべてクリアするまで開けられない。クリアしたステージは `StageInfo::clearedStages` に残り、Play に入ったとき（コンティニューを除く）と R キーのやり直しで忘れる |
+| ゴールの的 | ゴールのレール（Rail Editor の「Goal Rail」を ON にしたレール。ステージ1は Rail 5）に乗ると、ゴールの的（GoalTarget）が現れてプレイヤーの先を並走する。ゴールのレールは終点でレールから外れず止まるため、壊すまで撃ち続けられる（ほかのレールの終点ではレールから外れて落ちる） |
+| クリア | ゴールの的の体力を 0 にして壊したらステージクリア。普通の的より派手な破片（`InkEffectManager::EmitGoalBreak()`）を出し、0.2 秒のヒットストップ・画面の揺れ・的を中心にした放射ブラーをかける。そのまま `ReturnJump` を始め、1.2 秒待つ間は破片・しぶきを 0.3 倍のスローにする。跳び上がった瞬間に「STAGE CLEAR!」を出す。スタート台に着地したら、ステージ1〜3なら `RestartFromReturnJump()` でスタート台の上から始め直し（次のステージのゲートを選べる）、最後のステージなら着地の演出を見せてからクリア画面へ移る（的を全部壊すことはクリアの条件にしない） |
 | 復活の見せ方 | 落下リスタート・残機を減らしたやり直し・コンティニューで始めるときは、透明な体がだんだん元に戻る見せ方にする（`Player::StartReveal()`、0.8 秒）。暗転が明けてから進める。見せ方は Edit モードの「GameScene Debug」パネルの「Respawn Reveal」で、Stripes（細い横じまだけ見えている状態から、しまが太くなってすき間が埋まる）と Sweep（光る境界線が下から上へ通り、線より下だけ見える）から選ぶ。「Preview Respawn Reveal」でその場で確認できる。選んだものは調整項目 `respawnRevealStyle` に入り、Global Variables の Save で保存する（初期値は Stripes） |
 | やられ演出 | 残機が 0 になったら、すぐには切り替えず `StartDefeat()` を呼ぶ。自機が敵のインク（ピンク）になって弾け（`InkEffectManager::EmitDefeatBurst()`）、一瞬動きを止めて（0.15 秒）画面を揺らし、自機を中心に放射ブラーをかける。自機は描かず、操作・判定は止め、敵とインクの演出は 0.35 倍のスローで動かす。カメラはその場に止まる |
 | ゲームオーバー | やられ演出が始まってから 1.4 秒たったら（`UpdateDefeat()`）、暗いインクが垂れる演出（`InkDrip`）で GAMEOVER へ移る |
@@ -236,7 +237,8 @@ Game/
 | `ApplyRailLocks(isInstant)` | 鍵の的が残っているレールを TargetManager から求め、RailEditor に渡す。毎フレームは的の判定の後に演出つきで、`ResetPlayState()` と `RespawnAtCheckpoint()` ではすぐに反映する。出ているかは的の状態から毎回求めるため、チェックポイントで的を戻すとレールも戻る |
 | `MakeDepartureContext()` | 出発の演出が動かす・参照するもの（DepartureContext）をまとめる |
 | `PlayBoardedEffects(position)` | レールに乗って「GO!」を出す瞬間の演出（輪・しぶき・インクの跡）。大ジャンプでスタート台に着地したときにも使う |
-| `RestartFromReturnJump(landedPos)` | 大ジャンプでスタート台に着地したときに、チェックポイントを忘れ、残機を満タンにし、`ResetPlayState()` で全部を戻してから `StartSequence::StartFromStandby()` でスタート台の上を動ける段階から始める。最後に着地の演出（輪・しぶき・インクの跡・ヒットストップ・揺れ・放射ブラー）を出す |
+| `SwitchStage(stageIndex)` | 編集・プレイするステージを切り替える。`StageInfo::currentStageIndex` に書き込み、レール・的・敵のエディターを同じステージに切り替え、通ったチェックポイントを忘れ、レールの出方を戻す。Edit 中は Rail Editor の Stage の一覧、Play 中は出発ゲートを開け始めた瞬間に呼ぶ |
+| `RestartFromReturnJump(landedPos)` | 最後のステージ以外で、大ジャンプでスタート台に着地したときに、チェックポイントを忘れ、残機を満タンにし、`ResetPlayState()` で全部を戻してから `StartSequence::StartFromStandby()` でスタート台の上を動ける段階から始める。最後に着地の演出（輪・しぶき・インクの跡・ヒットストップ・揺れ・放射ブラー）を出す |
 | `UpdateGameplay()` | レール進行・カメラ・プレイヤー・敵・弾・的・勝敗判定を、決まった順番で呼び出す |
 | `UpdateCursorVisibility(isPlayMode)` | Edit 中はカーソルを常に表示し、Play 中は TAB で表示を切り替える |
 | `ShowStatusWindow()` | 「Rail Branch Debug」ウィンドウを表示する（ImGui がある構成のみ） |
@@ -412,7 +414,7 @@ GameScene が直接触るのは StartSequence・DepartureDirector・ReturnJump �
 | `IsRunning()` / `IsWaiting()` | 演出の最中か / `Wait` の最中か |
 | `GetCameraPose(outPose)` | 演出のカメラの位置と向き（カメラを動かしている最中なら true） |
 | `ConsumeLaunched()` | このフレームで跳び上がったかを受け取る。GameScene はプレイヤーをスタート台の上へ移し、照準を戻し、「STAGE CLEAR!」を出す |
-| `ConsumeLanded(outPosition)` | このフレームで着地したかを受け取る。GameScene は `RestartFromReturnJump()` を呼ぶ |
+| `ConsumeLanded(outPosition)` | このフレームで着地したかを受け取る。GameScene は、最後のステージなら `StartStageClear()`、それ以外は `RestartFromReturnJump()` を呼ぶ |
 
 ### TitleCameraDirector（`Title/TitleCameraDirector.h/.cpp`）
 
@@ -620,8 +622,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `GetHitSphere()` | モデルから求めたワールド座標系の境界球を取得する（当たり判定用） |
 | `GetPosition` / `GetBasePosition` / `GetBaseRotation` | 表示位置・基準位置・基準向きの取得 |
 | `GetMuzzlePosition()` | 弾を撃ち出す位置の取得 |
-| `HasReachedGoal` / `IsDead` | ゴールのレールの終点で止まったか（ゴール以外のレールは終点で `UpdateRailProgress` がレールから外すため、ゴールのレールでだけ true になる。止まっている間はレールを塗らない）/ ゲームオーバーの判定用 |
-| `kGoalRailIndex` | ゴールのレールのインデックス（public の定数。今は 5）。GameScene はこのレールに乗ったらゴールの的を出す |
+| `HasReachedGoal` / `IsDead` | ゴールのレール（`RailEditor::IsGoalRail()`）の終点で止まったか（ゴール以外のレールは終点で `UpdateRailProgress` がレールから外すため、ゴールのレールでだけ true になる。止まっている間はレールを塗らない）/ ゲームオーバーの判定用 |
 | `IsGroundedOnRail()` | オンレールで足がレールに着いているか（跳ねている・飛び移っている途中は false。足元のしぶきに使う） |
 | `GetRailT` / `IsOnRail` / `GetFreeVelocityY` / `GetHp` / `GetMaxHp` / `GetInvincibleTimer` | デバッグ表示用の取得 |
 
@@ -738,43 +739,46 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 
 ### StartPlatform（`objects/StartPlatform.h/.cpp`）
 
-最初のレールの始点の手前に置くスタート台と、台の上に立てる出発ゲート。プレイヤーは台の上から始まり、ゲートを開けてからレールへ乗る。台・柱・梁はインクで塗れる。
+ワールドに固定して置くスタート台（ステージ選択の場所）と、台の上に立てる4つの出発ゲート。プレイヤーは台の真ん中から始まり、行きたいステージのゲートを開けてからレールへ乗る。台・柱・梁はインクで塗れる。
 
 | 部品 | モデル | 内容 |
 | --- | --- | --- |
-| 台 | `StartPlatform/startPlatformPaint.obj` | 幅 6.0・長さ 11.0・厚み 1.0 の灰色の箱。上面がレールの始点の高さで、前の端がレールの始点より 1.5 先まで重なる。塗りテクスチャは 1024 × 1024 |
-| ゲートの柱・梁 | `gatePillarPaint.obj` / `gateBeamPaint.obj` | 上面の中央から 1.4 前に、台の左右の端に高さ 1.4 の柱を立て、上に梁を渡す（台の幅いっぱいをふさぐ）。塗りテクスチャは柱 256、梁 1024 |
-| ランプ | `StartPlatform/startPlatform.obj`（-1〜1 の立方体） | 左右の柱の手前側の面に 3 段ずつ。消えているときは暗い青、点くと明るい緑（光源の影響を受けない） |
+| 台 | `StartPlatform/startPlatformPaint.obj` | 真上から見て「凸」の形。一辺 16.0 の正方形の部分と、後ろの辺の真ん中から後ろへ伸ばした幅 6.0・長さ 8.0 の通路の、2 つの灰色の箱（厚み 1.0）。上面の中央は (-4.8, 0, 0)、正面は +X（`kTopCenter` / `kFrontDirection`）。塗りテクスチャは正方形の部分 1024、通路 512 |
+| ゲート | 下の 4 つの部品 | 正面・右・左の辺と、通路の先の辺から 4.1 手前に 1 つずつ立てる（幅 6.0）。番号はステージの番号と同じ（0: 正面 = ステージ1、1: 右 = ステージ2、2: 左 = ステージ3、3: 後ろ = 最後のステージ） |
+| ゲートの柱・梁 | `gatePillarPaint.obj` / `gateBeamPaint.obj` | ゲートの幅の両端に高さ 1.4 の柱を立て、上に梁を渡す。塗りテクスチャはゲートごとに柱 256、梁 1024 |
+| ランプ | `StartPlatform/startPlatform.obj`（-1〜1 の立方体） | 左右の柱の手前側の面に 3 段ずつ。消えているときは暗い青、点くと明るい緑（光源の影響を受けない）。開けていないゲートは、クリアしたステージなら緑、まだ開けられない（最後のステージ）なら暗い赤のままにする |
 | 遮断棒 | 同上 | 柱の間をふさぐ黄色の棒。開くと高さ 0.45 から 1.25 まで上がる |
-| 足元の目印 | `StartPlatform/ring.obj`（輪の画像を貼った板） | ゲートの 0.9 手前に置く黄色の輪（半径 0.5）。点滅させ、ゲートを開け始めたら消す |
-| 出発台の目印 | 同上 | ゲートの 1.6 先に置く黄色の輪（半径 0.7）。出発台を使う演出のときだけ、ゲートが開いてから演出を始めるまで点滅させる |
+| 足元の目印 | `StartPlatform/ring.obj`（輪の画像を貼った板） | 各ゲートの 0.9 手前に置く黄色の輪（半径 0.5）。点滅させ、どれかのゲートを開け始めたら消す。まだ開けられないゲートには出さない |
+| 出発台の目印 | 同上 | 開けたゲートの 1.6 先に置く黄色の輪（半径 0.7）。出発台を使う演出のときだけ、ゲートが開いてから演出を始めるまで点滅させる |
 | 出発の輪 | 同上 | レールに乗り込んだ瞬間に足元から広げる黄色の輪。0.6 秒で半径 0.3 から 2.4 まで広がりながら消える |
 
-- プレイヤーの開始位置は、上面の中央から 3.0 後ろ。
-- ゲートを開け始めると、目印から左右の柱へ床の上をインクが走り（0.45 秒）、そこから 3・2・1 のカウントダウン（0.6 秒間隔）の合図のたびに、インクが柱を一段ずつ一気に塗り上がってランプを 1 段点ける。1 の後に柱の上まで塗り上がって梁を塗り、0 の合図で遮断棒が 0.45 秒で跳ね上がる（開け始めてから遮断棒まで 2.5 秒）。
+- プレイヤーの開始位置は、上面の真ん中。
+- 各ステージのレールの始点は、ゲートの先の辺から 1.5 手前（`GetRailStartPosition(gateIndex)`）に置く。正面 (1.7, 0, 0)、右 (-4.8, 0, -6.5)、左 (-4.8, 0, 6.5)、後ろ (-19.3, 0, 0)。ステージ1のレールは今の位置のままでこの位置に合う。
+- ゲートを開け始めると、目印から左右の柱へ床の上をインクが走り（0.45 秒）、そこから 3・2・1 のカウントダウン（0.6 秒間隔）の合図のたびに、インクが柱を一段ずつ一気に塗り上がってランプを 1 段点ける。1 の後に柱の上まで塗り上がって梁を塗り、0 の合図で遮断棒が 0.45 秒で跳ね上がる（開け始めてから遮断棒まで 2.5 秒）。開けられるのは一度に 1 つ（`GetSelectedGateIndex()`）。
 - 塗りは `PaintCanvas`（Engine）の UV 空間ペイントで、塗りたい点をワールド座標の球として予約し、`FlushInk()` で 1 フレーム 1 回テクスチャに描き込む。インクの縁はノイズでぎざぎざにし、法線を塗りの高さから求めて盛り上がって見せる。
-- ゲートが閉じている間は、ゲートの 0.25 手前の線より先へ押し戻す（台の外やジャンプ中でも）。この線はレールに乗れる距離（`Player::kOnRailHorizontalThreshold`）に入らない位置にあり、`static_assert` で確かめている。
-- 台は Play に入るたび（`ResetPlayState()`）に置き直すため、Edit 中にレールを動かしても反映される。
+- 閉じているゲートごとに、ゲートの 0.25 手前の線より先へ押し戻す（台の外やジャンプ中でも）。この線はレールに乗れる距離（`Player::kOnRailHorizontalThreshold`）に入らない位置にあり、`static_assert` で確かめている。
+- 台の上を歩いている間は、正方形の部分か通路のうち近い方の範囲（端から 0.3 内側）に押し戻す。
 
 | 関数 | 内容 |
 | --- | --- |
-| `Initialize(Obj3dCommon*)` | 台・ゲート・目印・輪のモデルの生成 |
-| `Place(railStartPosition, railStartForward)` | レールの始点に合わせて台とゲートを置く |
-| `ResetGate()` / `BeginOpenGate()` / `IsGateOpened()` | ゲートを閉じる / 開け始める / 開ききったか |
+| `Initialize(Obj3dCommon*)` | 台・ゲート・目印・輪のモデルの生成と、決まった位置への配置 |
+| `ResetGate()` / `BeginOpenGate(gateIndex)` / `IsGateOpened()` | ゲートをすべて閉じる（選んでいるゲートは今のステージのゲートに戻す）/ 指定したゲートを開け始める / 開ききったか |
+| `GetSelectedGateIndex()` | 開けている（最後に開けた）ゲートの番号 |
+| `GetRailStartPosition(gateIndex)` / `GetGateDirection(gateIndex)` | そのゲートの先のステージの、レールの始点を置く位置 / ゲートから出ていく向き |
 | `GetCountdownNumber()` / `GetCountdownCount()` | 今出しているカウントダウンの数（出していないときは 0） / 最初に出す数（3） |
 | `IsBarBurstTriggered()` / `HasBarStarted()` | このフレームで遮断棒が跳ね上がり始めたか / 跳ね上がり始めたか（0 になったか） |
-| `GetGateBurstPosition()` / `GateLocalToWorld(local)` | 遮断棒からインクを飛び散らせる位置 / ゲートの根元を原点にした座標をワールド座標に変換 |
-| `SetDeparturePadVisible(bool)` / `GetDeparturePadPosition()` / `IsPastDepartureLine(position)` | 出発台の目印を出すか / 出発台の中央 / 出発台の手前の線を越えたか |
+| `GetGateBurstPosition()` / `GateLocalToWorld(local)` | 開けているゲートの遮断棒からインクを飛び散らせる位置 / 開けているゲートの根元を原点にした座標をワールド座標に変換 |
+| `SetDeparturePadVisible(bool)` / `GetDeparturePadPosition()` / `IsPastDepartureLine(position)` | 出発台の目印を出すか / 出発台の中央 / 出発台の手前の線を越えたか（どれも開けているゲートのもの） |
 | `EmitLaunchRing(position)` | 足元から出発の輪を広げる |
-| `PaintInk(position, radius)` / `TryLandInk(from, to, radius, landed)` | 台の上面にインクを塗る / 落ちてくる弾・しぶきが上面に着いたら塗る |
+| `PaintInk(position, radius)` / `TryLandInk(from, to, radius, landed)` | 台の上面にインクを塗る（通路の上なら通路の塗りテクスチャ）/ 落ちてくる弾・しぶきが上面に着いたら塗る |
 | `ClearInk()` / `FlushInk()` | 塗ったインクを消す / 予約したインクをテクスチャに描き込む |
 | `Update(float)` | ランプ・遮断棒・目印・輪の動きを進める |
 | `Draw()` / `DrawEffects()` | 台とゲートを描画 / 半透明の目印と輪を描画（3D オブジェクトの最後のほうで呼ぶ） |
-| `IsInsideTop(position)` / `GetTopHeight()` | 上面の範囲に入っているか / 上面の高さ（Player が台の上に立たせるのに使う） |
-| `Raycast(origin, direction, maxDistance, radius)` | 台の本体を各面から `radius` だけ広げた直方体に、レイが最初に当たる距離（当たらない・始点が中にあるときは `maxDistance`）。RailCamera のめり込み防止に使う |
-| `IsInGateArea(position)` | ゲートが閉じていて、目印の上（中心から 0.6 以内、上面との高さの差 0.1 以内）に立っているか |
-| `ClampBehindClosedGate(position)` | ゲートが閉じている間は、ゲートより先へ進めないよう押し戻した座標を返す |
-| `GetSpawnPosition()` | プレイヤーの開始位置 |
+| `IsInsideTop(position)` / `GetTopHeight()` | 上面（正方形の部分か通路）の範囲に入っているか / 上面の高さ（Player が台の上に立たせるのに使う） |
+| `Raycast(origin, direction, maxDistance, radius)` | 台の本体（正方形の部分と通路）を各面から `radius` だけ広げた直方体に、レイが最初に当たる距離（当たらない・始点が中にあるときは `maxDistance`）。RailCamera のめり込み防止に使う |
+| `FindGateArea(position)` | どのゲートも開いていないときに、どのゲートの目印の上（中心から 0.6 以内、上面との高さの差 0.1 以内）に立っているか（いないときは -1。まだ開けられないゲートは除く） |
+| `ClampBehindClosedGate(position)` | 閉じているゲートより先へ進めないよう押し戻した座標を返す |
+| `GetSpawnPosition()` | プレイヤーの開始位置（上面の真ん中） |
 
 ### InkEffectManager（`objects/InkEffectManager.h/.cpp`）
 
@@ -812,7 +816,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 
 ### StageInfo（`objects/StageInfo.h`）
 
-ステージの数・番号・名前と、ステージごとのデータのフォルダ（ヘッダーオンリー）。スタート台の正面の辺がステージ1、右がステージ2、左がステージ3、後ろが最後のステージ（ステージ1〜3をすべてクリアすると出られる。まだ作っていない）。
+ステージの数・番号・名前と、ステージごとのデータのフォルダ（ヘッダーオンリー）。スタート台の正面の辺がステージ1、右がステージ2、左がステージ3、後ろが最後のステージ（ステージ1〜3をすべてクリアすると出られる）。
 
 | 項目 | 内容 |
 | --- | --- |
@@ -821,6 +825,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `GetStageDirectory(stageIndex)` | `resource/stage/stage1/` などのフォルダ |
 | `GetStageLabel(stageIndex)` | エディターの一覧に出す名前（`Stage 1 (Front)` など） |
 | `ToStageNumber(stageIndex)` / `IsValidStageIndex(stageIndex)` | 画面に出す 1 始まりの番号 / 範囲内か |
+| `clearedStages` / `IsFinalStageUnlocked()` / `IsStageSelectable(stageIndex)` / `ResetProgress()` | ステージごとにクリアしたか（シーンをまたいで残る）/ 最後のステージに出られるか / そのステージのゲートを開けられるか / クリアしたステージを忘れる |
 
 ### StageResult（`objects/StageResult.h`）
 
@@ -1031,7 +1036,8 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | 操作 | 内容 |
 | --- | --- |
 | Stage | 編集・プレイするステージを選ぶ（的・敵のエディターも同じステージに切り替わる）。以下の操作は選んだステージのレールに対して行う |
-| レール一覧 | クリックでアクティブなレールを切り替える |
+| レール一覧 | クリックでアクティブなレールを切り替える。ゴールのレールには (Goal) と出す |
+| Goal Rail | アクティブなレールをゴールのレールにする（終点で止まり、乗るとゴールの的が現れる。`rail*.json` の `isGoalRail`）|
 | New Rail | レールを 1 本追加し、アクティブにする |
 | Add Control Point | アクティブなレールの末尾に、末尾 2 点と同じ向き・間隔で伸ばした位置へ制御点を追加し、選択する |
 | Save / Load | 全ステージの全レールを JSON に保存する / JSON から読み込む |
@@ -1053,6 +1059,7 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | `GetSpeedOnRail(t)` | 進行度 t の速度倍率（制御点の Speed を補間したもの） |
 | `FindNearestRail(worldPos)` | 全レールから最も近いレール・進行度・距離・最近傍点を求める。粗いサンプリング 200 点のあと、三分探索で 20 回絞り込む |
 | `SwitchActiveRail(index)` | アクティブなレールを切り替える |
+| `IsGoalRail(railIndex)` | 今のステージのそのレールがゴールのレールか |
 | `SetStageIndex(stageIndex)` / `GetStageIndex()` / `ConsumeStageChangeRequest(outStageIndex)` | ステージを切り替える（0 番のレールをアクティブにする）/ 今のステージ / Stage の一覧で選び直されたステージを返す（1 回読むと消える） |
 | `GetControlPointsCenter()` / `GetControlPointsRadius()` | 俯瞰カメラを自動で合わせるための、制御点全体の中心と半径 |
 | `SetLandingRangeRadius(radius)` | 着地範囲の表示に使う許容距離を受け取る |
