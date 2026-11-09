@@ -42,7 +42,7 @@ void Sun::Initialize(const std::string& paramGroup,const Vector3& referenceForwa
 	gv->AddItem(paramGroup_,kAzimuthKey,kDefaultAzimuthDegree);     // 太陽の方角(進行方向から右回りの角度・度)
 	gv->AddItem(paramGroup_,kIntensityKey,kDefaultIntensity);       // 光の明るさ
 	gv->AddItem(paramGroup_,kColorKey,kDefaultColor);               // 光の色(RGB)
-	gv->AddItem(paramGroup_,kShadowBrightnessKey,kDefaultShadowBrightness); // 光が当たらない面の明るさ(0: 真っ暗 〜 1: 影なし)
+	gv->AddItem(paramGroup_,kShadowBrightnessKey,kDefaultShadowBrightness); // 光が当たらない面の明るさの下限(0: 真っ暗。これより明るい面は変えない)
 
 	Update();
 }
