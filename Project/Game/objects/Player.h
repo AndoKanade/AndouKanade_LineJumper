@@ -42,6 +42,9 @@ public:
 	/// <param name="startRotation">カメラ・プレイヤーの基準向き(レールの始点の向きにそろえる)</param>
 	void StartOnPlatform(const Vector3& startPosition,const Vector3& startRotation);
 
+	// スタート台の上にいる間の基準向きを付け替える(選んだゲートのステージのレールの始点の向きにそろえるときに使う)
+	void SetPlatformBaseRotation(const Vector3& rotation){ freeBaseRotation_ = rotation; }
+
 	// レールの進行度startTの位置にオンレールの状態で乗せる(出発の演出でレールへ乗せるときに使う。体力はそのまま)
 	// 始点以外を指定すると、Editモードで選んだ制御点から途中のプレイを始められる
 	void BoardRailStart(float startT = 0.0f);
@@ -133,6 +136,16 @@ public:
 	bool IsOnRail() const{ return isOnRail_; }
 	// 足がレールに着いているかどうか(オンレール中で、跳ねている途中でも並走レールへ飛び移っている途中でもないときtrue)
 	bool IsGroundedOnRail() const{ return isOnRail_ && !isRailHopping_ && !isSwitchingRail_; }
+
+	/// <summary>
+	/// 今のレールから飛び移れる並走レールが、左右どちらにあるかを求める(A/D+SPACE の案内を出すのに使う)
+	/// 飛び移るとき(TrySwitchToSideRail)と同じく、近さ・高さの差・真横にあるかで判定する
+	/// </summary>
+	/// <param name="railEditor">探すレール</param>
+	/// <param name="cameraRight">カメラの右方向(A/D で飛び移る向きの基準)</param>
+	/// <param name="outRailIndex">飛び移れるレールのインデックス(無いときは -1)</param>
+	/// <returns>右(D)にあれば 1、左(A)にあれば -1、無ければ 0</returns>
+	int FindSideRailDirection(const RailEditor* railEditor,const Vector3& cameraRight,int& outRailIndex) const;
 	float GetFreeVelocityY() const{ return freeVelocityY_; }
 	int GetHp() const{ return hp_; }
 	int GetMaxHp() const{ return kMaxHp; }
@@ -144,9 +157,6 @@ public:
 	// 見た目どおりに、足の裏が管に少しでも掛かっていれば乗れるよう、管の半径と足の裏の幅の半分を足した距離にする
 	// レールエディターで着地できる範囲を可視化するのにも使う
 	static constexpr float kOnRailHorizontalThreshold = RailEditor::kTubeRadius + kFootHalfWidth;
-	// ゴールのレールのインデックス(rail5。ほかのレールは終点でレールから外れるが、このレールは終点で止まる)
-	// 乗るとゴールの的が現れて先を並走し、終点で止まった後もゴールの的を壊すまで撃ち続けられる
-	static constexpr int kGoalRailIndex = 5;
 
 private:
 	/// <summary>
@@ -156,6 +166,15 @@ private:
 	/// <param name="sideDirXZ">乗り換えたい方向(XZ平面の正規化ベクトル)</param>
 	/// <returns>乗り換えられたときtrue</returns>
 	bool TrySwitchToSideRail(RailEditor* railEditor,const Vector3& sideDirXZ);
+
+	/// <summary>
+	/// 今のレール以外で最も近いレールが、飛び移れる近さと高さにあるかを調べる(向きは調べない)
+	/// </summary>
+	/// <param name="railEditor">探すレール</param>
+	/// <param name="outNearest">最も近いレール</param>
+	/// <param name="outToRailXZ">水平方向(XZ平面)で見た、そのレールの最近傍点までの向きと距離(正規化していない)</param>
+	/// <returns>飛び移れる近さと高さにあれば true</returns>
+	bool FindSideRailInReach(const RailEditor* railEditor,RailEditor::NearestRailResult& outNearest,Vector3& outToRailXZ) const;
 
 	/// <summary>
 	/// レール上でのジャンプ(その場で跳ねる)と、並走レールへ飛び移る動きを進める

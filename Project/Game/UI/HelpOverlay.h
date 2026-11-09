@@ -43,6 +43,8 @@ private:
 	std::unique_ptr<Sprite> dimSprite_;
 	// 説明の本体(操作方法と画面の流れ)
 	std::unique_ptr<Sprite> helpSprite_;
+	// プレイ会用の設定のときに出す説明の本体(画面の流れをステージ1だけにしたもの)
+	std::unique_ptr<Sprite> playSessionHelpSprite_;
 	// 閉じている間に画面の隅に出す案内
 	std::unique_ptr<Sprite> hintSprite_;
 

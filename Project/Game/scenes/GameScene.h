@@ -4,6 +4,7 @@
 #include "systems/SceneTransition.h"
 #include "MyMath.h"
 #include <memory>
+#include <string>
 #include <vector>
 
 // 前方宣言
@@ -31,11 +32,16 @@ class InkEffectManager;
 class ComboCounter;
 class StageHUD;
 class StageClearUI;
+class StageLockedNotice;
+class TutorialHints;
+class RailSwitchPrompt;
+class KeyTargetMarker;
 class SpeedLines;
 class DamageInkEffect;
 class HelpOverlay;
 class DepartureDirector;
 class ReturnJump;
+class BarrierBreakCutscene;
 struct DepartureContext;
 
 /// <summary>
@@ -85,6 +91,13 @@ private:
 	/// </summary>
 	/// <param name="isInstant">true なら管を伸ばす演出を飛ばしてすぐに反映する(リスタート・チェックポイントからのやり直し用)</param>
 	void ApplyRailLocks(bool isInstant);
+	/// <summary>
+	/// 編集・プレイするステージを切り替える(レール・的・敵のエディターを同じステージに合わせ、的・敵・レールの出方を初期状態に戻す)
+	/// </summary>
+	/// <param name="stageIndex">切り替えるステージの番号(0始まり)</param>
+	void SwitchStage(int stageIndex);
+	// 今のステージ以外のレールの出方を、そのステージの鍵の的がすべて残っている状態にする(スタート台の上から全ステージのレールを見せるため)
+	void ResetOtherStageRailLocks();
 	// 遠くの物を空の色に溶け込ませる距離を、全オブジェクト共通の設定にする(Play中だけ溶け込ませ、Edit中は溶け込ませない)
 	void UpdateSceneDistanceFade();
 
@@ -99,8 +112,8 @@ private:
 	void PlayBoardedEffects(const Vector3& boardedPos);
 
 	/// <summary>
-	/// ゴールの的を壊して大ジャンプでスタート台へ戻ってきたときに、ステージを始め直し、着地の演出を出す
-	/// 的・敵・レールを初期状態に戻し、タイトルを飛ばしてスタート台の上を動ける段階から始める
+	/// 最後のステージ以外のゴールの的を壊して大ジャンプでスタート台へ戻ってきたときに、ステージを始め直し、着地の演出を出す
+	/// 的・敵・レールを初期状態に戻し、タイトルを飛ばしてスタート台の上を動ける段階(次のステージのゲートを選べる)から始める
 	/// </summary>
 	/// <param name="landedPos">着地した位置</param>
 	void RestartFromReturnJump(const Vector3& landedPos);
@@ -112,18 +125,34 @@ private:
 	void PlayReturnLandEffects(const Vector3& landedPos);
 
 	/// <summary>
-	/// 大ジャンプでスタート台に着地したときに、着地の演出を出してクリア画面へ移るのを待ち始める
+	/// 最後のステージのゴールの的を壊し、大ジャンプでスタート台に着地したときに、着地の演出を出してクリア画面へ移るのを待ち始める
 	/// </summary>
 	/// <param name="landedPos">着地した位置</param>
 	void StartStageClear(const Vector3& landedPos);
 	// 着地の演出を見せ終えたら、結果を書き込んでクリア画面へ移る
 	void UpdateStageClear();
+	// クリア画面で出す結果(壊した的の数・最大連鎖数)を書き込む(シーンが作り直される前、的・連鎖数を初期状態に戻す前に呼ぶ)
+	void WriteStageResult();
+
+	/// <summary>
+	/// 最後のステージへ続く通路の壁が壊れた瞬間の演出(壁を消し、破片・インクのしぶきを飛ばす)
+	/// </summary>
+	/// <param name="stageIndex">壊れた壁のステージの番号</param>
+	/// <param name="isShown">演出を見せている最中か(飛ばしたときは画面を揺らさない)</param>
+	void PlayBarrierBreakEffects(int stageIndex,bool isShown);
 
 	// マウスカーソルの表示/非表示を切り替える
 	void UpdateCursorVisibility(bool isPlayMode);
 
 	// プレイ中のゲーム処理(レール進行・カメラ・プレイヤー・敵・弾・的・勝敗判定)
 	void UpdateGameplay();
+
+	/// <summary>
+	/// 最初に飛び移り方の案内を出したときだけ、ゲームをゆっくりにする(前のフレームで案内を出した側から決める)
+	/// 飛び移るか、飛び移れなくなるか、最大の時間がたったら元の速さへ戻す
+	/// </summary>
+	/// <param name="isGameplayActive">プレイ中か(プレイ中でなければゆっくりにしない)</param>
+	void UpdateRailSwitchSlow(bool isGameplayActive);
 
 #ifdef USE_IMGUI
 	// レール・プレイヤー・敵の状態確認用のデバッグウィンドウを表示する(Playモード中も含めて常に表示する)
@@ -186,6 +215,8 @@ private:
 	std::unique_ptr<DepartureDirector> departureDirector_;
 	// ゴールの的を壊したあと、大ジャンプでスタート台へ戻る演出
 	std::unique_ptr<ReturnJump> returnJump_;
+	// 大ジャンプでスタート台に着地した後、クリアしたステージの通路の壁を壊して見せる演出
+	std::unique_ptr<BarrierBreakCutscene> barrierCutscene_;
 
 	// 画面中央固定のレティクル(照準)
 	std::unique_ptr<Reticle> reticle_;
@@ -201,6 +232,35 @@ private:
 
 	// ゴールの的を壊したときに出す「STAGE CLEAR!」の表示
 	std::unique_ptr<StageClearUI> stageClearUI_;
+	// ゴールの的が現れたときに出す「撃ちまくれ!!!」の表示(「STAGE CLEAR!」と同じ出し方)
+	std::unique_ptr<StageClearUI> goalBannerUI_;
+	// 前のフレームでゴールの的が現れていたか(現れた瞬間に「撃ちまくれ!!!」を出す)
+	bool wasGoalTargetAppeared_ = false;
+
+	// プレイ会用の設定のときに、遊べないステージのゲートの前で出す「いまは遊べないよ!!」の表示
+	std::unique_ptr<StageLockedNotice> stageLockedNotice_;
+
+	// 場面ごとに画面の上に出す操作の案内(チュートリアル)
+	std::unique_ptr<TutorialHints> tutorialHints_;
+
+	// 鍵の的を壊して出たレールへ飛び移れるときに、そのレールがある側に出す「A + SPACE」「D + SPACE」の案内
+	std::unique_ptr<RailSwitchPrompt> railSwitchPrompt_;
+	// 最初の鍵の的に気づいてもらうために、その上に出す「▼」の目印
+	std::unique_ptr<KeyTargetMarker> keyTargetMarker_;
+	// 今回のプレイで鍵の的を1つでも壊したか(壊したら、鍵の的の目印はもう出さない。タイトルから始め直すと忘れる)
+	bool hasDestroyedFirstKeyTarget_ = false;
+	// 今のステージのレールごとに、今回のプレイで乗ったか(乗ったことのある鍵のレールには、飛び移り方の案内を出さない)
+	std::vector<bool> riddenRails_;
+	// 前のフレームで飛び移り方の案内を出した側(右: 1、左: -1、無い: 0。スローを始めるか・やめるかの判定に使う)
+	int lastRailSwitchSide_ = 0;
+	// 最初に飛び移り方の案内を出したときだけ、ゲームをゆっくりにする(タイトルから始め直すまで、もう一度はしない)
+	bool hasPlayedRailSwitchSlow_ = false;
+	// 飛び移り方の案内に合わせて、ゲームをゆっくりにしている最中か
+	bool isRailSwitchSlowActive_ = false;
+	// ゆっくりにし始めてからの経過時間(秒。ゆっくりにしていない、実際の時間で数える)
+	float railSwitchSlowTimer_ = 0.0f;
+	// 今のゲームの進む速さ(通常の何倍か。ゆっくりにするときも戻すときも、少しずつ変える)
+	float railSwitchTimeScale_ = 1.0f;
 
 	// レールを進んでいる間に出すスピード線
 	std::unique_ptr<SpeedLines> speedLines_;
@@ -240,6 +300,8 @@ private:
 	bool isStageCleared_ = false;
 	// スタート台に着地してからの経過時間(秒)
 	float stageClearTimer_ = 0.0f;
+	// プレイ会用の設定で、壁が壊れるのを見せ終えたらクリア画面へ移るのを待っている最中か
+	bool isPlaySessionClearPending_ = false;
 
 	// 最後に通ったチェックポイント(レールから落ちたら、ここからやり直す)
 	struct Checkpoint{
@@ -262,6 +324,17 @@ private:
 	static constexpr float kDefeatDuration = 1.4f;
 	// やられ演出の間の、周り(敵・インクの演出)の時間の進み方(通常の何倍か)
 	static constexpr float kDefeatTimeScale = 0.35f;
+	// 鍵の的の目印・案内を出す、プレイヤーから鍵の的までの距離
+	static constexpr float kKeyTargetGuideDistance = 35.0f;
+	// ゴールの的が現れたときに出す「撃ちまくれ!!!」の画像(tools/generate_stage_clear_assets.py で生成する)と、出す高さ(画面の上からの割合)
+	inline static const std::string kGoalBannerTexturePath = "resource/UI/goalBanner.png";
+	static constexpr float kGoalBannerHeightRate = 0.2f;
+	// 最初に飛び移り方の案内を出したときの、ゲームの進む速さ(通常の何倍か)と、ゆっくりにしておく最大の時間(秒。実際の時間)
+	// 飛び移るか、飛び移れなくなったら、最大の時間より前でも元に戻す
+	static constexpr float kRailSwitchSlowTimeScale = 0.25f;
+	static constexpr float kRailSwitchSlowMaxDuration = 3.0f;
+	// ゲームの進む速さを、ゆっくりにする・戻すときの変わる速さ(大きいほどすぐ切り替わる)
+	static constexpr float kRailSwitchSlowSharpness = 12.0f;
 	// 自機が弾けた瞬間の衝撃(動きを止める時間、画面の揺れの幅・収まるまでの時間)
 	static constexpr float kDefeatHitStopDuration = 0.15f;
 	static constexpr float kDefeatShakeAmplitude = 0.25f;
@@ -313,4 +386,10 @@ private:
 	// 大ジャンプでスタート台に着地してから、クリア画面への切り替えを始めるまでの時間(秒)
 	// 着地の揺れ(kReturnLandShakeDuration)が収まり、インクのしぶきが落ちきるのを見せてから移る
 	static constexpr float kStageClearDuration = 1.0f;
+	// 通路の壁が壊れた瞬間に、壁から高く飛び散らせて台に落とすインクのしぶきの数
+	static constexpr int kBarrierBurstCount = 20;
+	// 通路の壁が壊れた瞬間の衝撃(動きを止める時間、画面の揺れの幅・収まるまでの時間。出発ゲートが開く瞬間と同じくらいにする)
+	static constexpr float kBarrierBreakHitStopDuration = 0.1f;
+	static constexpr float kBarrierBreakShakeAmplitude = 0.15f;
+	static constexpr float kBarrierBreakShakeDuration = 0.4f;
 };

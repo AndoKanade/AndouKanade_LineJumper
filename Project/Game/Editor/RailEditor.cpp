@@ -18,10 +18,10 @@
 #include <iomanip>
 
 namespace{
-	// 制御点データの保存先ディレクトリ・拡張子(LevelManagerと同じくresource配下の相対パス)
-	const std::string kRailSaveDir = "resource/rail/";
-	// 0番目のレールのみ、複数化対応前から存在するファイルパスと互換性を保つ
-	const std::string kFirstRailSaveFilePath = "resource/rail/rail.json";
+	// 制御点データの保存先(ステージのフォルダの中のフォルダ名と、ファイル名の頭・拡張子)
+	const std::string kRailSaveSubDir = "rail/";
+	const std::string kRailFileNamePrefix = "rail";
+	const std::string kRailFileExtension = ".json";
 	// 制御点リセット用のデフォルト値(初期制御点/Add Control Pointボタンと同じ初期値)
 	constexpr RailEditor::ControlPoint kDefaultControlPoint = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 1.0f};
 
@@ -225,24 +225,63 @@ void RailEditor::GenerateSpiral(Rail& rail,size_t startIndex){
 
 // 新しいレールを1本追加し、アクティブなレールとして切り替える
 void RailEditor::AddRail(){
+	AppendRail(rails_);
+	activeRailIndex_ = static_cast<int>(rails_.size()) - 1;
+}
+
+// railsの末尾に、制御点1つだけの新しいレールを足す
+void RailEditor::AppendRail(std::vector<Rail>& rails){
 	Rail rail;
-	rail.name = "Rail " + std::to_string(rails_.size());
+	rail.name = "Rail " + std::to_string(rails.size());
 	rail.controlPoints.push_back(kDefaultControlPoint);
 	rail.pointObjects.push_back(CreatePointObject(kControlPointModelPath));
 
 	// 曲線・着地できる範囲の管はEdit中の描画でUpdateEditTubes()、レール本体の管はPlayに入ったときにBuildTubes()でレールの形から作るため、
 	// ここでは制御点の目印1つだけを作る
 
-	rails_.push_back(std::move(rail));
-	activeRailIndex_ = static_cast<int>(rails_.size()) - 1;
+	rails.push_back(std::move(rail));
 }
 
-// レールのインデックスから保存先ファイルパスを求める(0番目のみ既存の互換パスを使う)
-std::string RailEditor::GetRailFilePath(int index) const{
-	if(index <= 0){
-		return kFirstRailSaveFilePath;
+// 指定ステージのレールの配列を取得(編集中のステージはrails_、それ以外は預けてある配列)
+std::vector<RailEditor::Rail>& RailEditor::GetStageRails(int stageIndex){
+	return (stageIndex == stageIndex_)?rails_:storedStageRails_[stageIndex];
+}
+const std::vector<RailEditor::Rail>& RailEditor::GetStageRails(int stageIndex) const{
+	return (stageIndex == stageIndex_)?rails_:storedStageRails_[stageIndex];
+}
+
+// ステージとレールのインデックスから保存先ファイルパスを求める
+std::string RailEditor::GetRailFilePath(int stageIndex,int railIndex) const{
+	return StageInfo::GetStageDirectory(stageIndex) + kRailSaveSubDir + kRailFileNamePrefix + std::to_string(railIndex) + kRailFileExtension;
+}
+
+// 編集・プレイするステージを切り替える
+void RailEditor::SetStageIndex(int stageIndex){
+	if(!StageInfo::IsValidStageIndex(stageIndex) || stageIndex == stageIndex_){
+		return;
 	}
-	return kRailSaveDir + "rail" + std::to_string(index) + ".json";
+
+	// 今のステージのレールを預け、切り替えた先のステージのレールを取り出す
+	std::swap(rails_,storedStageRails_[stageIndex_]);
+	std::swap(rails_,storedStageRails_[stageIndex]);
+	stageIndex_ = stageIndex;
+
+	// 前のステージのレール・制御点を指したままにならないよう、0番のレールにして選択を解除する
+	activeRailIndex_ = 0;
+	selectedPointIndex_ = -1;
+	isDragging_ = false;
+	// 切り替えた先のステージのレールの管を、次の描画で作り直す
+	areTubesBuilt_ = false;
+}
+
+// 一覧でステージが選び直されていれば、そのステージの番号を返す(1回読むと消える)
+bool RailEditor::ConsumeStageChangeRequest(int& outStageIndex){
+	if(requestedStageIndex_ == kNoStageRequest){
+		return false;
+	}
+	outStageIndex = requestedStageIndex_;
+	requestedStageIndex_ = kNoStageRequest;
+	return true;
 }
 
 // エディターの初期化処理
@@ -252,10 +291,10 @@ void RailEditor::Initialize(Obj3dCommon* objCommon){
 	// 制御点の目印のモデルをロード
 	ModelManager::GetInstance()->LoadModel(kControlPointModelPath);
 
-	// 最初のレールを1本用意する
-	AddRail();
+	// 前のシーンで編集・プレイしていたステージから始める
+	stageIndex_ = StageInfo::IsValidStageIndex(StageInfo::currentStageIndex)?StageInfo::currentStageIndex:0;
 
-	// 保存済みのJSONがあれば読み込んで初期状態を上書きする(ホットロードの起動時オート読込)
+	// 全ステージのレールを、保存済みのJSONから読み込む(ファイルが無いステージは制御点1つだけのレールを1本用意する)
 	LoadRailsFromFiles();
 
 	// 読み込んだ状態を編集の基準(保存済み)にし、Ctrl+Z・すべて保存の対象に登録する
@@ -280,11 +319,28 @@ void RailEditor::Update(){
 	// 固定タイルレイアウトの左の列に縦いっぱいで配置
 	EditorWidgets::BeginFixedPanel("Rail Editor",EditorWidgets::ComputeLayout().railEditor);
 
+	// ステージの切り替えUI(ステージ → レール → 制御点の順に選ぶ)
+	// 的・敵のエディターも同じステージに合わせるため、ここでは選んだことだけを伝え、切り替えはGameScene側で行う
+	ImGui::Text("Stage");
+	ImGui::SetNextItemWidth(-FLT_MIN);
+	if(ImGui::BeginCombo("##Stage",StageInfo::GetStageLabel(stageIndex_))){
+		for(int i = 0; i < StageInfo::kStageCount; ++i){
+			if(ImGui::Selectable(StageInfo::GetStageLabel(i),i == stageIndex_) && i != stageIndex_){
+				requestedStageIndex_ = i;
+			}
+		}
+		ImGui::EndCombo();
+	}
+
+	ImGui::Separator();
+
 	// レールの切り替え・新規作成UI
 	ImGui::Text("Active Rail: %s",rails_[activeRailIndex_].name.c_str());
 	for(size_t i = 0; i < rails_.size(); ++i){
 		ImGui::PushID(static_cast<int>(i) + 10000); // 制御点側のPushIDと衝突しないようオフセット
-		if(ImGui::Selectable(rails_[i].name.c_str(),static_cast<int>(i) == activeRailIndex_)){
+		// ゴールのレールは一覧に (Goal) と出す
+		const std::string railLabel = rails_[i].isGoalRail?rails_[i].name + " (Goal)":rails_[i].name;
+		if(ImGui::Selectable(railLabel.c_str(),static_cast<int>(i) == activeRailIndex_)){
 			SwitchActiveRail(static_cast<int>(i));
 		}
 		ImGui::PopID();
@@ -297,6 +353,9 @@ void RailEditor::Update(){
 
 	// 以降はアクティブなレールに対する編集操作
 	Rail& activeRail = rails_[activeRailIndex_];
+
+	// ゴールのレールにするか(終点で止まり、乗るとゴールの的が現れる。ステージに1本だけ置く想定)
+	ImGui::Checkbox("Goal Rail",&activeRail.isGoalRail);
 
 	// 制御点の追加ボタン(レールを延長しやすいよう、原点ではなく末尾2点の向きにそのまま伸ばした位置へ追加する)
 	if(ImGui::Button("Add Control Point")){
@@ -315,7 +374,8 @@ void RailEditor::Update(){
 		LoadFromJson();
 	}
 	ImGui::SameLine();
-	ImGui::Text("(%s)",GetRailFilePath(activeRailIndex_).c_str());
+	ImGui::Text("(%s)",GetRailFilePath(stageIndex_,activeRailIndex_).c_str());
+	ImGui::TextDisabled("(Save / Load は全ステージまとめて行う)");
 	EditorWidgets::ShowUnsavedMark(history_.IsModified());
 
 	ImGui::Separator();
@@ -739,106 +799,109 @@ void RailEditor::AppendTubeMesh(const std::vector<Vector3>& ringCenters,float ra
 void RailEditor::BuildTubes(){
 	ModelCommon* modelCommon = ModelManager::GetInstance()->GetModelCommon();
 
-	for(Rail& rail : rails_){
-		// Catmull-Romは制御点4つ以上必要なので、それ未満のときは管を作らない
-		if(rail.controlPoints.size() < 4){
-			rail.tubeModel.reset();
-			rail.dashedTubeModel.reset();
-			rail.tubeSegmentCount = 0;
-			rail.tubeRingDistances.clear();
-			rail.tubeBuiltControlPoints.clear();
-			continue;
-		}
-
-		// レールの始点と終点に制御点の目印を置く
-		// Catmull-Romの曲線は2番目の制御点から最後の1つ前の制御点までを通るため、その2点がレールの始点と終点になる
-		// Play中は形が変わらないため、目印の行列も管と同じくここで1回だけ求める
-		for(size_t pointIndex : {kRailStartPointIndex, rail.controlPoints.size() - 1 - kRailStartPointIndex}){
-			Obj3D* marker = rail.pointObjects[pointIndex].get();
-			marker->SetTranslate(rail.controlPoints[pointIndex].position);
-			marker->SetScale({kControlPointScale, kControlPointScale, kControlPointScale});
-			marker->Update();
-		}
-
-		// 前回管を作ったときから形が変わっていなければ、作り直さずにそのまま使う
-		if(rail.tubeModel && rail.tubeBuiltControlPoints == rail.controlPoints){
-			continue;
-		}
-
-		// 区間数に比例した数に分け、レールを延長しても管が角ばらないようにする
-		const uint32_t segmentCount = static_cast<uint32_t>(rail.controlPoints.size() - kCatmullRomExtraPointCount) * static_cast<uint32_t>(kTubeSegmentsPerRailSegment);
-		// 輪の継ぎ目でテクスチャ座標が1周して戻れるよう、輪の最初と最後に同じ位置の頂点を置く(頂点の数を見積もるのに使う)
-		const uint32_t ringVertexCount = kTubeSideCount + 1;
-
-		// 輪の中心(区間の境目)の座標を先に求めておき、輪の向きを求めるときに同じ座標を何度も計算しないようにする
-		std::vector<Vector3> ringCenters(segmentCount + 1);
-		for(uint32_t i = 0; i <= segmentCount; ++i){
-			ringCenters[i] = ComputePositionOnRail(rail.controlPoints,static_cast<float>(i) / static_cast<float>(segmentCount));
-		}
-
-		// 始点から各輪までの長さを、隣り合う輪の中心の間の距離を足していって求める
-		// 区間は進行度で等分しているため長さがそろっておらず、管を一定の速さで伸ばすには長さで描く区間を決める必要がある
-		rail.tubeRingDistances.assign(segmentCount + 1,0.0f);
-		for(uint32_t i = 1; i <= segmentCount; ++i){
-			rail.tubeRingDistances[i] = rail.tubeRingDistances[i - 1] + Distance(ringCenters[i],ringCenters[i - 1]);
-		}
-
-		Model::ModelData modelData;
-		modelData.material.textureFilePath = kTubeTexturePath;
-		modelData.vertices.reserve(static_cast<size_t>(segmentCount + 1) * ringVertexCount);
-		modelData.indices.reserve(static_cast<size_t>(segmentCount) * kTubeSideCount * kTubeIndicesPerQuad);
-
-		// 輪の中心を通る管の頂点とインデックスを作る
-		AppendTubeMesh(ringCenters,kTubeRadius,modelData);
-
-		// 出ていないレールの点線は、管と同じ頂点のうち、点線の区間の三角形だけを持つ別のモデルにする
-		// 点線の区間ごとに描く範囲を分けると描画の命令が線の本数だけ増えるため、点線の区間だけを詰めて1回で描けるようにする
-		constexpr uint32_t kIndicesPerSegment = kTubeSideCount * kTubeIndicesPerQuad;
-		Model::ModelData dashedModelData;
-		dashedModelData.material.textureFilePath = kTubeTexturePath;
-		dashedModelData.vertices = modelData.vertices;
-		dashedModelData.indices.reserve(static_cast<size_t>(CountDashedSegmentsBefore(segmentCount)) * kIndicesPerSegment);
-		for(uint32_t i = 0; i < segmentCount; ++i){
-			if(i % kDashPeriodSegments >= kDashDrawSegments){
+	// ステージを選ぶスタート台の上から全ステージのレールが見えるよう、今のステージ以外のレールの管も作る
+	for(int stage = 0; stage < StageInfo::kStageCount; ++stage){
+		for(Rail& rail : GetStageRails(stage)){
+			// Catmull-Romは制御点4つ以上必要なので、それ未満のときは管を作らない
+			if(rail.controlPoints.size() < 4){
+				rail.tubeModel.reset();
+				rail.dashedTubeModel.reset();
+				rail.tubeSegmentCount = 0;
+				rail.tubeRingDistances.clear();
+				rail.tubeBuiltControlPoints.clear();
 				continue;
 			}
-			const auto segmentBegin = modelData.indices.begin() + static_cast<ptrdiff_t>(i) * kIndicesPerSegment;
-			dashedModelData.indices.insert(dashedModelData.indices.end(),segmentBegin,segmentBegin + kIndicesPerSegment);
-		}
 
-		rail.tubeModel = std::make_unique<Model>();
-		rail.tubeModel->Initialize(modelCommon,std::move(modelData));
-		rail.dashedTubeModel = std::make_unique<Model>();
-		rail.dashedTubeModel->Initialize(modelCommon,std::move(dashedModelData));
-		rail.tubeSegmentCount = segmentCount;
-		rail.tubeBuiltControlPoints = rail.controlPoints;
+			// レールの始点と終点に制御点の目印を置く
+			// Catmull-Romの曲線は2番目の制御点から最後の1つ前の制御点までを通るため、その2点がレールの始点と終点になる
+			// Play中は形が変わらないため、目印の行列も管と同じくここで1回だけ求める
+			for(size_t pointIndex : {kRailStartPointIndex, rail.controlPoints.size() - 1 - kRailStartPointIndex}){
+				Obj3D* marker = rail.pointObjects[pointIndex].get();
+				marker->SetTranslate(rail.controlPoints[pointIndex].position);
+				marker->SetScale({kControlPointScale, kControlPointScale, kControlPointScale});
+				marker->Update();
+			}
 
-		// 管を描くオブジェクトは初めて管を作るときだけ用意し、色もそのときに決める(以降は作り直した管のモデルを渡すだけ)
-		// 管の頂点はワールド座標で作っているため、オブジェクトの位置・向き・大きさは初期値のまま使う
-		if(!rail.tubeObject){
-			rail.tubeObject = std::make_unique<Obj3D>();
-			rail.tubeObject->Initialize(objCommon_);
-			if(Model::Material* mat = rail.tubeObject->GetMaterial()){
-				mat->color = kUnpaintedRailColor;
+			// 前回管を作ったときから形が変わっていなければ、作り直さずにそのまま使う
+			if(rail.tubeModel && rail.tubeBuiltControlPoints == rail.controlPoints){
+				continue;
 			}
-		}
-		if(!rail.paintedTubeObject){
-			rail.paintedTubeObject = std::make_unique<Obj3D>();
-			rail.paintedTubeObject->Initialize(objCommon_);
-			if(Model::Material* mat = rail.paintedTubeObject->GetMaterial()){
-				mat->color = kPaintedRailColor;
+
+			// 区間数に比例した数に分け、レールを延長しても管が角ばらないようにする
+			const uint32_t segmentCount = static_cast<uint32_t>(rail.controlPoints.size() - kCatmullRomExtraPointCount) * static_cast<uint32_t>(kTubeSegmentsPerRailSegment);
+			// 輪の継ぎ目でテクスチャ座標が1周して戻れるよう、輪の最初と最後に同じ位置の頂点を置く(頂点の数を見積もるのに使う)
+			const uint32_t ringVertexCount = kTubeSideCount + 1;
+
+			// 輪の中心(区間の境目)の座標を先に求めておき、輪の向きを求めるときに同じ座標を何度も計算しないようにする
+			std::vector<Vector3> ringCenters(segmentCount + 1);
+			for(uint32_t i = 0; i <= segmentCount; ++i){
+				ringCenters[i] = ComputePositionOnRail(rail.controlPoints,static_cast<float>(i) / static_cast<float>(segmentCount));
 			}
-		}
-		if(!rail.dashedTubeObject){
-			rail.dashedTubeObject = std::make_unique<Obj3D>();
-			rail.dashedTubeObject->Initialize(objCommon_);
-			if(Model::Material* mat = rail.dashedTubeObject->GetMaterial()){
-				mat->color = kLockedRailColor;
+
+			// 始点から各輪までの長さを、隣り合う輪の中心の間の距離を足していって求める
+			// 区間は進行度で等分しているため長さがそろっておらず、管を一定の速さで伸ばすには長さで描く区間を決める必要がある
+			rail.tubeRingDistances.assign(segmentCount + 1,0.0f);
+			for(uint32_t i = 1; i <= segmentCount; ++i){
+				rail.tubeRingDistances[i] = rail.tubeRingDistances[i - 1] + Distance(ringCenters[i],ringCenters[i - 1]);
 			}
+
+			Model::ModelData modelData;
+			modelData.material.textureFilePath = kTubeTexturePath;
+			modelData.vertices.reserve(static_cast<size_t>(segmentCount + 1) * ringVertexCount);
+			modelData.indices.reserve(static_cast<size_t>(segmentCount) * kTubeSideCount * kTubeIndicesPerQuad);
+
+			// 輪の中心を通る管の頂点とインデックスを作る
+			AppendTubeMesh(ringCenters,kTubeRadius,modelData);
+
+			// 出ていないレールの点線は、管と同じ頂点のうち、点線の区間の三角形だけを持つ別のモデルにする
+			// 点線の区間ごとに描く範囲を分けると描画の命令が線の本数だけ増えるため、点線の区間だけを詰めて1回で描けるようにする
+			constexpr uint32_t kIndicesPerSegment = kTubeSideCount * kTubeIndicesPerQuad;
+			Model::ModelData dashedModelData;
+			dashedModelData.material.textureFilePath = kTubeTexturePath;
+			dashedModelData.vertices = modelData.vertices;
+			dashedModelData.indices.reserve(static_cast<size_t>(CountDashedSegmentsBefore(segmentCount)) * kIndicesPerSegment);
+			for(uint32_t i = 0; i < segmentCount; ++i){
+				if(i % kDashPeriodSegments >= kDashDrawSegments){
+					continue;
+				}
+				const auto segmentBegin = modelData.indices.begin() + static_cast<ptrdiff_t>(i) * kIndicesPerSegment;
+				dashedModelData.indices.insert(dashedModelData.indices.end(),segmentBegin,segmentBegin + kIndicesPerSegment);
+			}
+
+			rail.tubeModel = std::make_unique<Model>();
+			rail.tubeModel->Initialize(modelCommon,std::move(modelData));
+			rail.dashedTubeModel = std::make_unique<Model>();
+			rail.dashedTubeModel->Initialize(modelCommon,std::move(dashedModelData));
+			rail.tubeSegmentCount = segmentCount;
+			rail.tubeBuiltControlPoints = rail.controlPoints;
+
+			// 管を描くオブジェクトは初めて管を作るときだけ用意し、色もそのときに決める(以降は作り直した管のモデルを渡すだけ)
+			// 管の頂点はワールド座標で作っているため、オブジェクトの位置・向き・大きさは初期値のまま使う
+			if(!rail.tubeObject){
+				rail.tubeObject = std::make_unique<Obj3D>();
+				rail.tubeObject->Initialize(objCommon_);
+				if(Model::Material* mat = rail.tubeObject->GetMaterial()){
+					mat->color = kUnpaintedRailColor;
+				}
+			}
+			if(!rail.paintedTubeObject){
+				rail.paintedTubeObject = std::make_unique<Obj3D>();
+				rail.paintedTubeObject->Initialize(objCommon_);
+				if(Model::Material* mat = rail.paintedTubeObject->GetMaterial()){
+					mat->color = kPaintedRailColor;
+				}
+			}
+			if(!rail.dashedTubeObject){
+				rail.dashedTubeObject = std::make_unique<Obj3D>();
+				rail.dashedTubeObject->Initialize(objCommon_);
+				if(Model::Material* mat = rail.dashedTubeObject->GetMaterial()){
+					mat->color = kLockedRailColor;
+				}
+			}
+			rail.tubeObject->SetModel(rail.tubeModel.get());
+			rail.paintedTubeObject->SetModel(rail.tubeModel.get());
+			rail.dashedTubeObject->SetModel(rail.dashedTubeModel.get());
 		}
-		rail.tubeObject->SetModel(rail.tubeModel.get());
-		rail.paintedTubeObject->SetModel(rail.tubeModel.get());
-		rail.dashedTubeObject->SetModel(rail.dashedTubeModel.get());
 	}
 
 	areTubesBuilt_ = true;
@@ -865,58 +928,62 @@ void RailEditor::DrawTubes(){
 		tube->Draw();
 	};
 
-	for(size_t railIndex = 0; railIndex < rails_.size(); ++railIndex){
-		Rail& rail = rails_[railIndex];
+	// ステージを選ぶスタート台の上から全ステージのレールが見えるよう、今のステージ以外のレールも描く
+	for(int stage = 0; stage < StageInfo::kStageCount; ++stage){
+		for(size_t railIndex = 0; railIndex < GetStageRails(stage).size(); ++railIndex){
+			Rail& rail = GetStageRails(stage)[railIndex];
 
-		// 管を作ったレールだけ、レールの始点と終点の制御点の目印を描画する(色はEdit中と同じく今乗っているレールかどうかで分ける)
-		// 出ていないレールは点線だけにして、まだ乗れないことが分かるようにする
-		if(rail.controlPoints.size() >= 4 && !rail.isLocked){
-			Vector4 markerColor = (static_cast<int>(railIndex) == activeRailIndex_)?kActiveRailColor:kInactiveRailColor;
-			for(size_t pointIndex : {kRailStartPointIndex, rail.controlPoints.size() - 1 - kRailStartPointIndex}){
-				Obj3D* marker = rail.pointObjects[pointIndex].get();
-				if(Model::Material* mat = marker->GetMaterial()){
-					mat->color = markerColor;
+			// 管を作ったレールだけ、レールの始点と終点の制御点の目印を描画する(色はEdit中と同じく今乗っているレールかどうかで分ける)
+			// 出ていないレールは点線だけにして、まだ乗れないことが分かるようにする
+			if(rail.controlPoints.size() >= 4 && !rail.isLocked){
+				const bool isRidingRail = stage == stageIndex_ && static_cast<int>(railIndex) == activeRailIndex_;
+				Vector4 markerColor = isRidingRail?kActiveRailColor:kInactiveRailColor;
+				for(size_t pointIndex : {kRailStartPointIndex, rail.controlPoints.size() - 1 - kRailStartPointIndex}){
+					Obj3D* marker = rail.pointObjects[pointIndex].get();
+					if(Model::Material* mat = marker->GetMaterial()){
+						mat->color = markerColor;
+					}
+					if(activeCamera){
+						marker->SetCamera(activeCamera);
+					}
+					marker->Draw();
 				}
-				if(activeCamera){
-					marker->SetCamera(activeCamera);
-				}
-				marker->Draw();
 			}
-		}
 
-		// 管を作っていないレール(制御点4つ未満)は描かない
-		if(!rail.tubeModel){
-			continue;
-		}
+			// 管を作っていないレール(制御点4つ未満)は描かない
+			if(!rail.tubeModel){
+				continue;
+			}
 
-		// 区間の中央の進行度が塗った範囲に入っている区間を、インクの色で描く区間にする
-		// 区間iの中央の進行度は (i + 0.5) / 区間数 のため、塗った範囲の両端の進行度から区間番号の範囲を逆算する
-		const uint32_t segmentCount = rail.tubeSegmentCount;
-		uint32_t paintedBegin = 0;
-		uint32_t paintedEnd = 0;
-		if(rail.isPainted){
-			const float segmentCountF = static_cast<float>(segmentCount);
-			const float firstSegment = std::ceil(rail.paintStartT * segmentCountF - kTubeSegmentMiddleRate);
-			const float lastSegment = std::floor(rail.paintEndT * segmentCountF - kTubeSegmentMiddleRate);
-			paintedBegin = static_cast<uint32_t>(std::clamp(firstSegment,0.0f,segmentCountF));
-			paintedEnd = (std::max)(paintedBegin,static_cast<uint32_t>(std::clamp(lastSegment + 1.0f,0.0f,segmentCountF)));
-		}
+			// 区間の中央の進行度が塗った範囲に入っている区間を、インクの色で描く区間にする
+			// 区間iの中央の進行度は (i + 0.5) / 区間数 のため、塗った範囲の両端の進行度から区間番号の範囲を逆算する
+			const uint32_t segmentCount = rail.tubeSegmentCount;
+			uint32_t paintedBegin = 0;
+			uint32_t paintedEnd = 0;
+			if(rail.isPainted){
+				const float segmentCountF = static_cast<float>(segmentCount);
+				const float firstSegment = std::ceil(rail.paintStartT * segmentCountF - kTubeSegmentMiddleRate);
+				const float lastSegment = std::floor(rail.paintEndT * segmentCountF - kTubeSegmentMiddleRate);
+				paintedBegin = static_cast<uint32_t>(std::clamp(firstSegment,0.0f,segmentCountF));
+				paintedEnd = (std::max)(paintedBegin,static_cast<uint32_t>(std::clamp(lastSegment + 1.0f,0.0f,segmentCountF)));
+			}
 
-		// 管を伸ばし終えた区間の数(出ていないレールは0、伸ばし終えたレールは全区間)
-		// 始点から伸ばした長さより手前で始まる区間を、伸ばし終えた区間とする
-		uint32_t grownEnd = 0;
-		if(!rail.isLocked){
-			const auto segmentStarts = rail.tubeRingDistances.begin();
-			grownEnd = static_cast<uint32_t>(std::lower_bound(segmentStarts,segmentStarts + segmentCount,rail.unlockGrownLength) - segmentStarts);
-		}
+			// 管を伸ばし終えた区間の数(出ていないレールは0、伸ばし終えたレールは全区間)
+			// 始点から伸ばした長さより手前で始まる区間を、伸ばし終えた区間とする
+			uint32_t grownEnd = 0;
+			if(!rail.isLocked){
+				const auto segmentStarts = rail.tubeRingDistances.begin();
+				grownEnd = static_cast<uint32_t>(std::lower_bound(segmentStarts,segmentStarts + segmentCount,rail.unlockGrownLength) - segmentStarts);
+			}
 
-		drawSegments(rail.tubeObject.get(),0,(std::min)(paintedBegin,grownEnd));
-		drawSegments(rail.paintedTubeObject.get(),paintedBegin,(std::min)(paintedEnd,grownEnd));
-		drawSegments(rail.tubeObject.get(),paintedEnd,grownEnd);
+			drawSegments(rail.tubeObject.get(),0,(std::min)(paintedBegin,grownEnd));
+			drawSegments(rail.paintedTubeObject.get(),paintedBegin,(std::min)(paintedEnd,grownEnd));
+			drawSegments(rail.tubeObject.get(),paintedEnd,grownEnd);
 
-		// まだ管が伸びていない区間は点線で描く(点線のモデルは点線の区間だけを詰めて持つため、区間番号を点線の数に直して描く)
-		if(grownEnd < segmentCount && rail.dashedTubeObject){
-			drawSegments(rail.dashedTubeObject.get(),CountDashedSegmentsBefore(grownEnd),CountDashedSegmentsBefore(segmentCount));
+			// まだ管が伸びていない区間は点線で描く(点線のモデルは点線の区間だけを詰めて持つため、区間番号を点線の数に直して描く)
+			if(grownEnd < segmentCount && rail.dashedTubeObject){
+				drawSegments(rail.dashedTubeObject.get(),CountDashedSegmentsBefore(grownEnd),CountDashedSegmentsBefore(segmentCount));
+			}
 		}
 	}
 }
@@ -950,12 +1017,14 @@ void RailEditor::PaintActiveRail(float t){
 	}
 }
 
-// 全レールの塗った区間を消す
+// 全ステージの全レールの塗った区間を消す(今のステージ以外のレールも描くため、前に遊んだステージの塗りも消す)
 void RailEditor::ClearPaint(){
-	for(Rail& rail : rails_){
-		rail.isPainted = false;
-		rail.paintStartT = 0.0f;
-		rail.paintEndT = 0.0f;
+	for(int stage = 0; stage < StageInfo::kStageCount; ++stage){
+		for(Rail& rail : GetStageRails(stage)){
+			rail.isPainted = false;
+			rail.paintStartT = 0.0f;
+			rail.paintEndT = 0.0f;
+		}
 	}
 }
 
@@ -983,11 +1052,28 @@ void RailEditor::UpdateRailLocks(const std::vector<bool>& lockedRails,float grow
 
 // 管を伸ばす演出を飛ばして、出ていないレールをすぐに反映する
 void RailEditor::ResetRailLocks(const std::vector<bool>& lockedRails){
-	const size_t count = (std::min)(rails_.size(),lockedRails.size());
-	for(size_t i = 0; i < count; ++i){
-		rails_[i].isLocked = lockedRails[i];
-		rails_[i].unlockGrownLength = kFullyGrownLength;
+	ResetStageRailLocks(stageIndex_,lockedRails);
+}
+
+// 指定ステージのレールに、出ていないレールをすぐに反映する
+void RailEditor::ResetStageRailLocks(int stageIndex,const std::vector<bool>& lockedRails){
+	if(!StageInfo::IsValidStageIndex(stageIndex)){
+		return;
 	}
+	std::vector<Rail>& rails = GetStageRails(stageIndex);
+	const size_t count = (std::min)(rails.size(),lockedRails.size());
+	for(size_t i = 0; i < count; ++i){
+		rails[i].isLocked = lockedRails[i];
+		rails[i].unlockGrownLength = kFullyGrownLength;
+	}
+}
+
+// 指定ステージのレールの本数を取得
+int RailEditor::GetStageRailCount(int stageIndex) const{
+	if(!StageInfo::IsValidStageIndex(stageIndex)){
+		return 0;
+	}
+	return static_cast<int>(GetStageRails(stageIndex).size());
 }
 
 // 進行度tと制御点配列から、レール上の座標を計算する(GetPositionOnRail・全レール描画で共用)
@@ -1249,6 +1335,14 @@ int RailEditor::GetRailCount() const{
 	return static_cast<int>(rails_.size());
 }
 
+// 今のステージの指定したレールがゴールのレールか(範囲外のレールはゴールのレールではないものとする)
+bool RailEditor::IsGoalRail(int railIndex) const{
+	if(railIndex < 0 || railIndex >= static_cast<int>(rails_.size())){
+		return false;
+	}
+	return rails_[railIndex].isGoalRail;
+}
+
 // アクティブなレールの制御点数を取得
 int RailEditor::GetControlPointCount() const{
 	return static_cast<int>(rails_[activeRailIndex_].controlPoints.size());
@@ -1412,13 +1506,13 @@ void RailEditor::ToggleShowCurve(){
 	rails_[activeRailIndex_].showCurve = !rails_[activeRailIndex_].showCurve;
 }
 
-// 指定インデックスのレール1本だけをJSONファイルに保存する(書き込めなかったときはfalse)
-bool RailEditor::SaveRailToFile(int index){
-	Rail& rail = rails_[index];
+// レール1本だけをfilePathのJSONファイルに保存する(書き込めなかったときはfalse)
+bool RailEditor::SaveRailToFile(const Rail& rail,const std::string& filePath) const{
 
 	// ルート要素。nameは読み込み時の簡易フォーマットチェック・レール名の保存用
 	nlohmann::json root;
 	root["name"] = rail.name;
+	root["isGoalRail"] = rail.isGoalRail;
 
 	// 各制御点を配列に詰める
 	nlohmann::json pointsJson = nlohmann::json::array();
@@ -1435,16 +1529,14 @@ bool RailEditor::SaveRailToFile(int index){
 	}
 	root["control_points"] = pointsJson;
 
-	std::string savePathStr = GetRailFilePath(index);
-
 	// 保存先フォルダが無ければ作成しておく
-	std::filesystem::path savePath(savePathStr);
+	std::filesystem::path savePath(filePath);
 	if(savePath.has_parent_path()){
 		std::filesystem::create_directories(savePath.parent_path());
 	}
 
 	// ファイルへ書き出し(setwで人が読める整形出力にする)
-	std::ofstream file(savePathStr);
+	std::ofstream file(filePath);
 	if(!file.is_open()){
 		return false;
 	}
@@ -1452,11 +1544,9 @@ bool RailEditor::SaveRailToFile(int index){
 	return true;
 }
 
-// 指定インデックスのレール1本だけをJSONファイルから読み込む(ファイルが無ければ何もしない)
-void RailEditor::LoadRailFromFile(int index){
-	Rail& rail = rails_[index];
-
-	std::ifstream file(GetRailFilePath(index));
+// レール1本だけをfilePathのJSONファイルから読み込む(ファイルが無ければ何もしない)
+void RailEditor::LoadRailFromFile(Rail& rail,const std::string& filePath){
+	std::ifstream file(filePath);
 	if(!file.is_open()){
 		// ファイルがまだ無い(初回起動・新規追加直後など)ときは現状維持
 		return;
@@ -1474,6 +1564,8 @@ void RailEditor::LoadRailFromFile(int index){
 	if(root.contains("name") && root["name"].is_string()){
 		rail.name = root["name"].get<std::string>();
 	}
+	// ゴールのレールか(旧フォーマットのJSONには無いため、value()で既定値falseを補う)
+	rail.isGoalRail = root.value("isGoalRail",false);
 
 	// 読み込んだ内容で制御点を置き換える
 	rail.controlPoints.clear();
@@ -1503,15 +1595,19 @@ void RailEditor::LoadRailFromFile(int index){
 	SyncPointObjectsToControlPoints(rail);
 }
 
-// 全レールをそれぞれ対応するJSONファイルへ保存する
+// 全ステージの全レールをそれぞれ対応するJSONファイルへ保存する
+// 保存していない変更があるかは全ステージまとめて見ているため、保存も全ステージまとめて行う
 void RailEditor::SaveToJson(){
 	// まだ履歴に積んでいない編集があれば先に確定し、保存した状態を保存済みとして記録できるようにする
 	CommitEditIfChanged();
 
 	bool isAllSaved = true;
-	for(size_t i = 0; i < rails_.size(); ++i){
-		if(!SaveRailToFile(static_cast<int>(i))){
-			isAllSaved = false;
+	for(int stage = 0; stage < StageInfo::kStageCount; ++stage){
+		const std::vector<Rail>& rails = GetStageRails(stage);
+		for(size_t i = 0; i < rails.size(); ++i){
+			if(!SaveRailToFile(rails[i],GetRailFilePath(stage,static_cast<int>(i)))){
+				isAllSaved = false;
+			}
 		}
 	}
 
@@ -1521,7 +1617,7 @@ void RailEditor::SaveToJson(){
 	}
 }
 
-// 全レールをJSONファイルから読み込む(Loadボタン用)
+// 全ステージのレールをJSONファイルから読み込む(Loadボタン用)
 // 読み込みも1回の編集として履歴に積み、Ctrl+Zで読み込む前に戻せるようにする
 void RailEditor::LoadFromJson(){
 	LoadRailsFromFiles();
@@ -1529,56 +1625,74 @@ void RailEditor::LoadFromJson(){
 	history_.MarkSaved();
 }
 
-// 全レールをJSONファイルから読み込む
+// 全ステージのレールをJSONファイルから読み込む
 // メモリ上に既にあるレールは対応ファイルで上書きし、ディスクにのみ存在するレール(rail1.json, rail2.json...)は
 // New Rail相当の追加をしながら連番で読み込んでいく(ファイルが途切れたところで打ち切り)
 void RailEditor::LoadRailsFromFiles(){
-	// 既存のレールを、それぞれ対応するファイルがあれば読み込み直す
-	for(size_t i = 0; i < rails_.size(); ++i){
-		LoadRailFromFile(static_cast<int>(i));
-	}
+	for(int stage = 0; stage < StageInfo::kStageCount; ++stage){
+		std::vector<Rail>& rails = GetStageRails(stage);
 
-	// メモリ上にまだ無いレールも、ファイルが存在する限り新規追加しながら連番で読み込む
-	int index = static_cast<int>(rails_.size());
-	while(std::filesystem::exists(GetRailFilePath(index))){
-		AddRail();
-		LoadRailFromFile(index);
-		++index;
+		// レールが1本も無いと他の処理(補間など)が破綻するため、ファイルが無いステージにも最低1本は用意する
+		if(rails.empty()){
+			AppendRail(rails);
+		}
+
+		// 既存のレールを、それぞれ対応するファイルがあれば読み込み直す
+		for(size_t i = 0; i < rails.size(); ++i){
+			LoadRailFromFile(rails[i],GetRailFilePath(stage,static_cast<int>(i)));
+		}
+
+		// メモリ上にまだ無いレールも、ファイルが存在する限り新規追加しながら連番で読み込む
+		int index = static_cast<int>(rails.size());
+		while(std::filesystem::exists(GetRailFilePath(stage,index))){
+			AppendRail(rails);
+			LoadRailFromFile(rails.back(),GetRailFilePath(stage,index));
+			++index;
+		}
 	}
 
 	// 読み込み後は先頭のレールをアクティブな編集対象にする
 	activeRailIndex_ = 0;
+	selectedPointIndex_ = -1;
 }
-// 今のレールの状態を編集履歴に残す形で取得する
-RailEditor::RailsSnapshot RailEditor::MakeSnapshot() const{
-	RailsSnapshot snapshot;
-	snapshot.reserve(rails_.size());
-	for(const Rail& rail : rails_){
-		snapshot.push_back({rail.name, rail.controlPoints});
+// 今の全ステージのレールの状態を編集履歴に残す形で取得する
+RailEditor::StagesSnapshot RailEditor::MakeSnapshot() const{
+	StagesSnapshot snapshot;
+	for(int stage = 0; stage < StageInfo::kStageCount; ++stage){
+		const std::vector<Rail>& rails = GetStageRails(stage);
+		snapshot[stage].reserve(rails.size());
+		for(const Rail& rail : rails){
+			snapshot[stage].push_back({rail.name, rail.controlPoints, rail.isGoalRail});
+		}
 	}
 	return snapshot;
 }
 
-// 編集履歴の状態をレールに反映する
-void RailEditor::ApplySnapshot(const RailsSnapshot& snapshot){
+// 編集履歴の状態を全ステージのレールに反映する
+void RailEditor::ApplySnapshot(const StagesSnapshot& snapshot){
 	const int prevActiveRailIndex = activeRailIndex_;
 
-	// レールの本数を履歴の状態にそろえる(New Railを戻したときは減らし、やり直したときは増やす)
-	while(rails_.size() < snapshot.size()){
-		AddRail();
-	}
-	while(rails_.size() > snapshot.size()){
-		rails_.pop_back();
-	}
+	for(int stage = 0; stage < StageInfo::kStageCount; ++stage){
+		std::vector<Rail>& rails = GetStageRails(stage);
+		const RailsSnapshot& stageSnapshot = snapshot[stage];
 
-	for(size_t i = 0; i < rails_.size(); ++i){
-		rails_[i].name = snapshot[i].name;
-		rails_[i].controlPoints = snapshot[i].controlPoints;
-		SyncPointObjectsToControlPoints(rails_[i]);
+		// レールの本数を履歴の状態にそろえる(New Railを戻したときは減らし、やり直したときは増やす)
+		while(rails.size() < stageSnapshot.size()){
+			AppendRail(rails);
+		}
+		while(rails.size() > stageSnapshot.size()){
+			rails.pop_back();
+		}
+
+		for(size_t i = 0; i < rails.size(); ++i){
+			rails[i].name = stageSnapshot[i].name;
+			rails[i].controlPoints = stageSnapshot[i].controlPoints;
+			rails[i].isGoalRail = stageSnapshot[i].isGoalRail;
+			SyncPointObjectsToControlPoints(rails[i]);
+		}
 	}
 
 	// アクティブなレールは戻す前のものを残し、消えたレールを指していれば最後のレールにする
-	// (AddRail()は追加したレールをアクティブにするため、ここで戻す)
 	activeRailIndex_ = (std::min)(prevActiveRailIndex,static_cast<int>(rails_.size()) - 1);
 	if(activeRailIndex_ != prevActiveRailIndex){
 		selectedPointIndex_ = -1;
@@ -1587,12 +1701,17 @@ void RailEditor::ApplySnapshot(const RailsSnapshot& snapshot){
 }
 
 // 今のレールの状態が、最後に確定した状態から変わっていれば確定して履歴に積む
-// 毎フレームの比較で状態を丸ごとコピーしないよう、変わっていたときだけ状態を作る
+// 毎フレームの比較で状態を丸ごとコピーしないよう、ステージ・レールごとに比べて、変わっていたときだけ状態を作る
 void RailEditor::CommitEditIfChanged(){
-	const RailsSnapshot& committed = history_.GetCommitted();
-	bool isChanged = (committed.size() != rails_.size());
-	for(size_t i = 0; !isChanged && i < rails_.size(); ++i){
-		isChanged = (committed[i].name != rails_[i].name || committed[i].controlPoints != rails_[i].controlPoints);
+	const StagesSnapshot& committed = history_.GetCommitted();
+	bool isChanged = false;
+	for(int stage = 0; !isChanged && stage < StageInfo::kStageCount; ++stage){
+		const std::vector<Rail>& rails = GetStageRails(stage);
+		const RailsSnapshot& committedRails = committed[stage];
+		isChanged = (committedRails.size() != rails.size());
+		for(size_t i = 0; !isChanged && i < rails.size(); ++i){
+			isChanged = (committedRails[i].name != rails[i].name || committedRails[i].controlPoints != rails[i].controlPoints || committedRails[i].isGoalRail != rails[i].isGoalRail);
+		}
 	}
 	if(!isChanged){
 		return;
@@ -1604,7 +1723,7 @@ void RailEditor::CommitEditIfChanged(){
 
 // 1つ前の状態に戻す(Ctrl+Z)
 bool RailEditor::UndoEdit(){
-	RailsSnapshot snapshot;
+	StagesSnapshot snapshot;
 	if(!history_.Undo(snapshot)){
 		return false;
 	}
@@ -1614,7 +1733,7 @@ bool RailEditor::UndoEdit(){
 
 // Undoで戻した状態をやり直す(Ctrl+Y)
 bool RailEditor::RedoEdit(){
-	RailsSnapshot snapshot;
+	StagesSnapshot snapshot;
 	if(!history_.Redo(snapshot)){
 		return false;
 	}

@@ -10,7 +10,6 @@
 #include "ImGuiManager.h"
 #include "EditorWidgets.h"
 #include "EditorContext.h"
-#include "Editor/RailEditor.h"
 #include "Editor/TargetEditor.h"
 #include <algorithm>
 #include <cmath>
@@ -19,13 +18,15 @@
 namespace{
 	// 的の表示に使用するモデル(スプラトゥーンの標的のような、同心円の模様の円盤)
 	const std::string kTargetModelPath = "Bullseye/bullseye.obj";
+	// 鍵の的の表示に使用するモデル(普通の的と同じ円盤に、水色の輪と鍵の絵の画像を貼ったもの。tools/generate_key_target_texture.py で画像を生成する)
+	const std::string kKeyTargetModelPath = "Bullseye/keyTarget.obj";
 }
 
 TargetManager::TargetManager() = default;
 TargetManager::~TargetManager() = default;
 
 // 初期化処理
-void TargetManager::Initialize(Obj3dCommon* objCommon,const RailEditor* railEditor,const std::string& paramGroup){
+void TargetManager::Initialize(Obj3dCommon* objCommon,const std::string& paramGroup){
 	objCommon_ = objCommon;
 	paramGroup_ = paramGroup;
 
@@ -33,6 +34,7 @@ void TargetManager::Initialize(Obj3dCommon* objCommon,const RailEditor* railEdit
 	GlobalVariables::GetInstance()->AddItem(paramGroup_,"aimHitAngle",kDefaultAimHitAngle); // ヒット判定の許容角度
 
 	ModelManager::GetInstance()->LoadModel(kTargetModelPath);
+	ModelManager::GetInstance()->LoadModel(kKeyTargetModelPath);
 	model_ = ModelManager::GetInstance()->FindModel(kTargetModelPath);
 
 	// 的の配置エディターの生成と初期化(保存済みJSONがあればここで読み込まれる)
@@ -50,51 +52,8 @@ void TargetManager::Initialize(Obj3dCommon* objCommon,const RailEditor* railEdit
 	});
 #endif
 
-	// 保存済みの配置が無い初回起動時のみ、従来どおりレール沿いの自動配置で初期データを作る
-	if(railEditor && editor_->GetTargetCount() == 0){
-		CreateDefaultPlacement(railEditor);
-	}
-
 	// 配置エディターの内容をシーンの的リストへ反映する
 	SyncFromEditor();
-}
-
-// 保存済みの配置が無いときの自動配置
-// 的をレール沿いの複数の進行度(t)に、左右・上下・奥行き(進行方向)へオフセットして配置(ゲームらしく散らばらせる)
-void TargetManager::CreateDefaultPlacement(const RailEditor* railEditor){
-	constexpr size_t kTargetCount = 16;                  // 的の個数
-	constexpr float kTargetRailTMin = 0.08f;             // 配置開始位置(レール進行度)
-	constexpr float kTargetRailTMax = 0.92f;             // 配置終了位置(レール進行度)
-	constexpr float kTargetSideOffsetAmount = 3.5f;      // 左右オフセットの振れ幅(交互に左右へ配置)
-	constexpr float kTargetUpOffsetMin = 1.0f;           // 上下オフセットの最小値
-	constexpr float kTargetUpOffsetMax = 3.5f;           // 上下オフセットの最大値
-	constexpr float kTargetForwardOffsetMin = 2.0f;      // 奥行き(進行方向)オフセットの最小値
-	constexpr float kTargetForwardOffsetMax = 8.0f;      // 奥行き(進行方向)オフセットの最大値
-	constexpr Vector3 kWorldUp = {0.0f, 1.0f, 0.0f};
-
-	for(size_t i = 0; i < kTargetCount; ++i){
-		// 0〜1の範囲で的の配置順を正規化し、各オフセットの補間に使う
-		float ratio = static_cast<float>(i) / static_cast<float>(kTargetCount - 1);
-		float t = kTargetRailTMin + (kTargetRailTMax - kTargetRailTMin) * ratio;
-
-		// レール上の基準位置と進行方向から、進行方向に対して直角な「右」方向を求める
-		Vector3 basePos = railEditor->GetPositionOnRail(t);
-		Vector3 forward = railEditor->GetForwardOnRail(t);
-		Vector3 right = Normalize(Cross(kWorldUp,forward));
-
-		// 左右は交互に振り分け、上下・奥行きは配置順に応じて緩やかに変化させる
-		float side = (i % 2 == 0)?-kTargetSideOffsetAmount:kTargetSideOffsetAmount;
-		float up = kTargetUpOffsetMin + (kTargetUpOffsetMax - kTargetUpOffsetMin) * ratio;
-		float forwardOffset = kTargetForwardOffsetMin + (kTargetForwardOffsetMax - kTargetForwardOffsetMin) * ratio;
-
-		Vector3 pos = basePos + right * side + kWorldUp * up + forward * forwardOffset;
-
-		// 座標は配置エディター側が保持する(描画用オブジェクトはSyncFromEditorで生成される)
-		editor_->AddTargetAt(pos);
-	}
-
-	// 自動配置直後は何も選択していない状態にしておく
-	editor_->SetSelectedIndex(-1);
 }
 
 // 配置エディターの更新(配置モード中のドラッグ移動もここで処理される)
@@ -106,6 +65,18 @@ void TargetManager::UpdateEditor(){
 	editor_->Update();
 	// 編集結果(追加・削除・ドラッグ移動)をシーンの的リストへ反映する
 	SyncFromEditor();
+}
+
+// 編集・プレイするステージを切り替える
+void TargetManager::SetStageIndex(int stageIndex){
+	if(!editor_){
+		return;
+	}
+
+	editor_->SetStageIndex(stageIndex);
+	// 的のリストを切り替えた先のステージの配置に合わせ、前のステージで壊した的の状態を持ち越さないよう、すべて生存状態に戻す
+	SyncFromEditor();
+	Reset();
 }
 
 // 配置エディターで「Focus」が押されていれば、選択中の的の位置を返す(1回読むと消える)
@@ -131,6 +102,7 @@ void TargetManager::SyncFromEditor(){
 		target.obj = std::make_unique<Obj3D>();
 		target.obj->Initialize(objCommon_);
 		target.obj->SetModel(kTargetModelPath);
+		target.isKeyModel = false;
 		target.isAlive = true;
 		targets_.push_back(std::move(target));
 	}
@@ -143,17 +115,22 @@ void TargetManager::SyncFromEditor(){
 	// Editモード中だけ、配置エディターで選択中の的を色で目立たせる(Playモード中は普段の色に戻す)
 	const int highlightIndex = EditorContext::GetInstance()->IsPlayMode()?-1:editor_->GetSelectedIndex();
 
-	// 座標と壊すと出るレールをエディターの配置内容で上書きし、鍵の的は色を変えて普通の的と見分けられるようにする
+	// 座標と壊すと出るレールをエディターの配置内容で上書きし、鍵の的は鍵の絵のモデルにして普通の的と見分けられるようにする
 	for(size_t i = 0; i < targets_.size(); ++i){
 		Target& target = targets_[i];
 		target.position = editor_->GetTargetPosition(static_cast<int>(i));
 		target.unlockRailIndex = editor_->GetUnlockRailIndex(static_cast<int>(i));
+
+		// モデルは鍵の的かどうかが変わったときだけ差し替える(Target Editor で壊すと出るレールを変えたとき)
+		const bool isKeyTarget = target.unlockRailIndex >= 0;
+		if(target.isKeyModel != isKeyTarget){
+			target.obj->SetModel(isKeyTarget?kKeyTargetModelPath:kTargetModelPath);
+			target.isKeyModel = isKeyTarget;
+		}
+
+		// 模様は画像の色のまま出し、Editモードで選択中の的だけ色を掛けて目立たせる
 		if(Model::Material* mat = target.obj->GetMaterial()){
-			if(static_cast<int>(i) == highlightIndex){
-				mat->color = kSelectedTargetColor;
-			} else{
-				mat->color = (target.unlockRailIndex >= 0)?kKeyTargetColor:kNormalTargetColor;
-			}
+			mat->color = (static_cast<int>(i) == highlightIndex)?kSelectedTargetColor:kNormalTargetColor;
 		}
 	}
 }
@@ -162,12 +139,17 @@ void TargetManager::SyncFromEditor(){
 // レティクルは常に画面中央=カメラの前方ベクトル方向なので、
 // 「カメラ→的」の方向とカメラ前方ベクトルのなす角が閾値以内なら狙えている(表示上のフィードバック用)
 // 実際の命中判定は、発射した弾と的のモデルから求めた境界球が重なったかどうかで行う
-bool TargetManager::Update(const Vector3& cameraPosition,const Vector3& cameraForward,PlayerBulletManager& bullets){
+bool TargetManager::Update(const Vector3& cameraPosition,const Vector3& cameraForward,PlayerBulletManager& bullets,float deltaTime){
 	// 調整項目から最新の値を取得(ImGui編集/ホットリロードが即反映される)
 	float aimHitAngle = GlobalVariables::GetInstance()->GetFloatValue(paramGroup_,"aimHitAngle");
 
 	// 前回のUpdate()で壊れた的の記録を消してから、今回の判定を行う
 	destroyedPositions_.clear();
+	hasDestroyedKeyTarget_ = false;
+
+	// 鍵の的は普通の的より大きくし、ゆっくり脈打たせて目を引く(動いているものは視界の端でも気づきやすい)
+	keyPulseTimer_ += deltaTime;
+	const float keyScaleRate = kKeyTargetScaleRate * (1.0f + kKeyPulseAmplitude * std::sin(keyPulseTimer_ * kKeyPulseSpeed));
 
 	bool isAimingAtAnyTarget = false; // レティクル中心の色変えに使う
 	for(auto& target : targets_){
@@ -186,6 +168,9 @@ bool TargetManager::Update(const Vector3& cameraPosition,const Vector3& cameraFo
 		// 狙えているときは少し大きくして視覚的にフィードバック
 		// 当たり判定も見た目の大きさに合わせるため、判定より先に求めておく
 		float scale = isAimed?kAimedScale:kNormalScale;
+		if(target.unlockRailIndex >= 0){
+			scale *= keyScaleRate;
+		}
 
 		// 的と生存している弾の境界球が重なっていればヒット
 		// 的は描画用オブジェクトの行列がこの後で更新されるため、現在座標と表示スケールから境界球を求める
@@ -194,6 +179,9 @@ bool TargetManager::Update(const Vector3& cameraPosition,const Vector3& cameraFo
 
 			// 破片・しぶき・閃光の演出と連鎖数の加算は呼び出し側で行うため、壊れた位置を記録しておく
 			destroyedPositions_.push_back(target.position);
+			if(target.unlockRailIndex >= 0){
+				hasDestroyedKeyTarget_ = true;
+			}
 			continue;
 		}
 
@@ -286,6 +274,50 @@ void TargetManager::FillLockedRails(std::vector<bool>& lockedRails) const{
 			lockedRails[target.unlockRailIndex] = true;
 		}
 	}
+}
+
+// 指定ステージの鍵の的がすべて残っているときに、出ていないレールに true を入れる
+// 範囲外のステージ・レールの指定は無視する
+void TargetManager::FillStageLockedRails(int stageIndex,std::vector<bool>& lockedRails) const{
+	if(!editor_ || !StageInfo::IsValidStageIndex(stageIndex)){
+		return;
+	}
+	for(const TargetEditor::TargetPoint& point : editor_->GetStageTargetPoints(stageIndex)){
+		if(point.unlockRailIndex >= 0 && point.unlockRailIndex < static_cast<int>(lockedRails.size())){
+			lockedRails[point.unlockRailIndex] = true;
+		}
+	}
+}
+
+// 生きている鍵の的のうち、指定した位置に一番近いものを探す
+bool TargetManager::FindNearestKeyTarget(const Vector3& position,float maxDistance,Vector3& outPosition) const{
+	bool isFound = false;
+	float nearestDistance = maxDistance;
+	for(const auto& target : targets_){
+		if(!target.isAlive || target.unlockRailIndex < 0){
+			continue;
+		}
+		const float distance = Length(target.position - position);
+		if(distance <= nearestDistance){
+			nearestDistance = distance;
+			outPosition = target.position;
+			isFound = true;
+		}
+	}
+	return isFound;
+}
+
+// 指定したレールが、鍵の的を壊すと出るレールか
+bool TargetManager::IsKeyRail(int railIndex) const{
+	if(railIndex < 0){
+		return false;
+	}
+	for(const auto& target : targets_){
+		if(target.unlockRailIndex == railIndex){
+			return true;
+		}
+	}
+	return false;
 }
 
 // 生存している的だけ描画する

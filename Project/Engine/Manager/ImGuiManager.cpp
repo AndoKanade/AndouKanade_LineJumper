@@ -21,8 +21,8 @@
 
 #ifdef USE_IMGUI
 namespace{
-	// ImGui の標準フォントに無い日本語の文字を描くフォント(操作説明の画像と同じフォント)
-	constexpr const char* kJapaneseFontPath = "resource/fonts/MochiyPopPOne-Regular.ttf";
+	// ImGui の標準フォントに無い日本語の文字を描くフォント(エディターの小さい文字でも読みやすいゴシック体。ライセンスは同じフォルダの NotoSansJP-OFL.txt)
+	constexpr const char* kJapaneseFontPath = "resource/fonts/NotoSansJP-Regular.ttf";
 
 	// imgui.ini に書き出すエディターの状態の、種類名と項目名
 	// 下段の選択パネルで選んだエディターを覚えておき、次に起動したときも同じエディターを開く

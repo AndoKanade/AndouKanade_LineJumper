@@ -27,6 +27,8 @@ struct DirectionalLight
     float32_t4 color;
     float32_t3 direction;
     float32_t intensity;
+    // 光が当たらない面の明るさの下限(光が真正面から当たる面を 1 としたときの割合。0 なら真っ暗、これより明るい面は変えない)
+    float32_t shadowBrightness;
 };
 
 struct PointLight
@@ -162,6 +164,9 @@ PixelShaderOutput main(VertexShaderOutput input)
         // --- 1. Directional Light ---
         float32_t3 dirFactor = normalize(-gDirectionalLight.direction);
         float32_t dirCos = pow(dot(normal, dirFactor) * 0.5f + 0.5f, 2.0f);
+        // 光が当たらない面も真っ暗にせず、shadowBrightness の明るさまで持ち上げて影を薄くする
+        // それより明るい面(日が当たっている面)はそのままにし、暗い側だけを持ち上げる
+        dirCos = max(dirCos, gDirectionalLight.shadowBrightness);
         float32_t3 dirDiffuse = baseColor * gDirectionalLight.color.rgb * dirCos * gDirectionalLight.intensity;
         
         // [修正] 鏡面反射計算の切り替え

@@ -28,6 +28,8 @@ void Obj3dCommon::Initialize(DXCommon* dxcommon){
 	directionalLightData_->color = {1.0f, 1.0f, 1.0f, 1.0f};
 	directionalLightData_->direction = {0.0f, -1.0f, 0.0f};
 	directionalLightData_->intensity = 1.0f;
+	// 光が当たらない面は今までどおり暗くする(太陽(Sun)が調整項目の値で上書きする)
+	directionalLightData_->shadowBrightness = 0.0f;
 
 	// 点光源リソース作成 (256バイトアライメント)
 	size_t pointSize = (sizeof(PointLight) + 0xff) & ~0xff;

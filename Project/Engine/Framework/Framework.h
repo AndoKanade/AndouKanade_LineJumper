@@ -74,6 +74,15 @@ public: // --- 公開メソッド ---
 	/// <returns>終了フラグが立っていれば true</returns>
 	virtual bool IsEndRequest(){ return endRequest_; }
 
+protected: // --- 継承先で実装する処理 ---
+
+	/// <summary>
+	/// ESC キーによる終了の受け付け(入力の更新の後、シーンの更新より前に毎フレーム呼ぶ)
+	/// 既定では ESC キーですぐに終了リクエストを送る。継承先で終了確認メニューなどに差し替える
+	/// </summary>
+	/// <returns>このフレームのシーンの更新を止めるなら true</returns>
+	virtual bool UpdateQuitRequest();
+
 protected: // --- メンバ変数（継承先からもアクセス可能） ---
 
 	// ゲームループ終了フラグ

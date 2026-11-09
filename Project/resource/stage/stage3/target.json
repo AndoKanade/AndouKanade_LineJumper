@@ -1,0 +1,36 @@
+{
+    "targets": [
+        {
+            "position": [
+                -1.8,
+                2.72,
+                18.5
+            ],
+            "unlockRailIndex": -1
+        },
+        {
+            "position": [
+                -7.8,
+                3.2,
+                26.5
+            ],
+            "unlockRailIndex": -1
+        },
+        {
+            "position": [
+                -1.8,
+                3.68,
+                34.5
+            ],
+            "unlockRailIndex": -1
+        },
+        {
+            "position": [
+                -7.8,
+                4.16,
+                42.5
+            ],
+            "unlockRailIndex": -1
+        }
+    ]
+}

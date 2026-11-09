@@ -207,15 +207,16 @@ void StartSequence::Update(float deltaTime,const Vector3& playerPosition){
 
 	case Phase::Standby:
 	{
-		// 出発ゲートの前の目印に立っている間だけ操作案内を出し、SPACE で出発する
+		// どれかの出発ゲートの前の目印に立っている間だけ操作案内を出し、SPACE でそのゲートから出発する
 		// (この段階ではジャンプより先に判定し、押した瞬間に GateOpen へ移るため、同じ SPACE でジャンプはしない)
-		const bool isAtGate = startPlatform_ && startPlatform_->IsInGateArea(playerPosition);
+		const int gateIndex = startPlatform_?startPlatform_->FindGateArea(playerPosition):-1;
+		const bool isAtGate = gateIndex >= 0;
 		if(introUI_){
 			introUI_->SetPromptVisible(isAtGate);
 		}
 		if(isAtGate && input_ && input_->TriggerKey(DIK_SPACE)){
 			// 目印から柱へインクを流し込んでゲートを開け始め、操作案内は消す
-			startPlatform_->BeginOpenGate();
+			startPlatform_->BeginOpenGate(gateIndex);
 			if(introUI_){
 				introUI_->SetPromptVisible(false);
 			}

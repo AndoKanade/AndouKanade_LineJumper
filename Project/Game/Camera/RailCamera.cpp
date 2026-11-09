@@ -57,6 +57,16 @@ void RailCamera::Reset(){
 	isFollowSnapRequested_ = true;
 }
 
+// 照準オフセットを、見えている向きを変えずに0へ戻す
+// 「追従中の向き + 照準オフセット」が変わらないよう、照準オフセットを追従中の向きへ足してから0にする
+// 追従中の向きは毎フレーム基準の向きへ寄っていくため、カメラは振り向いていた向きからレールの正面へなめらかに回る
+void RailCamera::RecenterAim(){
+	followRotation_.x += aimPitchOffset_;
+	followRotation_.y = WrapAngle(followRotation_.y + aimYawOffset_,kPi);
+	aimYawOffset_ = 0.0f;
+	aimPitchOffset_ = 0.0f;
+}
+
 // 更新処理
 // プレイヤーの基準位置を回転の中心にし、カメラの向きの後ろ側へ離して置くことで、照準を動かすとプレイヤーの周りを回り込む
 void RailCamera::Update(const Vector3& basePosition,const Vector3& baseRotation,bool isInputEnabled,Input* input,float deltaTime,float groundHeight,const StartPlatform* startPlatform){

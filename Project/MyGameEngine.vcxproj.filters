@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="ソース ファイル">
@@ -318,6 +318,21 @@
     <ClCompile Include="Game\UI\StageClearUI.cpp">
       <Filter>ソース ファイル\Game\UI</Filter>
     </ClCompile>
+    <ClCompile Include="Game\UI\QuitConfirmMenu.cpp">
+      <Filter>ソース ファイル\Game\UI</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\UI\StageLockedNotice.cpp">
+      <Filter>ソース ファイル\Game\UI</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\UI\TutorialHints.cpp">
+      <Filter>ソース ファイル\Game\UI</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\UI\RailSwitchPrompt.cpp">
+      <Filter>ソース ファイル\Game\UI</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\UI\KeyTargetMarker.cpp">
+      <Filter>ソース ファイル\Game\UI</Filter>
+    </ClCompile>
     <ClCompile Include="Game\UI\SpeedLines.cpp">
       <Filter>ソース ファイル\Game\UI</Filter>
     </ClCompile>
@@ -337,6 +352,9 @@
       <Filter>ソース ファイル\Game\Title</Filter>
     </ClCompile>
     <ClCompile Include="Game\Title\ReturnJump.cpp">
+      <Filter>ソース ファイル\Game\Title</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Title\BarrierBreakCutscene.cpp">
       <Filter>ソース ファイル\Game\Title</Filter>
     </ClCompile>
     <ClCompile Include="Game\Title\Departure\SuperJumpDeparture.cpp">
@@ -572,6 +590,9 @@
     <ClInclude Include="Game\objects\StageResult.h">
       <Filter>ヘッダー ファイル\Game\objects</Filter>
     </ClInclude>
+    <ClInclude Include="Game\objects\StageInfo.h">
+      <Filter>ヘッダー ファイル\Game\objects</Filter>
+    </ClInclude>
     <ClInclude Include="Game\objects\ContinuePoint.h">
       <Filter>ヘッダー ファイル\Game\objects</Filter>
     </ClInclude>
@@ -579,6 +600,21 @@
       <Filter>ヘッダー ファイル\Game\UI</Filter>
     </ClInclude>
     <ClInclude Include="Game\UI\StageClearUI.h">
+      <Filter>ヘッダー ファイル\Game\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\UI\QuitConfirmMenu.h">
+      <Filter>ヘッダー ファイル\Game\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\UI\StageLockedNotice.h">
+      <Filter>ヘッダー ファイル\Game\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\UI\TutorialHints.h">
+      <Filter>ヘッダー ファイル\Game\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\UI\RailSwitchPrompt.h">
+      <Filter>ヘッダー ファイル\Game\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\UI\KeyTargetMarker.h">
       <Filter>ヘッダー ファイル\Game\UI</Filter>
     </ClInclude>
     <ClInclude Include="Game\UI\SpeedLines.h">
@@ -603,6 +639,9 @@
       <Filter>ヘッダー ファイル\Game\Title</Filter>
     </ClInclude>
     <ClInclude Include="Game\Title\ReturnJump.h">
+      <Filter>ヘッダー ファイル\Game\Title</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Title\BarrierBreakCutscene.h">
       <Filter>ヘッダー ファイル\Game\Title</Filter>
     </ClInclude>
     <ClInclude Include="Game\Title\Departure\DepartureContext.h">

@@ -1,0 +1,182 @@
+{
+    "control_points": [
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
+            "position": [
+                -4.8,
+                0.0,
+                -1.5
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
+            "position": [
+                -4.8,
+                0.0,
+                -6.5
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
+            "position": [
+                -4.8,
+                0.3,
+                -11.5
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
+            "position": [
+                -4.8,
+                0.6,
+                -16.5
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
+            "position": [
+                -4.8,
+                0.9,
+                -21.5
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
+            "position": [
+                -4.8,
+                1.2,
+                -26.5
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
+            "position": [
+                -4.8,
+                1.5,
+                -31.5
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
+            "position": [
+                -4.8,
+                1.8,
+                -36.5
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
+            "position": [
+                -4.8,
+                2.1,
+                -41.5
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
+            "position": [
+                -4.8,
+                2.4,
+                -46.5
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
+            "position": [
+                -4.8,
+                2.7,
+                -51.5
+            ],
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "speed": 1.0
+        }
+    ],
+    "isGoalRail": true,
+    "name": "Rail 0"
+}

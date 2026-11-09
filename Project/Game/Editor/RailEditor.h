@@ -3,6 +3,8 @@
 #include "Model.h"
 #include "EditHistory.h"
 #include "EditorDocumentManager.h"
+#include "objects/StageInfo.h"
+#include <array>
 #include <vector>
 #include <memory>
 #include <optional>
@@ -71,12 +73,24 @@ public:
 	// 鍵の的が残っていて出ていないレールも探索対象から外す
 	NearestRailResult FindNearestRail(const Vector3& worldPos,int excludeRailIndex = -1) const;
 
+	// 編集・プレイするステージを切り替える(切り替えた先のステージの0番のレールをアクティブにする)
+	// ステージごとのレールはすべて読み込んであり、切り替えても保存していない変更は消えない
+	void SetStageIndex(int stageIndex);
+	// 今編集・プレイしているステージの番号を取得
+	int GetStageIndex() const{ return stageIndex_; }
+	// 一覧でステージが選び直されていれば、そのステージの番号をoutStageIndexに入れてtrueを返す(1回読むと消える)
+	// 的・敵のエディターも同じステージに合わせて切り替えるため、切り替える処理はGameScene側で行う
+	bool ConsumeStageChangeRequest(int& outStageIndex);
+
 	// 指定インデックスのレールをアクティブなレールとして切り替える(Playモードでのレール乗り換えにも使用)
 	void SwitchActiveRail(int index);
 	// 現在アクティブなレールのインデックスを取得(デバッグ表示用)
 	int GetActiveRailIndex() const;
 	// 読み込まれている全レールの本数を取得(デバッグ表示用)
 	int GetRailCount() const;
+	// 今のステージの指定したレールがゴールのレールか(ほかのレールは終点でレールから外れるが、ゴールのレールは終点で止まる)
+	// 乗るとゴールの的が現れて先を並走し、終点で止まった後もゴールの的を壊すまで撃ち続けられる
+	bool IsGoalRail(int railIndex) const;
 
 	// アクティブなレールの制御点数を取得
 	int GetControlPointCount() const;
@@ -106,7 +120,7 @@ public:
 
 	// アクティブなレールの、進行度tの位置までをインクで塗った区間に含める(Play中にレールの見た目を塗るのに使う)
 	void PaintActiveRail(float t);
-	// 全レールの塗った区間を消す(リスタート時に呼ぶ)
+	// 全ステージの全レールの塗った区間を消す(リスタート時に呼ぶ)
 	void ClearPaint();
 
 	/// <summary>
@@ -119,6 +133,15 @@ public:
 	void UpdateRailLocks(const std::vector<bool>& lockedRails,float growSpeed,float deltaTime);
 	// 管を伸ばす演出を飛ばして、出ていないレールをすぐに反映する(リスタート・チェックポイントからのやり直しで使う)
 	void ResetRailLocks(const std::vector<bool>& lockedRails);
+	/// <summary>
+	/// 指定ステージのレールに、出ていないレールをすぐに反映する
+	/// Play中は今のステージ以外のレールもスタート台から見えるよう描くため、そのステージの鍵の的から求めた出方を渡してもらう
+	/// </summary>
+	/// <param name="stageIndex">反映するステージの番号</param>
+	/// <param name="lockedRails">レールごとに、出ていないか(そのステージのレールの並びと同じ)</param>
+	void ResetStageRailLocks(int stageIndex,const std::vector<bool>& lockedRails);
+	// 指定ステージのレールの本数を取得
+	int GetStageRailCount(int stageIndex) const;
 
 	// 着地できる範囲の描画に使う水平方向の許容距離を設定する
 	// 判定値そのものはGameScene側が持っているため、同じ値を二重に持たないよう外から渡してもらう
@@ -129,9 +152,9 @@ public:
 	// アクティブなレールの全制御点を囲む範囲の半径を取得
 	float GetControlPointsRadius() const;
 
-	// 全レールの制御点をそれぞれ対応するJSONファイルに保存する
+	// 全ステージの全レールの制御点をそれぞれ対応するJSONファイルに保存する
 	void SaveToJson() override;
-	// 全レールの制御点をJSONファイルから読み込む(ディスクに存在する分だけ連番でレールを復元する)
+	// 全ステージの全レールの制御点をJSONファイルから読み込む(ディスクに存在する分だけ連番でレールを復元する)
 	void LoadFromJson();
 
 	// 未保存の一覧に出す名前
@@ -151,8 +174,11 @@ private:
 	struct RailSnapshot{
 		std::string name;
 		std::vector<ControlPoint> controlPoints;
+		bool isGoalRail = false;
 	};
 	using RailsSnapshot = std::vector<RailSnapshot>;
+	// 編集履歴に残す、全ステージ分のレールのデータ(並びはステージの番号と同じ)
+	using StagesSnapshot = std::array<RailsSnapshot,StageInfo::kStageCount>;
 
 	// レールの全長と走り切るまでの秒数(目安)
 	struct RailStats{
@@ -166,6 +192,7 @@ private:
 	struct Rail{
 		std::string name;                                   // レール名(UI表示・保存ファイル名の目印用)
 		std::vector<ControlPoint> controlPoints;            // 制御点を保存する配列
+		bool isGoalRail = false;                            // ゴールのレールか(終点で止まり、乗るとゴールの的が現れる)
 		std::vector<std::unique_ptr<Obj3D>> pointObjects;   // 制御点描画用の3Dオブジェクト群
 
 		// Play中にレールの本体として描く管(レールに沿った1本のモデル。BuildTubes()で頂点から作る)
@@ -236,8 +263,13 @@ private:
 	void GenerateSpiral(Rail& rail,size_t startIndex);
 	// 新しいレールを1本追加し、アクティブなレールとして切り替える
 	void AddRail();
-	// レールのインデックスから保存先ファイルパスを求める(0番目のみ既存の互換パスを使う)
-	std::string GetRailFilePath(int index) const;
+	// railsの末尾に、制御点1つだけの新しいレールを足す(アクティブなレールは変えない)
+	void AppendRail(std::vector<Rail>& rails);
+	// 指定ステージのレールの配列を取得(編集中のステージはrails_、それ以外は預けてある配列)
+	std::vector<Rail>& GetStageRails(int stageIndex);
+	const std::vector<Rail>& GetStageRails(int stageIndex) const;
+	// ステージとレールのインデックスから保存先ファイルパスを求める(resource/stage/stage1/rail/rail0.json など)
+	std::string GetRailFilePath(int stageIndex,int railIndex) const;
 	// 進行度tと制御点配列から、レール上の座標を計算する(GetPositionOnRail・全レール描画で共用)
 	Vector3 ComputePositionOnRail(const std::vector<ControlPoint>& controlPoints,float t) const;
 	// 指定ワールド座標に最も近いレール上の進行度tを計算する(粗いサンプリング+三分探索で絞り込み)
@@ -250,25 +282,32 @@ private:
 	// アクティブなレールの全長と走り切るまでの秒数、始点から選択中の制御点までの長さと秒数を求める
 	RailStats ComputeActiveRailStats() const;
 
-	// 今のレールの状態を編集履歴に残す形で取得する
-	RailsSnapshot MakeSnapshot() const;
-	// 編集履歴の状態をレールに反映する(Undo/Redo用。レールの本数が変わっていれば増減させる)
-	void ApplySnapshot(const RailsSnapshot& snapshot);
+	// 今の全ステージのレールの状態を編集履歴に残す形で取得する
+	StagesSnapshot MakeSnapshot() const;
+	// 編集履歴の状態を全ステージのレールに反映する(Undo/Redo用。レールの本数が変わっていれば増減させる)
+	void ApplySnapshot(const StagesSnapshot& snapshot);
 	// 今のレールの状態が、最後に確定した状態から変わっていれば確定して履歴に積む
 	void CommitEditIfChanged();
 
 	// Sceneビュー上で制御点を左ドラッグして動かす処理
 	void UpdateMouseDrag();
 
-	// 指定インデックスのレール1本だけをJSONファイルに保存する(SaveToJsonの内部実装。書き込めなかったときはfalse)
-	bool SaveRailToFile(int index);
-	// 指定インデックスのレール1本だけをJSONファイルから読み込む(LoadFromJsonの内部実装)
-	void LoadRailFromFile(int index);
-	// 全レールをJSONファイルから読み込む(編集履歴には触れない。起動時とLoadFromJsonで使う)
+	// レール1本だけをfilePathのJSONファイルに保存する(SaveToJsonの内部実装。書き込めなかったときはfalse)
+	bool SaveRailToFile(const Rail& rail,const std::string& filePath) const;
+	// レール1本だけをfilePathのJSONファイルから読み込む(LoadFromJsonの内部実装)
+	void LoadRailFromFile(Rail& rail,const std::string& filePath);
+	// 全ステージのレールをJSONファイルから読み込む(編集履歴には触れない。起動時とLoadFromJsonで使う)
 	void LoadRailsFromFiles();
 
-	std::vector<Rail> rails_;       // 全レールの配列
+	// 編集・プレイしているステージの全レールの配列
+	// ほかの処理はすべてこの配列を見るため、ステージを切り替えるときは中身をstoredStageRails_と入れ替える
+	std::vector<Rail> rails_;
+	// 編集・プレイしていないステージのレールを預けておく場所(並びはステージの番号と同じ。編集中のステージの分は空)
+	std::array<std::vector<Rail>,StageInfo::kStageCount> storedStageRails_;
+	int stageIndex_ = 0;            // 編集・プレイしているステージの番号
 	int activeRailIndex_ = 0;       // 現在編集・使用中のレールのインデックス(このレールだけ黄色で描画する)
+	// 一覧でステージが選び直されたときの、選んだステージの番号(-1: 選び直していない)
+	int requestedStageIndex_ = kNoStageRequest;
 
 	// Hierarchy的な一覧(制御点リスト)で選択中の制御点インデックス(-1: 未選択)
 	int selectedPointIndex_ = -1;
@@ -282,11 +321,11 @@ private:
 	bool areTubesBuilt_ = false;
 
 	// 編集履歴(Undo/Redo)と、保存していない変更があるかの管理
-	EditHistory<RailsSnapshot> history_;
+	EditHistory<StagesSnapshot> history_;
 	// シーンが切り替わってエディターが破棄されたときに、保存していなかった変更を取っておく場所(次に作ったエディターで戻す)
 	// クリア・ゲームオーバーなどでシーンが切り替わると、エディターは作り直されてファイルから読み込み直すため、取っておかないと消えてしまう
 	// ファイルには書き込まず、戻した後も「未保存」のままにして、保存するか(Save)捨てるか(Load・Ctrl+Z)を選べるようにする
-	static inline std::optional<RailsSnapshot> unsavedStash_;
+	static inline std::optional<StagesSnapshot> unsavedStash_;
 
 	// 「Focus」で選択中の制御点にカメラを寄せる操作があったか
 	bool hasFocusRequest_ = false;
@@ -313,6 +352,9 @@ private:
 	Vector3 dragOffset_ = {0.0f, 0.0f, 0.0f};        // 掴んだ位置と制御点の座標とのずれ(掴んだ瞬間に跳ばないようにする)
 
 	Obj3dCommon* objCommon_ = nullptr; // 3Dオブジェクト共通設定へのポインタ
+
+	// ステージを選び直していないことを表す値
+	static constexpr int kNoStageRequest = -1;
 
 	// 螺旋の設定で使える範囲(半径が小さすぎると急カーブになり、1周の点が少なすぎると円に見えないため)
 	static constexpr float kMinSpiralRadius = 1.0f;
