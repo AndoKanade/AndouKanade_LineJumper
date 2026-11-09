@@ -75,6 +75,10 @@
   - クリアしたステージのゲートの前の床をインクで塗るようにした（`StartPlatform::PaintClearedGateFloors()`。台のインクを消すたびに塗り直す）。
   - 後ろの通路に、ステージ1〜3の壁を手前から1枚ずつ立てた（色はステージごとに違う）。立っている壁より奥へは歩けない。最後のステージのゲートは、壁がすべて壊れるまで開けられない。
   - ステージ1〜3をクリアして大ジャンプで着地すると、カメラが通路の壁へ向き、そのステージの壁が壊れてから戻る（`BarrierBreakCutscene`。回す 0.5 秒 → 壊す 1 秒 → 戻す 0.5 秒。調整項目 `barrierTurnDuration` / `barrierBreakDuration` / `barrierReturnDuration`）。SPACE で飛ばせる。
+  - プレイ会用の設定を足した（調整項目 `GameScene` グループの `playSessionMode`。初期値は OFF）。ON のときは次のようになる。
+    - 開けられるのは正面（ステージ1）のゲートだけ。右・左のゲートの前に来ると「いまは遊べないよ!!」の画像を出す（`StageLockedNotice`、`resource/UI/stageLocked.png`、`tools/generate_stage_locked_notice.py`）。
+    - ステージ1をクリアすると、大ジャンプで戻って壁が壊れるのを見せた後に、クリア画面へ移る（その後はタイトルへ戻り、次の人が最初から遊べる）。
+    - プレイ会では、Global Variables パネルで `playSessionMode` を ON にして Save するか、`resource/GlobalVariables/GameScene.json` の `playSessionMode` を `true` にしたものを使う。提出用は OFF に戻す。
 - 残っていること
   - ステージ2〜4の中身を作る。
   - クリアしたステージの結果（壊した的の数・最大連鎖数）を出していない。

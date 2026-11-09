@@ -1768,3 +1768,17 @@ Visual Studio でのビルドはしていない。変更した .cpp を、仮の
 
 Visual Studio でのビルド・画面での確認はしていない。変更はフォントのパスだけ。
 
+### 5. プレイ会用の設定を足した
+
+対象ファイル: `Game/objects/StageInfo.h`、`Game/objects/StartPlatform.h/.cpp`、`Game/UI/StageLockedNotice.h/.cpp`（新規）、`Game/scenes/GameScene.h/.cpp`、`tools/generate_stage_locked_notice.py`（新規）、`resource/UI/stageLocked.png`（新規）、`MyGameEngine.vcxproj(.filters)`
+
+- プレイ会ではステージ1だけを遊んでもらうため、調整項目 `playSessionMode`（GameScene グループ、初期値 OFF）を足した。ステージ2〜4はまっすぐな仮のレールなので出さないが、スタート台とゲートのステージ選択は今回のテーマなので残す。
+- ON のときは、開けられるのは正面（ステージ1）のゲートだけにした（`StageInfo::IsStageSelectable()`）。右・左・後ろのゲートは赤いランプで閉じたまま。
+- 右・左のゲートの前に来たら、「いまは遊べないよ!!」と「正面のゲートのステージ1を遊んでね」の画像をパッと出す（`StageLockedNotice`）。来た瞬間に大きい状態から弾むように縮んで出し、離れたら薄くなって消える。画像は「STAGE CLEAR!」と同じ縁取りの太い文字で、見出しは敵のインクに近いピンクにした。
+- ON のときは、ステージ1をクリアして大ジャンプで戻り、壁が壊れるのを見せ終えたらクリア画面へ移る。クリア画面からタイトルへ戻れば、次の人が最初から遊べる。始め直すと的・連鎖数が戻るため、クリア画面に出す結果は先に書き込む（`GameScene::WriteStageResult()`）。
+- 切り替えは調整項目にしたので、提出用（OFF）とプレイ会用（ON）でコードやブランチを分けなくてよい。
+
+### ビルド確認（5.）
+
+Visual Studio でのビルド・画面での確認はしていない。変更した .cpp を、仮のヘッダーに差し替えて clang で構文チェックした（USE_IMGUI あり・なしの両方）。
+

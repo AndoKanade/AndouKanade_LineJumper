@@ -31,6 +31,7 @@ class InkEffectManager;
 class ComboCounter;
 class StageHUD;
 class StageClearUI;
+class StageLockedNotice;
 class SpeedLines;
 class DamageInkEffect;
 class HelpOverlay;
@@ -126,6 +127,8 @@ private:
 	void StartStageClear(const Vector3& landedPos);
 	// 着地の演出を見せ終えたら、結果を書き込んでクリア画面へ移る
 	void UpdateStageClear();
+	// クリア画面で出す結果(壊した的の数・最大連鎖数)を書き込む(シーンが作り直される前、的・連鎖数を初期状態に戻す前に呼ぶ)
+	void WriteStageResult();
 
 	/// <summary>
 	/// 最後のステージへ続く通路の壁が壊れた瞬間の演出(壁を消し、破片・インクのしぶきを飛ばす)
@@ -219,6 +222,9 @@ private:
 	// ゴールの的を壊したときに出す「STAGE CLEAR!」の表示
 	std::unique_ptr<StageClearUI> stageClearUI_;
 
+	// プレイ会用の設定のときに、遊べないステージのゲートの前で出す「いまは遊べないよ!!」の表示
+	std::unique_ptr<StageLockedNotice> stageLockedNotice_;
+
 	// レールを進んでいる間に出すスピード線
 	std::unique_ptr<SpeedLines> speedLines_;
 
@@ -257,6 +263,8 @@ private:
 	bool isStageCleared_ = false;
 	// スタート台に着地してからの経過時間(秒)
 	float stageClearTimer_ = 0.0f;
+	// プレイ会用の設定で、壁が壊れるのを見せ終えたらクリア画面へ移るのを待っている最中か
+	bool isPlaySessionClearPending_ = false;
 
 	// 最後に通ったチェックポイント(レールから落ちたら、ここからやり直す)
 	struct Checkpoint{

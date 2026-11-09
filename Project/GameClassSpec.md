@@ -825,7 +825,8 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `GetStageDirectory(stageIndex)` | `resource/stage/stage1/` などのフォルダ |
 | `GetStageLabel(stageIndex)` | エディターの一覧に出す名前（`Stage 1 (Front)` など） |
 | `ToStageNumber(stageIndex)` / `IsValidStageIndex(stageIndex)` | 画面に出す 1 始まりの番号 / 範囲内か |
-| `clearedStages` / `IsFinalStageUnlocked()` / `IsStageSelectable(stageIndex)` / `ResetProgress()` | ステージごとにクリアしたか（シーンをまたいで残る）/ 最後のステージに出られるか / そのステージのゲートを開けられるか / クリアしたステージを忘れる |
+| `clearedStages` / `IsFinalStageUnlocked()` / `IsStageSelectable(stageIndex)` / `ResetProgress()` | ステージごとにクリアしたか（シーンをまたいで残る）/ 最後のステージに出られるか / そのステージのゲートを開けられるか（プレイ会用の設定ではステージ1だけ）/ クリアしたステージを忘れる |
+| `isPlaySessionMode` / `IsClosedForPlaySession(stageIndex)` | プレイ会用の設定か（GameScene が調整項目 `playSessionMode` を毎フレーム書き込む）/ プレイ会用の設定で閉じている右・左のステージか |
 
 ### StageResult（`objects/StageResult.h`）
 
@@ -922,6 +923,16 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Initialize(SpriteCommon*)` | テクスチャの読み込みとスプライトの生成 |
 | `Update(lives, maxLives, destroyedCount, totalCount, combo)` | 表示内容の更新 |
 | `Draw()` | スプライト共通の描画前処理を行ってから描画する |
+
+### StageLockedNotice（`UI/StageLockedNotice.h/.cpp`）
+
+プレイ会用の設定（`StageInfo::isPlaySessionMode`）のときに、閉じている右・左のゲートの前（ゲートの幅の中で、ゲートから手前へ 1.5 以内。`StartPlatform::IsInFrontOfPlaySessionClosedGate()`）に来たら出す「いまは遊べないよ!!」の画像（`UI/stageLocked.png`、`tools/generate_stage_locked_notice.py` で生成）。来た瞬間に 1.4 倍から 0.25 秒で弾むように縮んで出し（`EaseOutBack`）、離れたら 0.25 秒で薄くなって消える。画面の上から 3 割の高さに、832 × 260 で出す。
+
+| 関数 | 内容 |
+| --- | --- |
+| `Initialize(SpriteCommon*)` | テクスチャの読み込みとスプライトの生成 |
+| `Update(isShown, deltaTime)` | 出すかどうかに合わせて、弾む動き・濃さを進める |
+| `Reset()` / `Draw()` | 消した状態に戻す / 描画 |
 
 ### StageClearUI（`UI/StageClearUI.h/.cpp`）
 

@@ -178,6 +178,13 @@ public:
 	int FindGateArea(const Vector3& position) const;
 
 	/// <summary>
+	/// プレイ会用の設定で閉じているゲートの、すぐ手前に立っているか(「いまは遊べないよ!!」を出す範囲か)
+	/// ゲートの幅の中で、ゲートから手前へ kLockedNoticeDepth 以内にいれば立っているとする
+	/// </summary>
+	/// <param name="position">プレイヤーの座標</param>
+	bool IsInFrontOfPlaySessionClosedGate(const Vector3& position) const;
+
+	/// <summary>
 	/// 閉じているゲートより先へ進めないように押し戻す(開け始めたゲートの先へはそのまま進める)
 	/// 台の範囲の外やジャンプ中でも、閉じているゲートの位置の面より先へは出られない
 	/// </summary>
@@ -414,6 +421,8 @@ private:
 	static constexpr float kMarkerRadius = 0.5f;
 	// 出発の操作を受け付ける、目印の中心からの距離
 	static constexpr float kGateAreaRadius = 0.6f;
+	// プレイ会用の設定で閉じているゲートの前で「いまは遊べないよ!!」を出す、ゲートから手前への距離(目印の位置より少し手前まで)
+	static constexpr float kLockedNoticeDepth = 1.5f;
 	// 出発台の中央の、ゲートから前への距離と、出発台の目印の半径
 	// 出発台の手前の端(中央から半径だけ手前)に、出発の演出を始める線を引く
 	static constexpr float kDeparturePadDistance = 1.6f;

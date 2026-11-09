@@ -53,6 +53,7 @@
 #include "UI/Reticle.h"
 #include "UI/StageHUD.h"
 #include "UI/StageClearUI.h"
+#include "UI/StageLockedNotice.h"
 #include "UI/SpeedLines.h"
 #include "UI/DamageInkEffect.h"
 #include "UI/HelpOverlay.h"
@@ -101,6 +102,9 @@ namespace{
 	const char* kClearTransitionKey = "clearTransitionStyle";
 	// 出発の演出を保存する調整項目名(DepartureStyle の番号で保存する)と、初期値
 	const char* kDepartureStyleKey = "departureStyle";
+	// プレイ会用の設定にするかの調整項目名と初期値(ON にすると、ステージ1だけを遊べ、クリアしたらクリア画面へ移る)
+	const char* kPlaySessionModeKey = "playSessionMode";
+	constexpr bool kDefaultPlaySessionMode = false;
 	constexpr DepartureStyle kDefaultDepartureStyle = DepartureStyle::CountdownFlip;
 	// レールを進む全体の速さの調整項目名(Playerが登録する。Rail Editorで走り切るまでの秒数を出すのに使う)
 	const char* kRailSpeedKey = "railSpeed";
@@ -228,6 +232,8 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kClearTransitionKey,static_cast<int32_t>(kDefaultClearTransitionStyle));
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kRespawnRevealKey,static_cast<int32_t>(kDefaultRespawnRevealStyle));
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kDepartureStyleKey,static_cast<int32_t>(kDefaultDepartureStyle));
+	// プレイ会用の設定(Global Variables の Save で保存し、プレイ会では保存した JSON をそのまま使う)
+	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kPlaySessionModeKey,kDefaultPlaySessionMode);
 	// 遠くの物を空の色に溶け込ませる距離(Play中だけ使う)
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kObjectFadeStartKey,kDefaultObjectFadeStart);
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kObjectFadeEndKey,kDefaultObjectFadeEnd);
@@ -297,6 +303,8 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// ゴールの的を壊したときに出す「STAGE CLEAR!」の表示
 	stageClearUI_ = std::make_unique<StageClearUI>();
 	stageClearUI_->Initialize(spriteCommon_);
+	stageLockedNotice_ = std::make_unique<StageLockedNotice>();
+	stageLockedNotice_->Initialize(spriteCommon_);
 
 	// レールを進んでいる間に出すスピード線
 	speedLines_ = std::make_unique<SpeedLines>();
@@ -387,6 +395,7 @@ void GameScene::ResetPlayState(){
 	comboCounter_->Reset();
 	speedLines_->Reset();
 	stageClearUI_->Reset();
+	stageLockedNotice_->Reset();
 
 	// 雑魚敵も撃破前の初期状態(体力満タン)から始める
 	enemyManager_->Reset();
@@ -396,6 +405,7 @@ void GameScene::ResetPlayState(){
 	defeatTimer_ = 0.0f;
 	isStageCleared_ = false;
 	stageClearTimer_ = 0.0f;
+	isPlaySessionClearPending_ = false;
 }
 
 // 遠くの物を空の色に溶け込ませる距離を、全オブジェクト共通の設定にする
@@ -656,11 +666,16 @@ void GameScene::UpdateStageClear(){
 	const bool wasWaiting = stageClearTimer_ < kStageClearDuration;
 	stageClearTimer_ += kDeltaTime;
 	if(wasWaiting && stageClearTimer_ >= kStageClearDuration){
-		StageResult::destroyedTargetCount = targetManager_->GetDestroyedCount();
-		StageResult::totalTargetCount = targetManager_->GetTotalCount();
-		StageResult::maxCombo = comboCounter_->GetMaxCombo();
+		WriteStageResult();
 		sceneManager_->ChangeScene("CLEAR",GetTransitionStyle(kClearTransitionKey));
 	}
+}
+
+// クリア画面で出す結果を書き込む
+void GameScene::WriteStageResult(){
+	StageResult::destroyedTargetCount = targetManager_->GetDestroyedCount();
+	StageResult::totalTargetCount = targetManager_->GetTotalCount();
+	StageResult::maxCombo = comboCounter_->GetMaxCombo();
 }
 
 // 最後のステージへ続く通路の壁が壊れた瞬間の演出
@@ -678,6 +693,9 @@ void GameScene::PlayBarrierBreakEffects(int stageIndex,bool isShown){
 
 // シーンの更新処理
 void GameScene::Update(){
+	// プレイ会用の設定かを、調整項目の今の値に合わせる(ゲートを開けられるか・クリアの後の流れに使う)
+	StageInfo::isPlaySessionMode = GlobalVariables::GetInstance()->GetBoolValue(kGameSceneGroup,kPlaySessionModeKey);
+
 	// 操作説明の開閉(H キー)
 	// Editモードでは ImGui の文字入力で H を打っても開かないよう、Play中だけ開けるようにする
 	// 開いている間は落ち着いて読めるよう、ゲームの進行と入力をすべて止める
@@ -870,6 +888,7 @@ void GameScene::UpdateGameplay(){
 		returnJump_->Reset();
 		barrierCutscene_->Reset();
 		startPlatform_->ReleaseBarrierHold();
+		isPlaySessionClearPending_ = false;
 		// Play中に現れたゴールの的が、Editモードで出たままにならないよう消す
 		goalTarget_->Reset();
 		// Editモードに戻ったら、Play前に見ていた位置のまま俯瞰デバッグカメラに戻す
@@ -1018,7 +1037,13 @@ void GameScene::UpdateGameplay(){
 			if(railEditor_->GetStageIndex() == StageInfo::kFinalStageIndex){
 				StartStageClear(landedPos);
 			} else{
+				// プレイ会用の設定では、壁が壊れるのを見せた後にクリア画面へ移り、次の人がタイトルから遊べるようにする
+				// 始め直すと的・連鎖数が初期状態に戻るため、結果は先に書き込んでおく
+				if(StageInfo::isPlaySessionMode){
+					WriteStageResult();
+				}
 				RestartFromReturnJump(landedPos);
+				isPlaySessionClearPending_ = StageInfo::isPlaySessionMode;
 				// クリアしたステージの通路の壁は、演出で壊れるまで立たせておき、カメラを向けて壊れるところを見せる
 				startPlatform_->HoldBarrier(railEditor_->GetStageIndex());
 				barrierCutscene_->Begin(*startPlatform_,railEditor_->GetStageIndex());
@@ -1033,6 +1058,12 @@ void GameScene::UpdateGameplay(){
 		if(barrierCutscene_->ConsumeBroken()){
 			PlayBarrierBreakEffects(barrierCutscene_->GetStageIndex(),barrierCutscene_->IsRunning());
 		}
+	}
+
+	// プレイ会用の設定では、壁が壊れるのを見せ終えたらクリア画面へ移る
+	if(isPlayMode && isPlaySessionClearPending_ && !barrierCutscene_->IsRunning() && !sceneManager_->IsTransitioning()){
+		isPlaySessionClearPending_ = false;
+		sceneManager_->ChangeScene("CLEAR",GetTransitionStyle(kClearTransitionKey));
 	}
 
 	// 着地の演出を見せ終えたら、クリア画面へ移る(Editモードへ戻ったときは止める)
@@ -1282,6 +1313,8 @@ void GameScene::UpdateGameplay(){
 	stageHUD_->Update(lives_,kMaxLives,targetManager_->GetDestroyedCount(),targetManager_->GetTotalCount(),*comboCounter_);
 	// 「STAGE CLEAR!」の表示の動きを進める(出していないときは何もしない)
 	stageClearUI_->Update(kDeltaTime);
+	// プレイ会用の設定で閉じているゲートの前に、台の上を歩いて来たら「いまは遊べないよ!!」を出す
+	stageLockedNotice_->Update(isPlayerMovable && startPlatform_->IsInFrontOfPlaySessionClosedGate(player_->GetPosition()),kDeltaTime);
 }
 
 #ifdef USE_IMGUI
@@ -1605,6 +1638,7 @@ void GameScene::Draw(){
 		stageHUD_->Draw();
 		// 「STAGE CLEAR!」は画面表示より手前に出す
 		stageClearUI_->Draw();
+		stageLockedNotice_->Draw();
 	}
 
 	// 開始演出のタイトル表示(PRESS SPACE)と、出発までの表示(操作案内・GO!)を最前面に描画する

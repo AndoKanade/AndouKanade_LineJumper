@@ -445,6 +445,7 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClInclude Include="Game\objects\ContinuePoint.h" />
     <ClInclude Include="Game\UI\StageHUD.h" />
     <ClInclude Include="Game\UI\StageClearUI.h" />
+    <ClInclude Include="Game\UI\StageLockedNotice.h" />
     <ClInclude Include="Game\UI\SpeedLines.h" />
     <ClInclude Include="Game\UI\DamageInkEffect.h" />
     <ClInclude Include="Game\UI\HelpOverlay.h" />
@@ -533,6 +534,7 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClCompile Include="Game\objects\ComboCounter.cpp" />
     <ClCompile Include="Game\UI\StageHUD.cpp" />
     <ClCompile Include="Game\UI\StageClearUI.cpp" />
+    <ClCompile Include="Game\UI\StageLockedNotice.cpp" />
     <ClCompile Include="Game\UI\SpeedLines.cpp" />
     <ClCompile Include="Game\UI\DamageInkEffect.cpp" />
     <ClCompile Include="Game\UI\HelpOverlay.cpp" />

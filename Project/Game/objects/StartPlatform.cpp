@@ -660,6 +660,23 @@ int StartPlatform::FindGateArea(const Vector3& position) const{
 	return -1;
 }
 
+// プレイ会用の設定で閉じているゲートの、すぐ手前に立っているか
+// ゲートの根元から見た、出ていく向きの距離と横の距離で判定する(ジャンプ中でも、ゲートの手前にいれば出す)
+bool StartPlatform::IsInFrontOfPlaySessionClosedGate(const Vector3& position) const{
+	for(int gateIndex = 0; gateIndex < kGateCount; ++gateIndex){
+		if(!StageInfo::IsClosedForPlaySession(gateIndex)){
+			continue;
+		}
+		const Gate& gate = gates_[gateIndex];
+		const Vector3 diff = {position.x - gate.origin.x, 0.0f, position.z - gate.origin.z};
+		const float forwardAmount = Dot(diff,gate.forward);
+		if(forwardAmount <= 0.0f && forwardAmount >= -kLockedNoticeDepth && std::abs(Dot(diff,gate.right)) <= kGateHalfWidth){
+			return true;
+		}
+	}
+	return false;
+}
+
 // 閉じているゲートより先へ進めないように押し戻す
 // ゲートごとに、ゲートの根元から見た出ていく向きの距離が、ゲートの手前の線を越えた分だけ手前へ戻す
 Vector3 StartPlatform::ClampBehindClosedGate(const Vector3& position) const{
