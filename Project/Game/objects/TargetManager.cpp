@@ -18,6 +18,8 @@
 namespace{
 	// 的の表示に使用するモデル(スプラトゥーンの標的のような、同心円の模様の円盤)
 	const std::string kTargetModelPath = "Bullseye/bullseye.obj";
+	// 鍵の的の表示に使用するモデル(普通の的と同じ円盤に、水色の輪と鍵の絵の画像を貼ったもの。tools/generate_key_target_texture.py で画像を生成する)
+	const std::string kKeyTargetModelPath = "Bullseye/keyTarget.obj";
 }
 
 TargetManager::TargetManager() = default;
@@ -32,6 +34,7 @@ void TargetManager::Initialize(Obj3dCommon* objCommon,const std::string& paramGr
 	GlobalVariables::GetInstance()->AddItem(paramGroup_,"aimHitAngle",kDefaultAimHitAngle); // ヒット判定の許容角度
 
 	ModelManager::GetInstance()->LoadModel(kTargetModelPath);
+	ModelManager::GetInstance()->LoadModel(kKeyTargetModelPath);
 	model_ = ModelManager::GetInstance()->FindModel(kTargetModelPath);
 
 	// 的の配置エディターの生成と初期化(保存済みJSONがあればここで読み込まれる)
@@ -99,6 +102,7 @@ void TargetManager::SyncFromEditor(){
 		target.obj = std::make_unique<Obj3D>();
 		target.obj->Initialize(objCommon_);
 		target.obj->SetModel(kTargetModelPath);
+		target.isKeyModel = false;
 		target.isAlive = true;
 		targets_.push_back(std::move(target));
 	}
@@ -111,17 +115,22 @@ void TargetManager::SyncFromEditor(){
 	// Editモード中だけ、配置エディターで選択中の的を色で目立たせる(Playモード中は普段の色に戻す)
 	const int highlightIndex = EditorContext::GetInstance()->IsPlayMode()?-1:editor_->GetSelectedIndex();
 
-	// 座標と壊すと出るレールをエディターの配置内容で上書きし、鍵の的は色を変えて普通の的と見分けられるようにする
+	// 座標と壊すと出るレールをエディターの配置内容で上書きし、鍵の的は鍵の絵のモデルにして普通の的と見分けられるようにする
 	for(size_t i = 0; i < targets_.size(); ++i){
 		Target& target = targets_[i];
 		target.position = editor_->GetTargetPosition(static_cast<int>(i));
 		target.unlockRailIndex = editor_->GetUnlockRailIndex(static_cast<int>(i));
+
+		// モデルは鍵の的かどうかが変わったときだけ差し替える(Target Editor で壊すと出るレールを変えたとき)
+		const bool isKeyTarget = target.unlockRailIndex >= 0;
+		if(target.isKeyModel != isKeyTarget){
+			target.obj->SetModel(isKeyTarget?kKeyTargetModelPath:kTargetModelPath);
+			target.isKeyModel = isKeyTarget;
+		}
+
+		// 模様は画像の色のまま出し、Editモードで選択中の的だけ色を掛けて目立たせる
 		if(Model::Material* mat = target.obj->GetMaterial()){
-			if(static_cast<int>(i) == highlightIndex){
-				mat->color = kSelectedTargetColor;
-			} else{
-				mat->color = (target.unlockRailIndex >= 0)?kKeyTargetColor:kNormalTargetColor;
-			}
+			mat->color = (static_cast<int>(i) == highlightIndex)?kSelectedTargetColor:kNormalTargetColor;
 		}
 	}
 }

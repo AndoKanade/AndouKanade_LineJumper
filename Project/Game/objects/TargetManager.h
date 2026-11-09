@@ -98,6 +98,8 @@ private:
 		bool isAlive = true;
 		// 壊すと出るレールのインデックス(-1: 鍵の的ではない)
 		int unlockRailIndex = -1;
+		// 鍵の的のモデル(鍵の絵の画像)で描いているか
+		bool isKeyModel = false;
 	};
 
 	// 配置エディターの内容を的のリストに反映する
@@ -126,9 +128,8 @@ private:
 	static constexpr float kAimedScale = 0.6f;
 	// 狙えていないときの表示スケール
 	static constexpr float kNormalScale = 0.4f;
-	// 普通の的と、鍵の的(壊すとレールが出る的)の色(モデルの模様に掛ける色。鍵の的は出ていないレールの点線と見比べやすい水色にする)
+	// 的の模様に掛ける色(白。普通の的も鍵の的も画像の色のまま出す)
 	static constexpr Vector4 kNormalTargetColor = {1.0f, 1.0f, 1.0f, 1.0f};
-	static constexpr Vector4 kKeyTargetColor = {0.3f, 0.85f, 1.0f, 1.0f};
 	// Editモードで配置エディターが選択中の的の色(どの的を選んでいるかSceneビューで分かるよう、普通の的・鍵の的と違う黄色にする)
 	static constexpr Vector4 kSelectedTargetColor = {1.0f, 0.85f, 0.1f, 1.0f};
 	// カメラと的が重なっているとみなす距離(向きが定まらないため照準判定をしない)

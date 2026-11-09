@@ -661,7 +661,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | 見た目 | `Bullseye/bullseye.obj`（同心円の模様の円盤）、スケール 0.4（狙えているときは 0.6）。模様の面を常にカメラへ向ける |
 | 照準判定 | 「カメラ → 的」の向きとカメラの前方ベクトルのなす角が `aimHitAngle` 以内なら狙えている。的が大きくなり、レティクルの中心ドットが赤くなる |
 | 命中 | 弾と的の境界球が重なったら撃破し、火花パーティクルを出す。壊れた位置は `GetDestroyedPositions()` で受け取れる（GameScene が破片・しぶきの演出と連鎖数の加算に使う） |
-| 鍵の的 | 壊すと出るレール（`unlockRailIndex`）を持つ的。水色（0.3, 0.85, 1.0）で描き、Target Editor の的の一覧に (Key: Rail N) と出す。同じレールを指定した的をすべて壊すとそのレールが出る |
+| 鍵の的 | 壊すと出るレール（`unlockRailIndex`）を持つ的。普通の的と同じ円盤に、明るい水色の輪・濃い青の真ん中・黄色い鍵の絵の画像を貼ったモデル（`Bullseye/keyTarget.obj`。画像は `tools/generate_key_target_texture.py` で生成）で描き、Target Editor の的の一覧に (Key: Rail N) と出す。同じレールを指定した的をすべて壊すとそのレールが出る |
 
 | 関数 | 内容 |
 | --- | --- |
