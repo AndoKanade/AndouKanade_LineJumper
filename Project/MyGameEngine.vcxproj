@@ -446,6 +446,7 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClInclude Include="Game\UI\StageHUD.h" />
     <ClInclude Include="Game\UI\StageClearUI.h" />
     <ClInclude Include="Game\UI\StageLockedNotice.h" />
+    <ClInclude Include="Game\UI\QuitConfirmMenu.h" />
     <ClInclude Include="Game\UI\TutorialHints.h" />
     <ClInclude Include="Game\UI\RailSwitchPrompt.h" />
     <ClInclude Include="Game\UI\KeyTargetMarker.h" />
@@ -538,6 +539,7 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClCompile Include="Game\UI\StageHUD.cpp" />
     <ClCompile Include="Game\UI\StageClearUI.cpp" />
     <ClCompile Include="Game\UI\StageLockedNotice.cpp" />
+    <ClCompile Include="Game\UI\QuitConfirmMenu.cpp" />
     <ClCompile Include="Game\UI\TutorialHints.cpp" />
     <ClCompile Include="Game\UI\RailSwitchPrompt.cpp" />
     <ClCompile Include="Game\UI\KeyTargetMarker.cpp" />

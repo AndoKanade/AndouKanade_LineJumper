@@ -16,6 +16,7 @@
 #include "EditorWidgets.h"
 #include "EditorContext.h"
 #include "WinAPI.h"
+#include "UI/QuitConfirmMenu.h"
 
 Application* Application::instance_ = nullptr;
 
@@ -82,6 +83,10 @@ void Application::Initialize(){
 	TextureManager::GetInstance()->LoadTexture("resource/noise0.png");
 	TextureManager::GetInstance()->LoadTexture("resource/noise1.png");
 	currentMaskPath_ = "resource/noise0.png";
+
+	// 7. ESC キーで出す終了確認メニュー
+	quitConfirmMenu_ = std::make_unique<QuitConfirmMenu>();
+	quitConfirmMenu_->Initialize(spriteCommon_.get());
 }
 
 void Application::InitializeGameSystems(){
@@ -152,6 +157,18 @@ void Application::Update(){
 			postProcess_->SetRadialBlurWidth(radialBlurStartWidth_ * remainRate * remainRate);
 		}
 	}
+}
+
+// -------------------------------------------------
+// 終了確認メニューの更新
+// -------------------------------------------------
+bool Application::UpdateQuitRequest(){
+	quitConfirmMenu_->Update(input_.get());
+	// 「はい」を選んでインクが画面を覆いきったら終了する
+	if(quitConfirmMenu_->IsQuitDecided()){
+		endRequest_ = true;
+	}
+	return quitConfirmMenu_->IsPausingGame();
 }
 
 // -------------------------------------------------
@@ -240,12 +257,15 @@ void Application::Draw(){
 
 	commandList->ResourceBarrier(2,barriers);
 
-	// 4. UI描画 (ImGui)
+	// 4. 終了確認メニュー(ポストプロセスの体力の表現などを掛けずに、ゲーム画面の一番手前に描く)
+	quitConfirmMenu_->Draw();
+
+	// 5. UI描画 (ImGui)
 #ifdef USE_IMGUI
 	ImGuiManager::GetInstance()->Draw();
 #endif
 
-	// 5. 描画後処理
+	// 6. 描画後処理
 	dxCommon_->PostDraw();
 }
 

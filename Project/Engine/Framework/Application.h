@@ -6,6 +6,9 @@
 #include <memory>
 #include <string>
 
+// 前方宣言
+class QuitConfirmMenu;
+
 /// <summary>
 /// アプリケーションクラス
 /// Frameworkクラスを継承し、ゲーム固有のシーン管理やメインループ動作を実装します。
@@ -81,6 +84,13 @@ public:
 	/// <param name="flash">被弾した瞬間の画面の色づき(0〜1)</param>
 	void SetDamageEffect(float amount,float flash);
 
+protected:
+	/// <summary>
+	/// ESC キーで終了確認メニューを開き、「はい」を選んだら終了リクエストを送る
+	/// </summary>
+	/// <returns>メニューを開いている間(開閉の動きの間も含む)は true(ゲームを止める)</returns>
+	bool UpdateQuitRequest() override;
+
 private:
 	// --- 静的メンバ変数 ---
 	static Application* instance_;
@@ -109,4 +119,7 @@ private:
 
 	// --- 体力の表現用管理 ---
 	bool isDamageEffectVisible_ = false;  // 体力の表現をかけるか(減り具合か色づきが 0 より大きい間)
+
+	// --- 終了確認メニュー ---
+	std::unique_ptr<QuitConfirmMenu> quitConfirmMenu_;
 };

@@ -108,7 +108,7 @@
 
 ### 3.1 暫定対応のまま残っている箇所
 
-- **仮素材**：PRESS SPACE（`resource/Title/pressSpace.png`）、出発ゲートの目印・輪、操作案内・GO!・カウントダウンの数字（`tools/generate_start_stage_assets.py`）、「STAGE CLEAR!」（`tools/generate_stage_clear_assets.py`）、クリア・ゲームオーバー画面の画像（`tools/generate_result_assets.py`）、落下リスタートの「RETRY」の文字。本番の素材ができたら差し替える。
+- **仮素材**：PRESS SPACE（`resource/Title/pressSpace.png`）、出発ゲートの目印・輪、操作案内・GO!・カウントダウンの数字（`tools/generate_start_stage_assets.py`）、「STAGE CLEAR!」（`tools/generate_stage_clear_assets.py`）、クリア・ゲームオーバー画面の画像（`tools/generate_result_assets.py`）、落下リスタートの「RETRY」の文字、ESC の終了確認メニュー（`QuitConfirmMenu`、`tools/generate_quit_confirm_assets.py`）。本番の素材ができたら差し替える。
 - **確認用の処理**：Play 中の R キーでタイトルからやり直す処理が、一時的な処理のまま残っている（プレイ会で係の人がやり直すのに使えるため残し、操作説明の画像からは消した）。
 - **ステージ2〜4**：まっすぐな仮のレール1本と仮の的4つだけ。
 

@@ -62,10 +62,8 @@ void Framework::Update(){
 	// --- 入力情報の更新 ---
 	input_->Update();
 
-	// ESC キーでゲームを終了する(ウィンドウを閉じたときと同じく終了リクエストを送る)
-	if(input_->TriggerKey(DIK_ESCAPE)){
-		endRequest_ = true;
-	}
+	// ESC キーによる終了の受け付け(継承先で終了確認メニューを出す)。止めると返したら、このフレームはシーンを更新しない
+	const bool isScenePaused = UpdateQuitRequest();
 
 	// --- サウンドの更新 ---
 	// 出力デバイスが失われていたら、シーンが音を鳴らす前に作り直しておく
@@ -118,7 +116,10 @@ void Framework::Update(){
 #endif
 
 	// --- シーン更新処理 ---
-	SceneManager::GetInstance()->Update();
+	// 終了確認メニューを開いている間はゲームを止める
+	if(!isScenePaused){
+		SceneManager::GetInstance()->Update();
+	}
 
 	// --- ImGui 受付終了 ---
 #ifdef USE_IMGUI
@@ -127,6 +128,14 @@ void Framework::Update(){
 
 	// --- カメラの更新 ---
 	CameraManager::GetInstance()->Update();
+}
+
+// 既定では ESC キーですぐに終了リクエストを送り(ウィンドウを閉じたときと同じ)、シーンは止めない
+bool Framework::UpdateQuitRequest(){
+	if(input_->TriggerKey(DIK_ESCAPE)){
+		endRequest_ = true;
+	}
+	return false;
 }
 
 void Framework::Finalize(){
