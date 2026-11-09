@@ -34,6 +34,7 @@ class StageClearUI;
 class StageLockedNotice;
 class TutorialHints;
 class RailSwitchPrompt;
+class KeyTargetMarker;
 class SpeedLines;
 class DamageInkEffect;
 class HelpOverlay;
@@ -239,6 +240,10 @@ private:
 
 	// 鍵の的を壊して出たレールへ飛び移れるときに、そのレールがある側に出す「A + SPACE」「D + SPACE」の案内
 	std::unique_ptr<RailSwitchPrompt> railSwitchPrompt_;
+	// 最初の鍵の的に気づいてもらうために、その上に出す「▼」の目印
+	std::unique_ptr<KeyTargetMarker> keyTargetMarker_;
+	// 今回のプレイで鍵の的を1つでも壊したか(壊したら、鍵の的の目印はもう出さない。タイトルから始め直すと忘れる)
+	bool hasDestroyedFirstKeyTarget_ = false;
 	// 今のステージのレールごとに、今回のプレイで乗ったか(乗ったことのある鍵のレールには、飛び移り方の案内を出さない)
 	std::vector<bool> riddenRails_;
 	// 前のフレームで飛び移り方の案内を出した側(右: 1、左: -1、無い: 0。スローを始めるか・やめるかの判定に使う)
@@ -314,6 +319,8 @@ private:
 	static constexpr float kDefeatDuration = 1.4f;
 	// やられ演出の間の、周り(敵・インクの演出)の時間の進み方(通常の何倍か)
 	static constexpr float kDefeatTimeScale = 0.35f;
+	// 鍵の的の目印・案内を出す、プレイヤーから鍵の的までの距離
+	static constexpr float kKeyTargetGuideDistance = 35.0f;
 	// 最初に飛び移り方の案内を出したときの、ゲームの進む速さ(通常の何倍か)と、ゆっくりにしておく最大の時間(秒。実際の時間)
 	// 飛び移るか、飛び移れなくなったら、最大の時間より前でも元に戻す
 	static constexpr float kRailSwitchSlowTimeScale = 0.25f;

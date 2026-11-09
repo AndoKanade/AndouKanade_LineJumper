@@ -139,12 +139,17 @@ void TargetManager::SyncFromEditor(){
 // レティクルは常に画面中央=カメラの前方ベクトル方向なので、
 // 「カメラ→的」の方向とカメラ前方ベクトルのなす角が閾値以内なら狙えている(表示上のフィードバック用)
 // 実際の命中判定は、発射した弾と的のモデルから求めた境界球が重なったかどうかで行う
-bool TargetManager::Update(const Vector3& cameraPosition,const Vector3& cameraForward,PlayerBulletManager& bullets){
+bool TargetManager::Update(const Vector3& cameraPosition,const Vector3& cameraForward,PlayerBulletManager& bullets,float deltaTime){
 	// 調整項目から最新の値を取得(ImGui編集/ホットリロードが即反映される)
 	float aimHitAngle = GlobalVariables::GetInstance()->GetFloatValue(paramGroup_,"aimHitAngle");
 
 	// 前回のUpdate()で壊れた的の記録を消してから、今回の判定を行う
 	destroyedPositions_.clear();
+	hasDestroyedKeyTarget_ = false;
+
+	// 鍵の的は普通の的より大きくし、ゆっくり脈打たせて目を引く(動いているものは視界の端でも気づきやすい)
+	keyPulseTimer_ += deltaTime;
+	const float keyScaleRate = kKeyTargetScaleRate * (1.0f + kKeyPulseAmplitude * std::sin(keyPulseTimer_ * kKeyPulseSpeed));
 
 	bool isAimingAtAnyTarget = false; // レティクル中心の色変えに使う
 	for(auto& target : targets_){
@@ -163,6 +168,9 @@ bool TargetManager::Update(const Vector3& cameraPosition,const Vector3& cameraFo
 		// 狙えているときは少し大きくして視覚的にフィードバック
 		// 当たり判定も見た目の大きさに合わせるため、判定より先に求めておく
 		float scale = isAimed?kAimedScale:kNormalScale;
+		if(target.unlockRailIndex >= 0){
+			scale *= keyScaleRate;
+		}
 
 		// 的と生存している弾の境界球が重なっていればヒット
 		// 的は描画用オブジェクトの行列がこの後で更新されるため、現在座標と表示スケールから境界球を求める
@@ -171,6 +179,9 @@ bool TargetManager::Update(const Vector3& cameraPosition,const Vector3& cameraFo
 
 			// 破片・しぶき・閃光の演出と連鎖数の加算は呼び出し側で行うため、壊れた位置を記録しておく
 			destroyedPositions_.push_back(target.position);
+			if(target.unlockRailIndex >= 0){
+				hasDestroyedKeyTarget_ = true;
+			}
 			continue;
 		}
 
@@ -276,6 +287,24 @@ void TargetManager::FillStageLockedRails(int stageIndex,std::vector<bool>& locke
 			lockedRails[point.unlockRailIndex] = true;
 		}
 	}
+}
+
+// 生きている鍵の的のうち、指定した位置に一番近いものを探す
+bool TargetManager::FindNearestKeyTarget(const Vector3& position,float maxDistance,Vector3& outPosition) const{
+	bool isFound = false;
+	float nearestDistance = maxDistance;
+	for(const auto& target : targets_){
+		if(!target.isAlive || target.unlockRailIndex < 0){
+			continue;
+		}
+		const float distance = Length(target.position - position);
+		if(distance <= nearestDistance){
+			nearestDistance = distance;
+			outPosition = target.position;
+			isFound = true;
+		}
+	}
+	return isFound;
 }
 
 // 指定したレールが、鍵の的を壊すと出るレールか

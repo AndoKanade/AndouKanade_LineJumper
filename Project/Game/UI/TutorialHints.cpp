@@ -14,6 +14,7 @@ namespace{
 		"resource/UI/hintShoot.png",
 		"resource/UI/hintGate.png",
 		"resource/UI/hintRailShoot.png",
+		"resource/UI/hintKeyTarget.png",
 	};
 	// 白(画像の色をそのまま出す)。α値だけ変えて使う
 	constexpr Vector4 kWhite = {1.0f, 1.0f, 1.0f, 1.0f};
@@ -59,6 +60,9 @@ bool TutorialHints::IsShowingScene(const Situation& situation) const{
 		return situation.isOnPlatform;
 	case Step::RailShoot:
 		return situation.isRiding;
+	case Step::KeyTarget:
+		// 鍵の的が近くにある間だけ出し、何のための的か分かるようにする
+		return situation.isRiding && situation.isKeyTargetNear;
 	case Step::Done:
 	default:
 		return false;
@@ -81,6 +85,8 @@ bool TutorialHints::IsStepCompleted(const Situation& situation) const{
 	case Step::RailShoot:
 		// 的を1つ壊すか、しばらく出したら消す(的が少ない区間でも出しっぱなしにしない)
 		return situation.hasDestroyedTarget || shownTimer_ >= kRailShootMaxDuration;
+	case Step::KeyTarget:
+		return situation.hasDestroyedKeyTarget;
 	case Step::Done:
 	default:
 		return false;

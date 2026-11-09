@@ -661,7 +661,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | 見た目 | `Bullseye/bullseye.obj`（同心円の模様の円盤）、スケール 0.4（狙えているときは 0.6）。模様の面を常にカメラへ向ける |
 | 照準判定 | 「カメラ → 的」の向きとカメラの前方ベクトルのなす角が `aimHitAngle` 以内なら狙えている。的が大きくなり、レティクルの中心ドットが赤くなる |
 | 命中 | 弾と的の境界球が重なったら撃破し、火花パーティクルを出す。壊れた位置は `GetDestroyedPositions()` で受け取れる（GameScene が破片・しぶきの演出と連鎖数の加算に使う） |
-| 鍵の的 | 壊すと出るレール（`unlockRailIndex`）を持つ的。普通の的と同じ円盤に、明るい水色の輪・濃い青の真ん中・黄色い鍵の絵の画像を貼ったモデル（`Bullseye/keyTarget.obj`。画像は `tools/generate_key_target_texture.py` で生成）で描き、Target Editor の的の一覧に (Key: Rail N) と出す。同じレールを指定した的をすべて壊すとそのレールが出る |
+| 鍵の的 | 壊すと出るレール（`unlockRailIndex`）を持つ的。普通の的の 1.5 倍の大きさにし、±12% で脈打たせて目を引く（当たり判定も同じ大きさ）。普通の的と同じ円盤に、明るい水色の輪・濃い青の真ん中・黄色い鍵の絵の画像を貼ったモデル（`Bullseye/keyTarget.obj`。画像は `tools/generate_key_target_texture.py` で生成）で描き、Target Editor の的の一覧に (Key: Rail N) と出す。同じレールを指定した的をすべて壊すとそのレールが出る |
 
 | 関数 | 内容 |
 | --- | --- |
@@ -924,6 +924,19 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Update(lives, maxLives, destroyedCount, totalCount, combo)` | 表示内容の更新 |
 | `Draw()` | スプライト共通の描画前処理を行ってから描画する |
 
+### KeyTargetMarker（`UI/KeyTargetMarker.h/.cpp`）
+
+鍵の的に気づいてもらうために、鍵の的の上に出す「▼」の目印（`UI/keyTargetArrow.png`、`tools/generate_key_target_arrow.py` で生成）。GameScene は、レールを進んでいる間に生きている鍵の的が 35 以内にあり（`TargetManager::FindNearestKeyTarget()`）、今回のプレイでまだ鍵の的を壊していないときに出す（最初の鍵の的だけに出す）。
+
+- 的の中心から 1.2 上の点を画面上の位置に直し、画面の端から 48 ピクセルより内側なら、そこで 10 ピクセル跳ねさせる（56 × 56）。外側なら画面の端に寄せ、三角の先を的のある向きへ回す。カメラの後ろにあるときは出さない。
+- 出すときは 0.15 秒で濃くし、消すときは 0.25 秒で薄くする。
+
+| 関数 | 内容 |
+| --- | --- |
+| `Initialize(SpriteCommon*)` / `Reset()` | テクスチャの読み込みとスプライトの生成 / 消した状態に戻す |
+| `Update(isShown, targetPosition, cameraPosition, cameraForward, viewProjection, deltaTime)` | 出すかどうかと的の位置から、目印の位置・向き・濃さを決める |
+| `Draw()` | 描画 |
+
 ### RailSwitchPrompt（`UI/RailSwitchPrompt.h/.cpp`）
 
 鍵の的を壊して出たレールへ飛び移れるときに、そのレールがある側の画面の端に出す「A + SPACE」「D + SPACE」の案内（`UI/railSwitchLeft.png`・`railSwitchRight.png`。`tools/generate_rail_switch_prompt.py` で生成）。どちらのキーを押せばよいかを考えずに済むよう、レールがある側に、その向きのキーだけを出す。
@@ -948,6 +961,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | Shoot「左クリックでインクを撃つ」 | 同上 | 案内を出している間に 5 発撃つ |
 | Gate「ゲートの前の目印で SPACE を押して出発」 | 同上 | 出発ゲートを開け始める |
 | RailShoot「的を左クリックで撃ちながら進もう」 | レールを進んでいる間 | 的を1つ壊すか、6 秒たつ |
+| KeyTarget「鍵の的を壊すと となりにレールが出る!」 | レールを進んでいて、生きている鍵の的が 35 以内にある間 | 鍵の的を壊す |
 
 - 消えた案内は 0.3 秒で薄くなり、0.4 秒置いて次の案内が少し上から下りてきながら出る。
 - 先の操作を先にしたとき（案内の前にゲートを開けた・レールに乗った）は、レールの案内まで飛ばす。

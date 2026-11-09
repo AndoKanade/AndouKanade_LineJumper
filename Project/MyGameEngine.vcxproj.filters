@@ -327,6 +327,9 @@
     <ClCompile Include="Game\UI\RailSwitchPrompt.cpp">
       <Filter>ソース ファイル\Game\UI</Filter>
     </ClCompile>
+    <ClCompile Include="Game\UI\KeyTargetMarker.cpp">
+      <Filter>ソース ファイル\Game\UI</Filter>
+    </ClCompile>
     <ClCompile Include="Game\UI\SpeedLines.cpp">
       <Filter>ソース ファイル\Game\UI</Filter>
     </ClCompile>
@@ -603,6 +606,9 @@
       <Filter>ヘッダー ファイル\Game\UI</Filter>
     </ClInclude>
     <ClInclude Include="Game\UI\RailSwitchPrompt.h">
+      <Filter>ヘッダー ファイル\Game\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\UI\KeyTargetMarker.h">
       <Filter>ヘッダー ファイル\Game\UI</Filter>
     </ClInclude>
     <ClInclude Include="Game\UI\SpeedLines.h">

@@ -9,7 +9,7 @@ class SpriteCommon;
 
 /// <summary>
 /// 場面ごとに画面の上に1つずつ出す操作の案内(チュートリアル)
-/// 「移動・見回す → 試し撃ち → ゲートで出発 → レールで的を撃つ」の順に出し、その操作をしたら消して次の案内を出す。
+/// 「移動・見回す → 試し撃ち → ゲートで出発 → レールで的を撃つ → 鍵の的の意味」の順に出し、その操作をしたら消して次の案内を出す。
 /// 一度消した案内は、落ちてやり直しても出し直さない(タイトルから始め直すと Reset() で最初から)。
 /// 先の操作を先にしてしまったとき(案内の前にゲートを開けたなど)は、そこまでの案内を飛ばす。
 /// ImGui を使わずスプライトで描くため、Release 構成でも表示される。
@@ -24,6 +24,8 @@ public:
 		bool hasFired = false;           // このフレームで弾を撃ったか
 		bool hasOpenedGate = false;      // このフレームで出発ゲートを開け始めたか
 		bool hasDestroyedTarget = false; // このフレームで的を壊したか
+		bool isKeyTargetNear = false;    // 生きている鍵の的が近くにあるか
+		bool hasDestroyedKeyTarget = false; // このフレームで鍵の的を壊したか
 	};
 
 	TutorialHints();
@@ -51,6 +53,7 @@ private:
 		Shoot,
 		Gate,
 		RailShoot,
+		KeyTarget,
 		Done,
 	};
 	static constexpr int kHintCount = static_cast<int>(Step::Done);

@@ -56,6 +56,7 @@
 #include "UI/StageLockedNotice.h"
 #include "UI/TutorialHints.h"
 #include "UI/RailSwitchPrompt.h"
+#include "UI/KeyTargetMarker.h"
 #include "UI/SpeedLines.h"
 #include "UI/DamageInkEffect.h"
 #include "UI/HelpOverlay.h"
@@ -312,6 +313,8 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	tutorialHints_->Initialize(spriteCommon_);
 	railSwitchPrompt_ = std::make_unique<RailSwitchPrompt>();
 	railSwitchPrompt_->Initialize(spriteCommon_);
+	keyTargetMarker_ = std::make_unique<KeyTargetMarker>();
+	keyTargetMarker_->Initialize(spriteCommon_);
 
 	// レールを進んでいる間に出すスピード線
 	speedLines_ = std::make_unique<SpeedLines>();
@@ -406,6 +409,7 @@ void GameScene::ResetPlayState(){
 	stageClearUI_->Reset();
 	stageLockedNotice_->Reset();
 	railSwitchPrompt_->Reset();
+	keyTargetMarker_->Reset();
 
 	// 雑魚敵も撃破前の初期状態(体力満タン)から始める
 	enemyManager_->Reset();
@@ -916,6 +920,7 @@ void GameScene::UpdateGameplay(){
 			StageInfo::ResetProgress();
 			tutorialHints_->Reset();
 			hasPlayedRailSwitchSlow_ = false;
+			hasDestroyedFirstKeyTarget_ = false;
 		}
 		ResetPlayState();
 		// ゲームオーバー画面でコンティニューを選んで戻ってきたときは、最後に通ったチェックポイントから始める
@@ -945,6 +950,7 @@ void GameScene::UpdateGameplay(){
 		StageInfo::ResetProgress();
 		tutorialHints_->Reset();
 		hasPlayedRailSwitchSlow_ = false;
+		hasDestroyedFirstKeyTarget_ = false;
 		ResetPlayState();
 		StartPlaySequence();
 	}
@@ -1297,7 +1303,7 @@ void GameScene::UpdateGameplay(){
 	comboCounter_->Update(isGameplayActive?worldDeltaTime:0.0f);
 
 	// 的の照準判定と弾との当たり判定
-	bool isAimingAtAnyTarget = targetManager_->Update(cameraPos,cameraForward,*bulletManager_);
+	bool isAimingAtAnyTarget = targetManager_->Update(cameraPos,cameraForward,*bulletManager_,worldDeltaTime);
 
 	// 壊れた的ごとに、破片・しぶき・閃光を出して連鎖数を増やす
 	for(const Vector3& destroyedPos : targetManager_->GetDestroyedPositions()){
@@ -1364,6 +1370,17 @@ void GameScene::UpdateGameplay(){
 	stageClearUI_->Update(kDeltaTime);
 	// プレイ会用の設定で閉じているゲートの前に、台の上を歩いて来たら「いまは遊べないよ!!」を出す
 	stageLockedNotice_->Update(isPlayerMovable && startPlatform_->IsInFrontOfPlaySessionClosedGate(player_->GetPosition()),kDeltaTime);
+	// レールを進んでいる間に、生きている鍵の的が近くにあるかを調べる(鍵の的の目印と案内に使う)
+	Vector3 nearestKeyTargetPos{};
+	const bool isKeyTargetNear = isGameplayActive && player_->IsOnRail() && targetManager_->FindNearestKeyTarget(playerPos,kKeyTargetGuideDistance,nearestKeyTargetPos);
+	if(targetManager_->HasDestroyedKeyTarget()){
+		hasDestroyedFirstKeyTarget_ = true;
+	}
+	// 最初の鍵の的を壊すまでは、近くの鍵の的の上に「▼」を出して気づいてもらう
+	if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
+		keyTargetMarker_->Update(isKeyTargetNear && !hasDestroyedFirstKeyTarget_,nearestKeyTargetPos,cameraPos,cameraForward,activeCamera->GetViewProjectionMatrix(),kDeltaTime);
+	}
+
 	// 操作の案内を、台の上・レールの上での操作に合わせて進める
 	TutorialHints::Situation tutorialSituation;
 	tutorialSituation.isOnPlatform = isPlayerMovable;
@@ -1372,6 +1389,8 @@ void GameScene::UpdateGameplay(){
 	tutorialSituation.hasFired = shootTriggered;
 	tutorialSituation.hasOpenedGate = startSequence_->IsGateOpenTriggered();
 	tutorialSituation.hasDestroyedTarget = !targetManager_->GetDestroyedPositions().empty();
+	tutorialSituation.isKeyTargetNear = isKeyTargetNear;
+	tutorialSituation.hasDestroyedKeyTarget = targetManager_->HasDestroyedKeyTarget();
 	tutorialHints_->Update(tutorialSituation,kDeltaTime);
 
 	// 鍵の的を壊して出た、まだ乗っていないレールへ飛び移れるときは、そのレールがある側に押すキーを出す
@@ -1715,6 +1734,7 @@ void GameScene::Draw(){
 		// 「STAGE CLEAR!」は画面表示より手前に出す
 		stageClearUI_->Draw();
 		stageLockedNotice_->Draw();
+		keyTargetMarker_->Draw();
 		tutorialHints_->Draw();
 		railSwitchPrompt_->Draw();
 	}

@@ -1834,3 +1834,17 @@ Visual Studio でのビルド・画面での確認はしていない。変更し
 
 Visual Studio でのビルド・画面での確認はしていない。GameScene.cpp を、仮のヘッダーに差し替えて clang で構文チェックした（USE_IMGUI あり・なしの両方）。
 
+### 10. 鍵の的に気づきやすくした
+
+対象ファイル: `Game/objects/TargetManager.h/.cpp`、`Game/UI/KeyTargetMarker.h/.cpp`（新規）、`Game/UI/TutorialHints.h/.cpp`、`Game/scenes/GameScene.h/.cpp`、`tools/generate_key_target_arrow.py`（新規）、`tools/generate_tutorial_hints.py`、`resource/UI/keyTargetArrow.png`・`hintKeyTarget.png`（新規）、`MyGameEngine.vcxproj(.filters)`
+
+- レールの上では前を撃ちながら進むため、横や上にある鍵の的を見落とすおそれがあった。次の3つを組み合わせた。
+  1. 鍵の的を普通の的の 1.5 倍の大きさにし、ゆっくり脈打たせた（動いているものは視界の端でも気づきやすい）。当たり判定も見た目と同じ大きさになる。脈打つ速さは、飛び移りのスローに合わせて遅くなる。
+  2. 最初の鍵の的を壊すまでは、近く（35m 以内）の鍵の的の上に「▼」を跳ねさせて出す（`KeyTargetMarker`）。画面の外にあるときは、画面の端に、的のある向きへ三角を向けて出す。毎回出すと画面がうるさくなるため、鍵の的を1つ壊したらもう出さない（タイトルから始め直すと、また出す）。
+  3. 操作の案内（`TutorialHints`）の続きに「鍵の的を壊すと となりにレールが出る!」を足した。鍵の的が近くにある間に出し、鍵の的を壊したら消える。この後に、8. の「A + SPACE」「D + SPACE」の案内と、最初の1回だけのスローが続く。
+- `TargetManager::Update()` に経過時間を渡すようにした（脈打たせるのに使う）。鍵の的を壊したか（`HasDestroyedKeyTarget()`）と、一番近い鍵の的（`FindNearestKeyTarget()`）を取れるようにした。
+
+### ビルド確認（10.）
+
+Visual Studio でのビルド・画面での確認はしていない。変更した .cpp を、仮のヘッダーに差し替えて clang で構文チェックした（USE_IMGUI あり・なしの両方）。
+
