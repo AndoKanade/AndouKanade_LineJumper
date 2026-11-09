@@ -28,6 +28,8 @@
 #include "Title/Departure/DepartureDirector.h"
 // ゴールの的を壊したあと、大ジャンプでスタート台へ戻る演出
 #include "Title/ReturnJump.h"
+// 着地した後、クリアしたステージの通路の壁を壊して見せる演出
+#include "Title/BarrierBreakCutscene.h"
 // ゲームオブジェクト
 #include "objects/Ground.h"
 #include "objects/Sun.h"
@@ -322,6 +324,10 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 
 	// ゴールの的を壊したあと、大ジャンプでスタート台へ戻る演出
 	returnJump_ = std::make_unique<ReturnJump>();
+
+	// 着地した後、クリアしたステージの通路の壁を壊して見せる演出(各段階の長さを調整項目に登録する)
+	barrierCutscene_ = std::make_unique<BarrierBreakCutscene>();
+	barrierCutscene_->Initialize(kGameSceneGroup);
 }
 
 // シーンの終了処理
@@ -375,6 +381,9 @@ void GameScene::ResetPlayState(){
 	screenImpact_->Reset();
 	departureDirector_->Reset();
 	returnJump_->Reset();
+	// 壁を壊す演出の途中でやり直したときは、演出を止め、クリアしたステージの壁は壊れた状態にする
+	barrierCutscene_->Reset();
+	startPlatform_->ReleaseBarrierHold();
 	comboCounter_->Reset();
 	speedLines_->Reset();
 	stageClearUI_->Reset();
@@ -654,6 +663,19 @@ void GameScene::UpdateStageClear(){
 	}
 }
 
+// 最後のステージへ続く通路の壁が壊れた瞬間の演出
+// 壁を消し、壁の中心から大きな破片を飛ばし、高く飛び散らせたしぶきは台に落ちたところに跡を残す
+// 演出を見せている最中なら、一瞬動きを止めて画面を揺らし、壊れた手応えを見せる
+void GameScene::PlayBarrierBreakEffects(int stageIndex,bool isShown){
+	startPlatform_->ReleaseBarrierHold();
+	const Vector3 barrierCenter = startPlatform_->GetBarrierCenter(stageIndex);
+	inkEffect_->EmitGoalBreak(barrierCenter);
+	inkEffect_->EmitLaunchBurst(barrierCenter,kBarrierBurstCount);
+	if(isShown){
+		screenImpact_->Trigger(kBarrierBreakHitStopDuration,kBarrierBreakShakeAmplitude,kBarrierBreakShakeDuration);
+	}
+}
+
 // シーンの更新処理
 void GameScene::Update(){
 	// 操作説明の開閉(H キー)
@@ -846,6 +868,8 @@ void GameScene::UpdateGameplay(){
 		startSequence_->Stop();
 		departureDirector_->Reset();
 		returnJump_->Reset();
+		barrierCutscene_->Reset();
+		startPlatform_->ReleaseBarrierHold();
 		// Play中に現れたゴールの的が、Editモードで出たままにならないよう消す
 		goalTarget_->Reset();
 		// Editモードに戻ったら、Play前に見ていた位置のまま俯瞰デバッグカメラに戻す
@@ -901,7 +925,8 @@ void GameScene::UpdateGameplay(){
 	const bool isGameplayActive = isPlayMode && startSequence_->IsPlayable() && !sceneManager_->IsTransitioning() && !isDefeated_ && !returnJump_->IsRunning() && !isStageCleared_;
 	// 開始演出のうち、スタート台の上を自由に動ける段階か(出発ゲートの前で準備中と、ゲートが開いてレールへ乗り込むまで)
 	// 動き方(WASD・ジャンプ・台から落ちたときのリスタート)はプレイ中と同じで、敵・射撃・勝敗判定はまだ動かさない
-	const bool isPlayerMovable = isPlayMode && startSequence_->IsPlayerMovable() && !sceneManager_->IsTransitioning();
+	// 通路の壁を壊して見せている間は動かさない(演出を飛ばした SPACE で、そのフレームにジャンプしないよう、演出を進める前に決めておく)
+	const bool isPlayerMovable = isPlayMode && startSequence_->IsPlayerMovable() && !sceneManager_->IsTransitioning() && !barrierCutscene_->IsRunning();
 
 	// 出発の演出を使うときは、ゲートが開いてから演出を始めるまでの間だけ、ゲートの先に出発台の目印を出す
 	startPlatform_->SetDeparturePadVisible(startSequence_->IsBoarding() && departureDirector_->UsesDeparturePad());
@@ -994,7 +1019,19 @@ void GameScene::UpdateGameplay(){
 				StartStageClear(landedPos);
 			} else{
 				RestartFromReturnJump(landedPos);
+				// クリアしたステージの通路の壁は、演出で壊れるまで立たせておき、カメラを向けて壊れるところを見せる
+				startPlatform_->HoldBarrier(railEditor_->GetStageIndex());
+				barrierCutscene_->Begin(*startPlatform_,railEditor_->GetStageIndex());
 			}
+		}
+	}
+
+	// 着地した後の、クリアしたステージの通路の壁を壊して見せる演出を進める(SPACE で飛ばせる)
+	// 大ジャンプと同じく、プレイヤーの行列更新の後・カメラの上書きの前に行う
+	if(isPlayMode && barrierCutscene_->IsRunning()){
+		barrierCutscene_->Update(screenImpact_->IsHitStopping()?0.0f:kDeltaTime,input_ && input_->TriggerKey(DIK_SPACE));
+		if(barrierCutscene_->ConsumeBroken()){
+			PlayBarrierBreakEffects(barrierCutscene_->GetStageIndex(),barrierCutscene_->IsRunning());
 		}
 	}
 
@@ -1008,6 +1045,7 @@ void GameScene::UpdateGameplay(){
 	// タイトルロゴも同じくプレイヤーの位置・向きを基準に配置する
 	CameraPose departureCamera;
 	CameraPose returnJumpCamera;
+	CameraPose barrierCamera;
 	if(isPlayMode && startSequence_->IsControllingCamera()){
 		startSequence_->UpdateLogo(playerPos,railCamera_->GetRotation());
 
@@ -1029,6 +1067,12 @@ void GameScene::UpdateGameplay(){
 		if(Camera* mainCamera = CameraManager::GetInstance()->GetCamera(kDefaultCameraName)){
 			mainCamera->SetTranslate(returnJumpCamera.position);
 			mainCamera->SetRotate(returnJumpCamera.rotate);
+		}
+	} else if(isPlayMode && barrierCutscene_->GetCameraPose({cameraPos, railCamera_->GetRotation()},barrierCamera)){
+		// 通路の壁を壊して見せている間は、プレイ用カメラから壁を映す画へ回し、壊れたらプレイ用カメラへ戻す
+		if(Camera* mainCamera = CameraManager::GetInstance()->GetCamera(kDefaultCameraName)){
+			mainCamera->SetTranslate(barrierCamera.position);
+			mainCamera->SetRotate(barrierCamera.rotate);
 		}
 	} else if(isPlayMode && startSequence_->IsGateCameraActive()){
 		// 出発ゲートを開けている間は、ゲートの斜め前からの画へ寄せ、開ききったらプレイ用カメラへ戻す
@@ -1546,11 +1590,13 @@ void GameScene::Draw(){
 	bool isDeparting = startSequence_ && startSequence_->IsDeparting();
 	// スタート台へ戻る大ジャンプの最中も撃てないため表示しない
 	bool isReturning = returnJump_ && returnJump_->IsRunning();
+	// 着地した後に通路の壁を壊して見せている間も撃てないため表示しない
+	bool isBreakingBarrier = barrierCutscene_ && barrierCutscene_->IsRunning();
 
 	// スピード線はレティクル・画面表示より奥に見えるよう先に描く
 	speedLines_->Draw();
 
-	if(!isTitleShowing && !isDeparting && !isReturning){
+	if(!isTitleShowing && !isDeparting && !isReturning && !isBreakingBarrier){
 		reticle_->Draw();
 	}
 

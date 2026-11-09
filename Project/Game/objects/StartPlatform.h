@@ -25,6 +25,8 @@ class PaintCanvas;
 /// 乗り込んだ瞬間には、足元から輪を広げて出発の合図にする。
 /// 出発の演出(スーパージャンプなど)を使うときは、ゲートの先に出発台の目印を出し、その手前の線を越えたら演出を始める。
 /// 台の上面にはインクを塗れ(PaintCanvas)、出発のときに飛び散ったインクが落ちたところに跡が残る。
+/// クリアしたステージのゲートの前の床は、台のインクを消すたびにインクで塗り直し、どのステージをクリアしたか分かるようにする。
+/// 最後のステージへ続く通路には、ほかのステージに1枚ずつ壁を立ててふさぎ、そのステージをクリアすると壁が壊れる。
 /// </summary>
 class StartPlatform{
 public:
@@ -41,6 +43,8 @@ public:
 	static constexpr Vector3 kFrontDirection = {1.0f, 0.0f, 0.0f};
 	// ゲートの数(ステージの数と同じ。ゲートの番号はステージの番号と同じ)
 	static constexpr int kGateCount = StageInfo::kStageCount;
+	// 最後のステージへ続く通路をふさぐ壁の数(最後のステージ以外のステージに1枚ずつ。壁の番号はステージの番号と同じ)
+	static constexpr int kBarrierCount = StageInfo::kFinalStageIndex;
 
 	// ゲートを閉じた状態(ランプ消灯・遮断棒が下りている・目印を表示)に戻す
 	// 選んでいるゲートは、今のステージ(StageInfo::currentStageIndex)のゲートに戻す
@@ -95,6 +99,27 @@ public:
 
 	// 選んでいるゲートの出発台の中央の座標(台の上面の高さ)
 	Vector3 GetDeparturePadPosition() const;
+
+	/// <summary>
+	/// 指定したステージの壁を、そのステージをクリアしていても壊さずに立たせておく(壁を壊す演出で壊れるまで残す)
+	/// </summary>
+	/// <param name="stageIndex">壁のステージの番号</param>
+	void HoldBarrier(int stageIndex);
+
+	// 立たせておいた壁を、クリアしたステージの壁と同じく壊れた状態にする(演出で壊れた瞬間と、やり直したときに呼ぶ)
+	void ReleaseBarrierHold();
+
+	// 指定したステージの壁が立っているか(そのステージをまだクリアしていないか、演出で壊れるのを待っているか)
+	bool IsBarrierStanding(int stageIndex) const;
+
+	// 指定したステージの壁の中心の座標(壁を映すカメラの注目する位置と、壊れたときに破片を飛ばす位置に使う)
+	Vector3 GetBarrierCenter(int stageIndex) const;
+
+	/// <summary>
+	/// 台の上面の中央を原点にした、台の向きでの座標をワールド座標に変換する(台を映すカメラの位置決めに使う)
+	/// </summary>
+	/// <param name="local">x: 右、y: 上、z: 前(正面の向き)</param>
+	Vector3 PlatformLocalToWorld(const Vector3& local) const{ return ToWorld(local); }
 
 	/// <summary>
 	/// 台の上で、選んでいるゲートの出発台の手前の線を越えたか(出発の演出を始める判定に使う)
@@ -238,6 +263,12 @@ private:
 	bool IsInsideSquareTop(const Vector3& position) const;
 	bool IsInsideCorridorTop(const Vector3& position) const;
 
+	// 指定したゲートを開けられるか(最後のステージのゲートは、ほかのステージをすべてクリアし、通路の壁がすべて壊れるまで開けられない)
+	bool IsGateSelectable(int gateIndex) const;
+
+	// クリアしたステージのゲートの前の床をインクで塗る(台のインクを消した後に呼び、クリアしたことが分かるようにする)
+	void PaintClearedGateFloors();
+
 	/// <summary>
 	/// 台の向きでの中心 localCenter・各辺の長さの半分 halfSize の直方体を各面から radius だけ外側へ広げた範囲に、レイが最初に当たる距離を求める
 	/// </summary>
@@ -264,6 +295,10 @@ private:
 	std::unique_ptr<Obj3D> corridorObj_;
 	// ゲート(並びはステージの番号と同じ)
 	std::array<Gate,kGateCount> gates_;
+	// 最後のステージへ続く通路をふさぐ壁(並びはステージの番号と同じ)
+	std::array<std::unique_ptr<Obj3D>,kBarrierCount> barriers_;
+	// クリアしていても壊さずに立たせておく壁のステージの番号(-1: 立たせていない)
+	int heldBarrierIndex_ = -1;
 	// 出発の合図に広げる輪
 	std::unique_ptr<Obj3D> launchRing_;
 	// 台に塗ったインクの塗りテクスチャ(正方形の部分と通路。持ち主は PaintManager)
@@ -395,6 +430,29 @@ private:
 	static constexpr float kLaunchRingStartRadius = 0.3f;
 	static constexpr float kLaunchRingEndRadius = 2.4f;
 
+	// 通路の壁の、台の上面の中央から後ろへの距離(壁の中心まで。並びはステージの番号と同じで、手前からステージ1・2・3の壁を並べる)
+	static constexpr float kBarrierDistances[kBarrierCount] = {8.6f, 9.4f, 10.2f};
+	// 壁の高さと、厚みの半分(幅は通路の幅いっぱいにする)
+	static constexpr float kBarrierHeight = 1.6f;
+	static constexpr float kBarrierHalfThickness = 0.1f;
+	// 壁はすべて通路の上に立てる
+	static_assert(kBarrierDistances[0] - kBarrierHalfThickness > kSquareHalfSize,"通路の壁が正方形の部分にはみ出している");
+	// 一番奥の壁が、最後のステージのゲートの前の目印(出発の操作を受け付ける範囲)にかからない
+	static_assert(kBarrierDistances[kBarrierCount - 1] + kBarrierHalfThickness < kSquareHalfSize + kCorridorLength - kGateEdgeInset - kMarkerDistanceFromGate - kGateAreaRadius,
+		"通路の壁が最後のステージのゲートの前の目印にかかっている");
+	// クリアしたステージのゲートの前の床を塗るインクの数と、1つずつの位置(ゲートの中央の根元を原点にした、ゲートの向きでの座標。x: 右、z: 前)と半径
+	// 目印(ゲートから kMarkerDistanceFromGate 手前)と重ならないよう、目印より手前(台の真ん中側)にインク溜まりを作る
+	static constexpr int kClearedFloorSplatCount = 6;
+	static constexpr Vector3 kClearedFloorSplatPositions[kClearedFloorSplatCount] = {
+		{0.0f, 0.0f, -2.5f},
+		{-1.3f, 0.0f, -2.1f},
+		{1.2f, 0.0f, -2.2f},
+		{-0.7f, 0.0f, -3.4f},
+		{0.8f, 0.0f, -3.3f},
+		{0.1f, 0.0f, -1.8f},
+	};
+	static constexpr float kClearedFloorSplatRadii[kClearedFloorSplatCount] = {1.2f, 0.65f, 0.6f, 0.55f, 0.6f, 0.45f};
+
 	// ゲートの柱・梁の色(暗いグレー)
 	static constexpr Vector4 kFrameColor = {0.28f, 0.31f, 0.34f, 1.0f};
 	// 遮断棒の色(自分のインクと同じ黄色)
@@ -406,6 +464,12 @@ private:
 	static constexpr Vector4 kLampLockedColor = {0.6f, 0.12f, 0.12f, 1.0f};
 	// 目印・出発の輪の色(自分のインクと同じ黄色)
 	static constexpr Vector4 kInkColor = {1.0f, 0.85f, 0.15f, 1.0f};
+	// 通路の壁の色(どのステージの壁か分かるよう、ステージごとに変える。並びはステージの番号と同じ)
+	static constexpr Vector4 kBarrierColors[kBarrierCount] = {
+		{1.0f, 0.5f, 0.15f, 1.0f},
+		{0.2f, 0.75f, 1.0f, 1.0f},
+		{0.65f, 0.35f, 1.0f, 1.0f},
+	};
 	// 台の塗りテクスチャの一辺のピクセル数(正方形の部分・通路の上面の 1m あたりおよそ 60 ピクセル)
 	static constexpr uint32_t kInkCanvasSize = 1024;
 	static constexpr uint32_t kCorridorInkCanvasSize = 512;

@@ -156,6 +156,10 @@ void StartPlatform::Initialize(Obj3dCommon* objCommon){
 		gate.marker = createRing();
 		gate.departurePad = createRing();
 	}
+	// 通路の壁は、どのステージの壁か分かるようステージごとの色にする
+	for(int i = 0; i < kBarrierCount; ++i){
+		barriers_[i] = createObj(kPlatformModelPath,kBarrierColors[i]);
+	}
 	launchRing_ = createRing();
 
 	// 台はワールドに固定するため、ここで1回だけ置く
@@ -199,6 +203,14 @@ void StartPlatform::PlaceParts(){
 			UpdatePart(*gate.frames[i],gate,{pillarOffsetX * kPillarSides[i], kPillarSize.y * kHalf, 0.0f},kPillarSize);
 		}
 		UpdatePart(*gate.frames.back(),gate,{0.0f, kPillarSize.y + kBeamHeight * kHalf, 0.0f},{kGateHalfWidth + kGateHalfWidth, kBeamHeight, kBeamDepth});
+	}
+
+	// 通路の壁も動かないため、ここで行列を求めておく(通路の幅いっぱいをふさぐ)
+	for(int i = 0; i < kBarrierCount; ++i){
+		barriers_[i]->SetTranslate(GetBarrierCenter(i));
+		barriers_[i]->SetRotate({0.0f, yaw_, 0.0f});
+		barriers_[i]->SetScale({kCorridorHalfWidth, kBarrierHeight * kHalf, kBarrierHalfThickness});
+		barriers_[i]->Update();
 	}
 }
 
@@ -272,6 +284,30 @@ Vector3 StartPlatform::GetDeparturePadPosition() const{
 	return GateToWorld(gates_[selectedGateIndex_],{0.0f, 0.0f, kDeparturePadDistance});
 }
 
+// 指定したステージの壁を、クリアしていても壊さずに立たせておく
+void StartPlatform::HoldBarrier(int stageIndex){
+	heldBarrierIndex_ = (stageIndex >= 0 && stageIndex < kBarrierCount)?stageIndex:-1;
+}
+
+// 立たせておいた壁を壊れた状態にする
+void StartPlatform::ReleaseBarrierHold(){
+	heldBarrierIndex_ = -1;
+}
+
+// 指定したステージの壁が立っているか
+bool StartPlatform::IsBarrierStanding(int stageIndex) const{
+	if(stageIndex < 0 || stageIndex >= kBarrierCount){
+		return false;
+	}
+	return !StageInfo::clearedStages[stageIndex] || stageIndex == heldBarrierIndex_;
+}
+
+// 指定したステージの壁の中心の座標(台の上面から壁の高さの半分だけ上)
+Vector3 StartPlatform::GetBarrierCenter(int stageIndex) const{
+	const int index = std::clamp(stageIndex,0,kBarrierCount - 1);
+	return ToWorld({0.0f, kBarrierHeight * kHalf, -kBarrierDistances[index]});
+}
+
 // 台の上で、選んでいるゲートの出発台の手前の線を越えたか
 // ゲートの根元からの差の、ゲートから出ていく向きの成分が、線の位置を越えたかで判定する
 bool StartPlatform::IsPastDepartureLine(const Vector3& position) const{
@@ -333,6 +369,21 @@ void StartPlatform::ClearInk(){
 	for(Gate& gate : gates_){
 		for(PaintCanvas* canvas : gate.frameCanvases){
 			canvas->Clear();
+		}
+	}
+	// クリアしたステージのゲートの前の床は、消した後すぐに塗り直す
+	PaintClearedGateFloors();
+}
+
+// クリアしたステージのゲートの前の床をインクで塗る
+// ゲートの番号とステージの番号は同じ
+void StartPlatform::PaintClearedGateFloors(){
+	for(int gateIndex = 0; gateIndex < kGateCount; ++gateIndex){
+		if(!StageInfo::clearedStages[gateIndex]){
+			continue;
+		}
+		for(int i = 0; i < kClearedFloorSplatCount; ++i){
+			PaintInk(GateToWorld(gates_[gateIndex],kClearedFloorSplatPositions[i]),kClearedFloorSplatRadii[i]);
 		}
 	}
 }
@@ -451,7 +502,7 @@ void StartPlatform::Update(float deltaTime){
 		Vector4 idleLampColor = kLampOffColor;
 		if(StageInfo::clearedStages[gateIndex]){
 			idleLampColor = kLampOnColor;
-		} else if(!StageInfo::IsStageSelectable(gateIndex)){
+		} else if(!IsGateSelectable(gateIndex)){
 			idleLampColor = kLampLockedColor;
 		}
 
@@ -518,6 +569,12 @@ void StartPlatform::Draw(){
 
 	DrawWithActiveCamera(*obj_);
 	DrawWithActiveCamera(*corridorObj_);
+	// 通路の壁は、立っているものだけ描く
+	for(int i = 0; i < kBarrierCount; ++i){
+		if(IsBarrierStanding(i)){
+			DrawWithActiveCamera(*barriers_[i]);
+		}
+	}
 	for(Gate& gate : gates_){
 		for(auto& frame : gate.frames){
 			DrawWithActiveCamera(*frame);
@@ -534,7 +591,7 @@ void StartPlatform::DrawEffects(){
 	// 目印は、どれかのゲートを開け始めたら役目を終えるので消す。まだ開けられないゲートの目印は出さない
 	if(!isGateOpening_){
 		for(int gateIndex = 0; gateIndex < kGateCount; ++gateIndex){
-			if(StageInfo::IsStageSelectable(gateIndex)){
+			if(IsGateSelectable(gateIndex)){
 				DrawWithActiveCamera(*gates_[gateIndex].marker);
 			}
 		}
@@ -567,6 +624,23 @@ bool StartPlatform::IsInsideTop(const Vector3& position) const{
 	return IsInsideSquareTop(position) || IsInsideCorridorTop(position);
 }
 
+// 指定したゲートを開けられるか
+// 最後のステージは、ほかのステージをすべてクリアしていても、壁を壊す演出で壁が壊れるまでは開けられない
+bool StartPlatform::IsGateSelectable(int gateIndex) const{
+	if(!StageInfo::IsStageSelectable(gateIndex)){
+		return false;
+	}
+	if(gateIndex != StageInfo::kFinalStageIndex){
+		return true;
+	}
+	for(int i = 0; i < kBarrierCount; ++i){
+		if(IsBarrierStanding(i)){
+			return false;
+		}
+	}
+	return true;
+}
+
 // ゲートがどれも開いていないときに、どのゲートの前の目印の上に立っているか
 int StartPlatform::FindGateArea(const Vector3& position) const{
 	if(isGateOpening_ || std::abs(position.y - topCenter_.y) > kGateAreaHeightRange){
@@ -574,7 +648,7 @@ int StartPlatform::FindGateArea(const Vector3& position) const{
 	}
 	for(int gateIndex = 0; gateIndex < kGateCount; ++gateIndex){
 		// まだ開けられないゲート(ほかのステージをクリアしていない最後のステージ)の前では受け付けない
-		if(!StageInfo::IsStageSelectable(gateIndex)){
+		if(!IsGateSelectable(gateIndex)){
 			continue;
 		}
 		const Vector3 markerPosition = GateToWorld(gates_[gateIndex],{0.0f, 0.0f, -kMarkerDistanceFromGate});
@@ -604,6 +678,23 @@ Vector3 StartPlatform::ClampBehindClosedGate(const Vector3& position) const{
 		const float overshoot = Dot(diff,gate.forward) + kGateWallMargin;
 		if(overshoot > 0.0f){
 			result = result - gate.forward * overshoot;
+		}
+	}
+
+	// 通路に立っている壁より奥へも進めない(壁の手前の面から、ゲートと同じ距離だけ手前へ戻す)
+	// 通路の幅の外は台の外で、そこから回り込んでも台に乗れずに落ちるため、通路の幅の中にいるときだけ押し戻す
+	const Vector3 backward = -forwardXZ_;
+	for(int i = 0; i < kBarrierCount; ++i){
+		if(!IsBarrierStanding(i)){
+			continue;
+		}
+		const Vector3 diff = {result.x - topCenter_.x, 0.0f, result.z - topCenter_.z};
+		if(std::abs(Dot(diff,rightXZ_)) > kCorridorHalfWidth){
+			continue;
+		}
+		const float overshoot = Dot(diff,backward) - (kBarrierDistances[i] - kBarrierHalfThickness) + kGateWallMargin;
+		if(overshoot > 0.0f){
+			result = result - backward * overshoot;
 		}
 	}
 	return result;

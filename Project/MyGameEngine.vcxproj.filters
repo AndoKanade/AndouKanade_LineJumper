@@ -339,6 +339,9 @@
     <ClCompile Include="Game\Title\ReturnJump.cpp">
       <Filter>ソース ファイル\Game\Title</Filter>
     </ClCompile>
+    <ClCompile Include="Game\Title\BarrierBreakCutscene.cpp">
+      <Filter>ソース ファイル\Game\Title</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Title\Departure\SuperJumpDeparture.cpp">
       <Filter>ソース ファイル\Game\Title</Filter>
     </ClCompile>
@@ -606,6 +609,9 @@
       <Filter>ヘッダー ファイル\Game\Title</Filter>
     </ClInclude>
     <ClInclude Include="Game\Title\ReturnJump.h">
+      <Filter>ヘッダー ファイル\Game\Title</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Title\BarrierBreakCutscene.h">
       <Filter>ヘッダー ファイル\Game\Title</Filter>
     </ClInclude>
     <ClInclude Include="Game\Title\Departure\DepartureContext.h">

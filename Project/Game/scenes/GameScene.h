@@ -36,6 +36,7 @@ class DamageInkEffect;
 class HelpOverlay;
 class DepartureDirector;
 class ReturnJump;
+class BarrierBreakCutscene;
 struct DepartureContext;
 
 /// <summary>
@@ -126,6 +127,13 @@ private:
 	// 着地の演出を見せ終えたら、結果を書き込んでクリア画面へ移る
 	void UpdateStageClear();
 
+	/// <summary>
+	/// 最後のステージへ続く通路の壁が壊れた瞬間の演出(壁を消し、破片・インクのしぶきを飛ばす)
+	/// </summary>
+	/// <param name="stageIndex">壊れた壁のステージの番号</param>
+	/// <param name="isShown">演出を見せている最中か(飛ばしたときは画面を揺らさない)</param>
+	void PlayBarrierBreakEffects(int stageIndex,bool isShown);
+
 	// マウスカーソルの表示/非表示を切り替える
 	void UpdateCursorVisibility(bool isPlayMode);
 
@@ -193,6 +201,8 @@ private:
 	std::unique_ptr<DepartureDirector> departureDirector_;
 	// ゴールの的を壊したあと、大ジャンプでスタート台へ戻る演出
 	std::unique_ptr<ReturnJump> returnJump_;
+	// 大ジャンプでスタート台に着地した後、クリアしたステージの通路の壁を壊して見せる演出
+	std::unique_ptr<BarrierBreakCutscene> barrierCutscene_;
 
 	// 画面中央固定のレティクル(照準)
 	std::unique_ptr<Reticle> reticle_;
@@ -320,4 +330,10 @@ private:
 	// 大ジャンプでスタート台に着地してから、クリア画面への切り替えを始めるまでの時間(秒)
 	// 着地の揺れ(kReturnLandShakeDuration)が収まり、インクのしぶきが落ちきるのを見せてから移る
 	static constexpr float kStageClearDuration = 1.0f;
+	// 通路の壁が壊れた瞬間に、壁から高く飛び散らせて台に落とすインクのしぶきの数
+	static constexpr int kBarrierBurstCount = 20;
+	// 通路の壁が壊れた瞬間の衝撃(動きを止める時間、画面の揺れの幅・収まるまでの時間。出発ゲートが開く瞬間と同じくらいにする)
+	static constexpr float kBarrierBreakHitStopDuration = 0.1f;
+	static constexpr float kBarrierBreakShakeAmplitude = 0.15f;
+	static constexpr float kBarrierBreakShakeDuration = 0.4f;
 };
