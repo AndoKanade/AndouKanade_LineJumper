@@ -145,6 +145,13 @@ private:
 	// プレイ中のゲーム処理(レール進行・カメラ・プレイヤー・敵・弾・的・勝敗判定)
 	void UpdateGameplay();
 
+	/// <summary>
+	/// 最初に飛び移り方の案内を出したときだけ、ゲームをゆっくりにする(前のフレームで案内を出した側から決める)
+	/// 飛び移るか、飛び移れなくなるか、最大の時間がたったら元の速さへ戻す
+	/// </summary>
+	/// <param name="isGameplayActive">プレイ中か(プレイ中でなければゆっくりにしない)</param>
+	void UpdateRailSwitchSlow(bool isGameplayActive);
+
 #ifdef USE_IMGUI
 	// レール・プレイヤー・敵の状態確認用のデバッグウィンドウを表示する(Playモード中も含めて常に表示する)
 	void ShowStatusWindow();
@@ -234,6 +241,16 @@ private:
 	std::unique_ptr<RailSwitchPrompt> railSwitchPrompt_;
 	// 今のステージのレールごとに、今回のプレイで乗ったか(乗ったことのある鍵のレールには、飛び移り方の案内を出さない)
 	std::vector<bool> riddenRails_;
+	// 前のフレームで飛び移り方の案内を出した側(右: 1、左: -1、無い: 0。スローを始めるか・やめるかの判定に使う)
+	int lastRailSwitchSide_ = 0;
+	// 最初に飛び移り方の案内を出したときだけ、ゲームをゆっくりにする(タイトルから始め直すまで、もう一度はしない)
+	bool hasPlayedRailSwitchSlow_ = false;
+	// 飛び移り方の案内に合わせて、ゲームをゆっくりにしている最中か
+	bool isRailSwitchSlowActive_ = false;
+	// ゆっくりにし始めてからの経過時間(秒。ゆっくりにしていない、実際の時間で数える)
+	float railSwitchSlowTimer_ = 0.0f;
+	// 今のゲームの進む速さ(通常の何倍か。ゆっくりにするときも戻すときも、少しずつ変える)
+	float railSwitchTimeScale_ = 1.0f;
 
 	// レールを進んでいる間に出すスピード線
 	std::unique_ptr<SpeedLines> speedLines_;
@@ -297,6 +314,12 @@ private:
 	static constexpr float kDefeatDuration = 1.4f;
 	// やられ演出の間の、周り(敵・インクの演出)の時間の進み方(通常の何倍か)
 	static constexpr float kDefeatTimeScale = 0.35f;
+	// 最初に飛び移り方の案内を出したときの、ゲームの進む速さ(通常の何倍か)と、ゆっくりにしておく最大の時間(秒。実際の時間)
+	// 飛び移るか、飛び移れなくなったら、最大の時間より前でも元に戻す
+	static constexpr float kRailSwitchSlowTimeScale = 0.25f;
+	static constexpr float kRailSwitchSlowMaxDuration = 3.0f;
+	// ゲームの進む速さを、ゆっくりにする・戻すときの変わる速さ(大きいほどすぐ切り替わる)
+	static constexpr float kRailSwitchSlowSharpness = 12.0f;
 	// 自機が弾けた瞬間の衝撃(動きを止める時間、画面の揺れの幅・収まるまでの時間)
 	static constexpr float kDefeatHitStopDuration = 0.15f;
 	static constexpr float kDefeatShakeAmplitude = 0.25f;

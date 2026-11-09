@@ -60,6 +60,7 @@
 #include "UI/DamageInkEffect.h"
 #include "UI/HelpOverlay.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <iterator>
@@ -415,6 +416,34 @@ void GameScene::ResetPlayState(){
 	isStageCleared_ = false;
 	stageClearTimer_ = 0.0f;
 	isPlaySessionClearPending_ = false;
+
+	// やり直したら、ゆっくりにしている途中でも元の速さに戻す(最初の1回を済ませたかは残す)
+	isRailSwitchSlowActive_ = false;
+	railSwitchSlowTimer_ = 0.0f;
+	railSwitchTimeScale_ = 1.0f;
+	lastRailSwitchSide_ = 0;
+}
+
+// 最初に飛び移り方の案内を出したときだけ、ゲームをゆっくりにする
+// 速さは目標の速さへ指数的に近づけ、急に止まったように見えないようにする(実際の時間で変える)
+void GameScene::UpdateRailSwitchSlow(bool isGameplayActive){
+	if(!isGameplayActive){
+		isRailSwitchSlowActive_ = false;
+	} else if(!hasPlayedRailSwitchSlow_ && lastRailSwitchSide_ != 0){
+		hasPlayedRailSwitchSlow_ = true;
+		isRailSwitchSlowActive_ = true;
+		railSwitchSlowTimer_ = 0.0f;
+	} else if(isRailSwitchSlowActive_){
+		railSwitchSlowTimer_ += kDeltaTime;
+		// 飛び移った(案内が消えた)か、飛び移れなくなったか、最大の時間がたったら戻す
+		if(lastRailSwitchSide_ == 0 || railSwitchSlowTimer_ >= kRailSwitchSlowMaxDuration){
+			isRailSwitchSlowActive_ = false;
+		}
+	}
+
+	const float targetScale = isRailSwitchSlowActive_?kRailSwitchSlowTimeScale:1.0f;
+	const float changeRate = 1.0f - std::exp(-kRailSwitchSlowSharpness * kDeltaTime);
+	railSwitchTimeScale_ += (targetScale - railSwitchTimeScale_) * changeRate;
 }
 
 // 遠くの物を空の色に溶け込ませる距離を、全オブジェクト共通の設定にする
@@ -886,6 +915,7 @@ void GameScene::UpdateGameplay(){
 		if(!ContinuePoint::isRequested){
 			StageInfo::ResetProgress();
 			tutorialHints_->Reset();
+			hasPlayedRailSwitchSlow_ = false;
 		}
 		ResetPlayState();
 		// ゲームオーバー画面でコンティニューを選んで戻ってきたときは、最後に通ったチェックポイントから始める
@@ -914,6 +944,7 @@ void GameScene::UpdateGameplay(){
 		lives_ = kMaxLives;
 		StageInfo::ResetProgress();
 		tutorialHints_->Reset();
+		hasPlayedRailSwitchSlow_ = false;
 		ResetPlayState();
 		StartPlaySequence();
 	}
@@ -960,6 +991,11 @@ void GameScene::UpdateGameplay(){
 	// 通路の壁を壊して見せている間は動かさない(演出を飛ばした SPACE で、そのフレームにジャンプしないよう、演出を進める前に決めておく)
 	const bool isPlayerMovable = isPlayMode && startSequence_->IsPlayerMovable() && !sceneManager_->IsTransitioning() && !barrierCutscene_->IsRunning();
 
+	// 最初に飛び移り方の案内を出したときだけ、レールを進む・敵・弾・的・しぶきをゆっくりにする
+	// カメラ(照準)とキーの入力は通常の速さのままにして、落ち着いて案内のキーを押せるようにする
+	UpdateRailSwitchSlow(isGameplayActive);
+	const float worldDeltaTime = kDeltaTime * railSwitchTimeScale_;
+
 	// 出発の演出を使うときは、ゲートが開いてから演出を始めるまでの間だけ、ゲートの先に出発台の目印を出す
 	startPlatform_->SetDeparturePadVisible(startSequence_->IsBoarding() && departureDirector_->UsesDeparturePad());
 
@@ -967,7 +1003,7 @@ void GameScene::UpdateGameplay(){
 	UpdateCursorVisibility(isPlayMode);
 
 	// レール進行度を時間で進める
-	player_->UpdateRailProgress(railEditor_.get(),isGameplayActive,kDeltaTime);
+	player_->UpdateRailProgress(railEditor_.get(),isGameplayActive,worldDeltaTime);
 
 	// オンレール/オフレールの状態に応じて、カメラ・プレイヤーの基準位置と基準向きを求める
 	player_->UpdateBasePose(railEditor_.get());
@@ -1141,7 +1177,7 @@ void GameScene::UpdateGameplay(){
 	// やられ演出の最中は、周りがスローで動き続けるように見せる
 	float enemyDeltaTime = 0.0f;
 	if(isGameplayActive){
-		enemyDeltaTime = kDeltaTime;
+		enemyDeltaTime = worldDeltaTime;
 	} else if(isDefeated_){
 		enemyDeltaTime = kDeltaTime * kDefeatTimeScale;
 	}
@@ -1182,7 +1218,7 @@ void GameScene::UpdateGameplay(){
 	// 開始演出でスタート台の上を動ける間も、同じ動き方で動かす
 	// 出発前にスタート台から落ちたときは、まだプレイを始めていないため残機を減らさずにやり直す
 	if(isGameplayActive || isPlayerMovable){
-		bool needsRestart = player_->UpdateMovement(input_,railEditor_.get(),startPlatform_.get(),cameraForward,railCamera_->GetRight(),ground_->GetHeight(),kDeltaTime);
+		bool needsRestart = player_->UpdateMovement(input_,railEditor_.get(),startPlatform_.get(),cameraForward,railCamera_->GetRight(),ground_->GetHeight(),worldDeltaTime);
 		if(needsRestart){
 			if(isGameplayActive){
 				LoseLife();
@@ -1255,10 +1291,10 @@ void GameScene::UpdateGameplay(){
 	}
 
 	// 弾の移動更新と生存時間チェック
-	bulletManager_->Move(kDeltaTime);
+	bulletManager_->Move(worldDeltaTime);
 
 	// 連鎖が途切れるまでの時間を進める(Edit中・開始演出中は止めておく)
-	comboCounter_->Update(isGameplayActive?kDeltaTime:0.0f);
+	comboCounter_->Update(isGameplayActive?worldDeltaTime:0.0f);
 
 	// 的の照準判定と弾との当たり判定
 	bool isAimingAtAnyTarget = targetManager_->Update(cameraPos,cameraForward,*bulletManager_);
@@ -1272,7 +1308,7 @@ void GameScene::UpdateGameplay(){
 	// ゴールの的の並走と弾との当たり判定
 	// プレイヤーがゴールのレールに乗っている間だけ、プレイヤーより先を並走させる(Edit中・開始演出中は出さない)
 	const bool isOnGoalRail = isGameplayActive && player_->IsOnRail() && railEditor_->IsGoalRail(railEditor_->GetActiveRailIndex());
-	goalTarget_->Update(railEditor_.get(),player_->GetRailT(),isOnGoalRail,cameraPos,*bulletManager_,isGameplayActive?kDeltaTime:0.0f);
+	goalTarget_->Update(railEditor_.get(),player_->GetRailT(),isOnGoalRail,cameraPos,*bulletManager_,isGameplayActive?worldDeltaTime:0.0f);
 
 	// クリア判定
 	// ゴールの的の体力を0にして壊したらステージクリアとし、撃破演出を見せてから大ジャンプでスタート台へ戻る
@@ -1314,7 +1350,7 @@ void GameScene::UpdateGameplay(){
 	} else if(returnJump_->IsWaiting()){
 		inkTimeScale = kGoalBreakTimeScale;
 	}
-	inkEffect_->Update(screenImpact_->IsHitStopping()?0.0f:kDeltaTime * inkTimeScale);
+	inkEffect_->Update(screenImpact_->IsHitStopping()?0.0f:worldDeltaTime * inkTimeScale);
 
 	// スピード線はレールを進んでいる間だけ出す
 	speedLines_->Update(isRidingRail,kDeltaTime);
@@ -1354,6 +1390,7 @@ void GameScene::UpdateGameplay(){
 		}
 	}
 	railSwitchPrompt_->Update(railSwitchSide,kDeltaTime);
+	lastRailSwitchSide_ = railSwitchSide;
 }
 
 #ifdef USE_IMGUI
