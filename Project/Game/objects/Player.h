@@ -42,6 +42,9 @@ public:
 	/// <param name="startRotation">カメラ・プレイヤーの基準向き(レールの始点の向きにそろえる)</param>
 	void StartOnPlatform(const Vector3& startPosition,const Vector3& startRotation);
 
+	// スタート台の上にいる間の基準向きを付け替える(選んだゲートのステージのレールの始点の向きにそろえるときに使う)
+	void SetPlatformBaseRotation(const Vector3& rotation){ freeBaseRotation_ = rotation; }
+
 	// レールの進行度startTの位置にオンレールの状態で乗せる(出発の演出でレールへ乗せるときに使う。体力はそのまま)
 	// 始点以外を指定すると、Editモードで選んだ制御点から途中のプレイを始められる
 	void BoardRailStart(float startT = 0.0f);

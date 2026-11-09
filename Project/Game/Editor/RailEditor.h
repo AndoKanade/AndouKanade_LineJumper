@@ -120,7 +120,7 @@ public:
 
 	// アクティブなレールの、進行度tの位置までをインクで塗った区間に含める(Play中にレールの見た目を塗るのに使う)
 	void PaintActiveRail(float t);
-	// 全レールの塗った区間を消す(リスタート時に呼ぶ)
+	// 全ステージの全レールの塗った区間を消す(リスタート時に呼ぶ)
 	void ClearPaint();
 
 	/// <summary>
@@ -133,6 +133,15 @@ public:
 	void UpdateRailLocks(const std::vector<bool>& lockedRails,float growSpeed,float deltaTime);
 	// 管を伸ばす演出を飛ばして、出ていないレールをすぐに反映する(リスタート・チェックポイントからのやり直しで使う)
 	void ResetRailLocks(const std::vector<bool>& lockedRails);
+	/// <summary>
+	/// 指定ステージのレールに、出ていないレールをすぐに反映する
+	/// Play中は今のステージ以外のレールもスタート台から見えるよう描くため、そのステージの鍵の的から求めた出方を渡してもらう
+	/// </summary>
+	/// <param name="stageIndex">反映するステージの番号</param>
+	/// <param name="lockedRails">レールごとに、出ていないか(そのステージのレールの並びと同じ)</param>
+	void ResetStageRailLocks(int stageIndex,const std::vector<bool>& lockedRails);
+	// 指定ステージのレールの本数を取得
+	int GetStageRailCount(int stageIndex) const;
 
 	// 着地できる範囲の描画に使う水平方向の許容距離を設定する
 	// 判定値そのものはGameScene側が持っているため、同じ値を二重に持たないよう外から渡してもらう

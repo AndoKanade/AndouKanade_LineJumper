@@ -29,6 +29,14 @@ public:
 	void Reset();
 
 	/// <summary>
+	/// 追従する基準の向きを付け替える(スタート台の上で、選んだゲートのステージのレールの向きを基準にするときに使う)
+	/// 見えている向きが変わらないよう、左右の照準オフセットに元の基準の向きとの差を足す
+	/// 照準オフセットは基準の向きからのずれなので、付け替えずにレールへ乗ると、台の上で振り向いた分だけレールの正面からずれてしまう
+	/// </summary>
+	/// <param name="newBaseRotation">新しい基準の向き</param>
+	void RebaseFollowRotation(const Vector3& newBaseRotation);
+
+	/// <summary>
 	/// 更新処理(位置・向き・前方/右方向ベクトルを計算し、プレイ用カメラに反映する)
 	/// </summary>
 	/// <param name="basePosition">カメラ・プレイヤーの共通の基準位置</param>

@@ -367,6 +367,7 @@ void GameScene::ResetPlayState(){
 
 		// 的をすべて復活させたため、鍵の的があるレールは出ていない状態にすぐ戻す
 		ApplyRailLocks(true);
+		ResetOtherStageRailLocks();
 	}
 
 	// 出ている演出・連鎖数・スピード線・画面の揺れ・出発の演出も消す
@@ -570,6 +571,21 @@ void GameScene::SwitchStage(int stageIndex){
 
 	// 的をすべて復活させたため、鍵の的があるレールは出ていない状態にすぐ戻す
 	ApplyRailLocks(true);
+	ResetOtherStageRailLocks();
+}
+
+// 今のステージ以外のレールの出方を、そのステージの鍵の的がすべて残っている状態にする
+// 今のステージ以外の的は壊せないため、ステージを切り替えたときとやり直すときに1回求めれば足りる
+void GameScene::ResetOtherStageRailLocks(){
+	std::vector<bool> stageLockedRails;
+	for(int stage = 0; stage < StageInfo::kStageCount; ++stage){
+		if(stage == railEditor_->GetStageIndex()){
+			continue;
+		}
+		stageLockedRails.assign(static_cast<size_t>(railEditor_->GetStageRailCount(stage)),false);
+		targetManager_->FillStageLockedRails(stage,stageLockedRails);
+		railEditor_->ResetStageRailLocks(stage,stageLockedRails);
+	}
 }
 
 // 出発の演出が動かす・参照するものをまとめる
@@ -856,6 +872,11 @@ void GameScene::UpdateGameplay(){
 		// 出発の演出はステージのレールを使うため、演出を始めるより先に切り替える
 		if(startSequence_->IsGateOpenTriggered()){
 			SwitchStage(startPlatform_->GetSelectedGateIndex());
+			// 台の上での基準の向きを、そのステージのレールの始点の向きに付け替える
+			// 見えている向きは変えずに照準オフセットへ差を移すため、ゲートの方を向いていれば、レールに乗ったときにレールの正面を向く
+			const Vector3 stageStartRotation = railEditor_->GetRotationOnRail(0.0f);
+			player_->SetPlatformBaseRotation(stageStartRotation);
+			railCamera_->RebaseFollowRotation(stageStartRotation);
 		}
 
 		// ゲートのカウントダウンに合わせて飛び乗る演出は、ゲートを開け始めた瞬間に選んで始める

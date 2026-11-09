@@ -73,6 +73,13 @@ public:
 	/// <param name="lockedRails">レールごとに、出ていないかを受け取る配列(呼び出し側でレールの本数分を false で用意しておく)</param>
 	void FillLockedRails(std::vector<bool>& lockedRails) const;
 
+	/// <summary>
+	/// 指定ステージの鍵の的がすべて残っているときに、出ていないレールに true を入れる(今のステージ以外のレールを描くのに使う)
+	/// </summary>
+	/// <param name="stageIndex">調べるステージの番号</param>
+	/// <param name="lockedRails">レールごとに、出ていないかを受け取る配列(呼び出し側でレールの本数分を false で用意しておく)</param>
+	void FillStageLockedRails(int stageIndex,std::vector<bool>& lockedRails) const;
+
 	// 生存している的を描画する
 	void Draw();
 

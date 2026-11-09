@@ -256,6 +256,19 @@ void TargetManager::FillLockedRails(std::vector<bool>& lockedRails) const{
 	}
 }
 
+// 指定ステージの鍵の的がすべて残っているときに、出ていないレールに true を入れる
+// 範囲外のステージ・レールの指定は無視する
+void TargetManager::FillStageLockedRails(int stageIndex,std::vector<bool>& lockedRails) const{
+	if(!editor_ || !StageInfo::IsValidStageIndex(stageIndex)){
+		return;
+	}
+	for(const TargetEditor::TargetPoint& point : editor_->GetStageTargetPoints(stageIndex)){
+		if(point.unlockRailIndex >= 0 && point.unlockRailIndex < static_cast<int>(lockedRails.size())){
+			lockedRails[point.unlockRailIndex] = true;
+		}
+	}
+}
+
 // 生存している的だけ描画する
 void TargetManager::Draw(){
 	for(auto& target : targets_){

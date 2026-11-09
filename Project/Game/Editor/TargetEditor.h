@@ -43,6 +43,8 @@ public:
 	Vector3 GetTargetPosition(int index) const;
 	// 指定インデックスの的を壊すと出るレールのインデックスを取得(-1: 鍵の的ではない)
 	int GetUnlockRailIndex(int index) const;
+	// 指定ステージに配置されている的の配列を取得(今のステージ以外のレールの出方を求めるのに使う)
+	const std::vector<TargetPoint>& GetStageTargetPoints(int stageIndex) const{ return GetStageTargets(stageIndex); }
 
 	// 指定座標に的を1個追加する(初回起動時の初期配置生成用)
 	void AddTargetAt(const Vector3& position);

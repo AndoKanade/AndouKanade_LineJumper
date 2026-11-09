@@ -850,6 +850,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | --- | --- |
 | `Initialize(paramGroup)` | 調整項目（`cameraHeightOffset` / `cameraDistance` / `cameraFollowSharpness` / `mouseSensitivity` / `aimPitchLimit`）の登録 |
 | `Reset()` | 照準オフセットを 0 に戻し、次の更新で追従の遅れなしにレールの向きへ合わせる |
+| `RebaseFollowRotation(newBaseRotation)` | 追従する基準の向きを付け替え、見えている向きが変わらないよう左右の照準オフセットに差を足す。出発ゲートを開け始めた瞬間に、選んだステージのレールの始点の向きへ付け替える（付け替えないと、台の上で振り向いた分だけレールに乗った後もレールの正面からずれる） |
 | `Update(basePosition, baseRotation, isInputEnabled, input, deltaTime, groundHeight, startPlatform)` | 位置・向き・前方ベクトル・右方向ベクトルを計算し、カメラに反映する。`groundHeight` と `startPlatform`（nullptr なら調べない）はめり込み防止に使う |
 | `GetPosition` / `GetRotation` / `GetForward` / `GetRight` | 計算結果の取得 |
 
@@ -1022,7 +1023,7 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 - 位置は Catmull-Rom スプラインで補間する。
 - 向き（ピッチ・ヨー）は進行方向から逆算し、ロールは制御点間を線形補間する。ロールと速度は位置と同じ区間分けで補間し、制御点に設定した値がその制御点を通る位置で効く。
 - Edit モードの描画では、アクティブなレールを黄色、それ以外を黒で表示する。
-- Play モードの描画では、編集用の目印（曲線の点列・着地範囲、始点と終点以外の制御点の目印）は出さず、レール本体を管（半径 0.05）で描く。
+- Play モードの描画では、編集用の目印（曲線の点列・着地範囲、始点と終点以外の制御点の目印）は出さず、レール本体を管（半径 0.05）で描く。スタート台の上からどのステージのレールも見えるよう、今のステージ以外のレールも描く（乗れるのは今のステージのレールだけ）。今のステージ以外のレールの出方は、GameScene がそのステージの鍵の的から求めて `ResetStageRailLocks()` で渡す（鍵の的が残っているレールは点線）。
   - 管はレール 1 本につき 1 つのモデルで、Play に入った最初の描画で `BuildTubes()` が頂点から作る。Catmull-Rom の 1 区間を 24 に分け、区間の境目ごとに 8 角形の輪を置いて隣どうしを三角形でつなぐ。輪の横向きは前の輪から引き継ぎ、螺旋でも管がねじれないようにする。前回作ったときから制御点が変わっていないレールは作り直さない。
   - インクで塗った区間（`PaintActiveRail(t)` で広げ、`ClearPaint()` で消す）は黄色、それ以外はピンクにする。同じモデルを色違いの 2 つの Obj3D で共有し、`Obj3D::SetDrawIndexRange()` でそれぞれの区間のインデックスだけを描く。描画命令はレール 1 本につき最大 3 回（塗っていない区間・塗った区間・塗っていない区間）。
   - レールの始点と終点には制御点の目印を出す（今乗っているレールは黄色、それ以外は黒）。
@@ -1066,6 +1067,7 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | `ToggleShowControlPointModels()` / `ToggleShowCurve()` | キー操作用の表示切り替え |
 | `SaveToJson()` / `LoadFromJson()` | 保存・読み込み。起動時は自動で読み込む |
 | `GetTOfControlPoint(index)` / `GetSelectedPointIndex()` / `SelectPoint(rail, point)` | 途中からの Play 用。制御点を通る位置の進行度（両端の制御点は曲線の始点・終点に丸める）/ 選択中の制御点 / Play から戻ったときの選び直し |
+| `ResetStageRailLocks(stageIndex, lockedRails)` / `GetStageRailCount(stageIndex)` | 指定ステージのレールに出方をすぐ反映する（今のステージ以外のレールを描くため）/ 指定ステージのレールの本数 |
 | `UpdateRailLocks(lockedRails, deltaTime)` / `ResetRailLocks(lockedRails)` | 出ていないレールを反映し、出たレールの管を伸ばす / 管を伸ばす演出を飛ばしてすぐ反映する（リスタート・チェックポイント用） |
 | `FindPassedCheckpoint(t)` | アクティブなレールで、進行度 t までに通ったチェックポイントのうち最も先の制御点を返す（無ければ -1）。途中に着地した場合も、手前のチェックポイントは通ったものとする |
 | `ConsumeFocusRequest(outPos)` / `SetBaseRailSpeed(speed)` | Focus の操作があれば選択中の制御点の位置を返す / 走り切るまでの秒数の計算に使う railSpeed を受け取る |

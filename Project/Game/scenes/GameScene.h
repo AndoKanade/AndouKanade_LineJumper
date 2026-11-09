@@ -90,6 +90,8 @@ private:
 	/// </summary>
 	/// <param name="stageIndex">切り替えるステージの番号(0始まり)</param>
 	void SwitchStage(int stageIndex);
+	// 今のステージ以外のレールの出方を、そのステージの鍵の的がすべて残っている状態にする(スタート台の上から全ステージのレールを見せるため)
+	void ResetOtherStageRailLocks();
 	// 遠くの物を空の色に溶け込ませる距離を、全オブジェクト共通の設定にする(Play中だけ溶け込ませ、Edit中は溶け込ませない)
 	void UpdateSceneDistanceFade();
 
