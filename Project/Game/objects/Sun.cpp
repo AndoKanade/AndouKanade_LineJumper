@@ -2,6 +2,7 @@
 #include "ModelManager.h"
 #include "ModelCommon.h"
 #include "GlobalVariables.h"
+#include <algorithm>
 #include <cmath>
 
 namespace{
@@ -19,6 +20,7 @@ namespace{
 	const char* kAzimuthKey = "sunAzimuthDegree";
 	const char* kIntensityKey = "sunIntensity";
 	const char* kColorKey = "sunColor";
+	const char* kShadowBrightnessKey = "sunShadowBrightness";
 }
 
 // 初期化処理
@@ -40,6 +42,7 @@ void Sun::Initialize(const std::string& paramGroup,const Vector3& referenceForwa
 	gv->AddItem(paramGroup_,kAzimuthKey,kDefaultAzimuthDegree);     // 太陽の方角(進行方向から右回りの角度・度)
 	gv->AddItem(paramGroup_,kIntensityKey,kDefaultIntensity);       // 光の明るさ
 	gv->AddItem(paramGroup_,kColorKey,kDefaultColor);               // 光の色(RGB)
+	gv->AddItem(paramGroup_,kShadowBrightnessKey,kDefaultShadowBrightness); // 光が当たらない面の明るさ(0: 真っ暗 〜 1: 影なし)
 
 	Update();
 }
@@ -56,6 +59,8 @@ void Sun::Update(){
 	const float azimuth = gv->GetFloatValue(paramGroup_,kAzimuthKey) * kDegreeToRadian;
 	const float intensity = gv->GetFloatValue(paramGroup_,kIntensityKey);
 	const Vector3 color = gv->GetVector3Value(paramGroup_,kColorKey);
+	// 0〜1の外にすると、光が当たる面より明るくなったり、暗さが反転したりするため範囲に収める
+	const float shadowBrightness = std::clamp(gv->GetFloatValue(paramGroup_,kShadowBrightnessKey),0.0f,1.0f);
 
 	// 地面から見た太陽の方向(水平成分は基準の前方向から右回りに方角の分だけ回す)
 	const Vector3 horizontal = referenceForward_ * std::cos(azimuth) + referenceRight_ * std::sin(azimuth);
@@ -65,4 +70,5 @@ void Sun::Update(){
 	light_->direction = Normalize(-toSun);
 	light_->color = {color.x, color.y, color.z, kLightAlpha};
 	light_->intensity = intensity;
+	light_->shadowBrightness = shadowBrightness;
 }

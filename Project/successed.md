@@ -1848,3 +1848,15 @@ Visual Studio でのビルド・画面での確認はしていない。GameScene
 
 Visual Studio でのビルド・画面での確認はしていない。変更した .cpp を、仮のヘッダーに差し替えて clang で構文チェックした（USE_IMGUI あり・なしの両方）。
 
+### 11. 影を薄くできるようにした
+
+対象ファイル: `Engine/Graphics/3D/ModelCommon.h/.cpp`、`Engine/Graphics/3D/Obj3DCommon.cpp`、`Engine/Graphics/Shaders/Obj3D/Object3d.PS.hlsl`、`Game/objects/Sun.h/.cpp`
+
+- 影を落とす処理（シャドウマップ）は無く、影に見えていたのは、平行光源（太陽）が当たらない側の面の暗さだった。光の当たり具合をハーフランバートの2乗で求めていて、裏側はほぼ 0 になり真っ暗だった。
+- 平行光源に「光が当たらない面の明るさ」（`DirectionalLight::shadowBrightness`。0〜1）を足し、シェーダーで光の当たり具合をこの値まで持ち上げるようにした（`lerp(shadowBrightness, 1, 当たり具合)`）。光が当たる面の明るさは変わらず、暗い側だけ明るくなる。
+- 値は調整項目 `sunShadowBrightness`（GameScene グループ、初期値 0.4）で変えられる。0 にすると今までと同じ見た目になる。C++ の構造体は、シェーダーの定数バッファ（16バイト単位）に大きさをそろえるため詰め物を足した。
+
+### ビルド確認（11.）
+
+Visual Studio でのビルド・画面での確認はしていない。Sun.cpp と ModelCommon.cpp を、仮のヘッダーに差し替えて clang で構文チェックした。シェーダーはこの環境ではコンパイルできないため、確かめていない。
+

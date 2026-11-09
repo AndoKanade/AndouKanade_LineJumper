@@ -43,4 +43,6 @@ private:
 	static constexpr float kDefaultIntensity = 1.5f;
 	// 光の色の初期値(少し暖かい日差しの色)
 	static constexpr Vector3 kDefaultColor = {1.0f, 0.92f, 0.8f};
+	// 光が当たらない面の明るさの初期値(光が当たる面に対する割合。0 だと真っ暗になって形が見えにくいため、少し持ち上げる)
+	static constexpr float kDefaultShadowBrightness = 0.4f;
 };

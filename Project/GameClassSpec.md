@@ -264,6 +264,7 @@ Game/
 | `fogDensity` | 1.0 | Ground | 雲の上に重ねる霧の濃さの倍率 |
 | `sunElevationDegree` / `sunAzimuthDegree` | 25 / 50 | Sun | 太陽の高さ・方角（度。方角はレール開始地点の進行方向から右回り） |
 | `sunIntensity` / `sunColor` | 1.5 / (1, 0.92, 0.8) | Sun | 光の明るさ・色 |
+| `sunShadowBrightness` | 0.4 | Sun | 光が当たらない面の明るさ（光が当たる面に対する割合。0 で今までどおり真っ暗、1 で影が付かない）。シェーダー（`Object3d.PS.hlsl`）で、平行光源の当たり具合をこの値まで持ち上げる |
 | `fallTransitionStyle` / `clearTransitionStyle` | RailStripes / InkBurst | GameScene | 落下リスタート・クリアへの切り替えの演出（ImGui で選ぶ。クリアの方はボス戦を作るときに使う） |
 | `departureStyle` | CountdownFlip | GameScene | 出発の演出（ImGui の「Departure」で選ぶ。DepartureStyle の番号） |
 
