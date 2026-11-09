@@ -4,10 +4,13 @@
 #include "SpriteCommon.h"
 #include "TextureManager.h"
 #include "WinAPI.h"
+#include "objects/StageInfo.h"
 
 namespace{
 	// 説明の本体(操作方法と画面の流れ)
 	const std::string kHelpTexture = "resource/UI/help.png";
+	// プレイ会用の設定のときに出す説明の本体(画面の流れをステージ1だけにしたもの)
+	const std::string kPlaySessionHelpTexture = "resource/UI/helpPlaySession.png";
 	// 閉じている間に出す「H あそびかた」の案内
 	const std::string kHintTexture = "resource/UI/helpHint.png";
 	// 説明の後ろの幕(色を付けて画面全体に引き伸ばす)
@@ -26,6 +29,7 @@ void HelpOverlay::Initialize(SpriteCommon* spriteCommon){
 
 	TextureManager* textureManager = TextureManager::GetInstance();
 	textureManager->LoadTexture(kHelpTexture);
+	textureManager->LoadTexture(kPlaySessionHelpTexture);
 	textureManager->LoadTexture(kHintTexture);
 	textureManager->LoadTexture(kDimTexture);
 
@@ -48,6 +52,7 @@ void HelpOverlay::Initialize(SpriteCommon* spriteCommon){
 	const Vector4 white = {1.0f, 1.0f, 1.0f, 1.0f};
 	dimSprite_ = createSprite(kDimTexture,screenCenter,{screenWidth, screenHeight},kCenterAnchor,kDimColor);
 	helpSprite_ = createSprite(kHelpTexture,screenCenter,kHelpSize,kCenterAnchor,white);
+	playSessionHelpSprite_ = createSprite(kPlaySessionHelpTexture,screenCenter,kHelpSize,kCenterAnchor,white);
 	hintSprite_ = createSprite(kHintTexture,{kScreenMargin, screenHeight - kScreenMargin},kHintSize,kBottomLeftAnchor,kHintColor);
 }
 
@@ -75,9 +80,14 @@ void HelpOverlay::Draw(){
 	spriteCommon_->Draw(); // 描画前処理
 
 	// 開いている間は説明だけを出し、閉じている間は案内だけを出す
+	// プレイ会用の設定のときは、ステージ1だけを遊ぶ流れの説明を出す
 	if(isOpen_){
 		dimSprite_->Draw();
-		helpSprite_->Draw();
+		if(StageInfo::isPlaySessionMode){
+			playSessionHelpSprite_->Draw();
+		} else{
+			helpSprite_->Draw();
+		}
 	} else{
 		hintSprite_->Draw();
 	}

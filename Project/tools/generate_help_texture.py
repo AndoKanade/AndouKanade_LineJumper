@@ -3,7 +3,8 @@
 # 使い方: python tools/generate_help_texture.py  (Projectフォルダで実行する。Pillowが必要)
 # 出力先: resource/UI/help.png(説明の本体) / resource/UI/helpHint.png(画面の隅に常に出す「H あそびかた」)
 #         resource/UI/quitHint.png(タイトル画面の右上に出す「ESC ゲーム終了」)
-# 操作やキーを変えたときは、下の CONTROLS / FLOWS を書き換えて実行し直す。
+# 操作やキーを変えたときは、下の CONTROLS / FLOWS / PLAY_SESSION_FLOWS を書き換えて実行し直す。
+# プレイ会用の設定(調整項目 playSessionMode)のときは、画面の流れをステージ1だけにした helpPlaySession.png を出す。
 
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 # 出力するファイルのパス(Projectフォルダからの相対パス)
 HELP_OUTPUT_PATH = Path("resource/UI/help.png")
+PLAY_SESSION_HELP_OUTPUT_PATH = Path("resource/UI/helpPlaySession.png")
 HINT_OUTPUT_PATH = Path("resource/UI/helpHint.png")
 QUIT_HINT_OUTPUT_PATH = Path("resource/UI/quitHint.png")
 # 文字に使うフォント(リポジトリに入っている日本語フォント)
@@ -41,28 +43,36 @@ PANEL_EDGE_WIDTH = 6
 # 画像の端から文字までの余白(ピクセル)
 PADDING = 56
 
-# 操作の一覧(キー, 説明, 補足)
+# 操作の一覧(キー, 説明, 補足)。ぱっと見で分かるよう、補足はつまずきやすい操作にだけ付ける
 CONTROLS = [
-    ("マウス", "照準を動かす", ""),
-    ("左クリック", "インクを撃つ", "鍵の的を壊すと次のレールが出る"),
-    ("SPACE", "ジャンプ / 出発する", "出発はスタート台のゲートの前で押す"),
-    ("A/D+SPACE", "横のレールへ乗り換える", "並んでいるレールがあるとき"),
-    ("WASD", "スタート台の上・空中で移動する", "別のレールの上に落ちると乗り移る"),
-    ("R", "タイトルからやり直す", ""),
-    ("TAB", "マウスカーソルの表示切り替え", ""),
-    ("H", "この説明を開く / 閉じる", "開いている間はゲームが止まる"),
+    ("マウス", "照準を動かす / 見回す", ""),
+    ("左クリック", "インクを撃つ", "鍵の的を壊すと となりにレールが出る"),
+    ("SPACE", "ジャンプ / 出発する", ""),
+    ("A/D+SPACE", "となりのレールへ飛び移る", "画面に出た側のキーを押す"),
+    ("WASD", "スタート台の上で歩く", ""),
+    ("TAB", "マウスカーソルを出す / 消す", ""),
+    ("H", "この説明を開く / 閉じる", ""),
     ("ESC", "ゲームを終了する", ""),
 ]
 
 # 画面の流れ(遷移元, 条件, 遷移先)
 FLOWS = [
     ("タイトル", "SPACE", "スタート台"),
-    ("スタート台", "ゲートの前で SPACE(後ろはステージ1〜3をクリアで開く)", "プレイ開始"),
-    ("プレイ", "ゴールのレールで現れる的を壊す", "ステージクリア"),
-    ("プレイ", "体力が0になる / レールから落ちる", "残機を減らしてやり直し"),
+    ("スタート台", "ゲートの前で SPACE", "ステージへ出発"),
+    ("プレイ", "ゴールの的を壊す", "ステージクリア"),
+    ("クリア", "スタート台へ戻る", "次のステージを選ぶ"),
+    ("ステージ1〜3", "ぜんぶクリアすると後ろのゲートが開く", "最後のステージ"),
     ("プレイ", "残機(左上)が0になる", "ゲームオーバー"),
-    ("クリア", "スタート台へ戻る(最後のステージはクリア画面へ)", "次のステージを選ぶ"),
     ("ゲームオーバー", "W/S で選んで SPACE", "コンティニュー / タイトルへ"),
+]
+
+# プレイ会用の画面の流れ(ステージ1だけを遊ぶ)
+PLAY_SESSION_FLOWS = [
+    ("タイトル", "SPACE", "スタート台"),
+    ("スタート台", "正面のゲートの前で SPACE", "ステージ1へ出発"),
+    ("プレイ", "ゴールの的を壊す", "クリア!"),
+    ("プレイ", "残機(左上)が0になる", "ゲームオーバー"),
+    ("クリア / ゲームオーバー", "SPACE", "タイトルへ戻る"),
 ]
 
 
@@ -88,7 +98,8 @@ def draw_arrow(draw, left, right, center_y):
     draw.polygon([(right, center_y), (right - head * 1.4, center_y - head), (right - head * 1.4, center_y + head)], fill=ARROW_COLOR)
 
 
-def generate_help():
+def generate_help(controls, flows, output_path):
+    """操作の一覧 controls と画面の流れ flows を描いた説明の画像を output_path に書き出す"""
     image = Image.new("RGBA", HELP_SIZE, (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
     width, height = HELP_SIZE
@@ -113,10 +124,10 @@ def generate_help():
     # 左の列: 操作の一覧
     draw.text((left_column, top), "操作", font=heading_font, fill=HEADING_COLOR, anchor="lt")
     key_area_width = 260
-    # 操作が9行あるため、一番下の「H キーで閉じる」に重ならない間隔にする
-    row_height = 62
+    # 操作が8行あるため、一番下の「H キーで閉じる」に重ならない、なるべく広い間隔にする
+    row_height = 68
     y = top + 70
-    for key, text, sub in CONTROLS:
+    for key, text, sub in controls:
         draw_key(draw, left_column, y, key, key_font)
         if sub:
             draw.text((left_column + key_area_width, y - 4), text, font=text_font, fill=TEXT_COLOR, anchor="ls")
@@ -134,7 +145,7 @@ def generate_help():
     flow_row_height = 76
     box_height = 46
     y = top + 82
-    for source, condition, destination in FLOWS:
+    for source, condition, destination in flows:
         # 遷移元の画面を枠で囲む
         source_width = draw.textlength(source, font=text_font) + 28
         draw.rounded_rectangle((right_column, y - box_height / 2, right_column + source_width, y + box_height / 2), radius=12, fill=SCENE_BOX_COLOR)
@@ -155,8 +166,8 @@ def generate_help():
     # 一番下の案内
     draw.text((width / 2, height - PADDING + 6), "H キーで閉じる", font=heading_font, fill=TEXT_COLOR, anchor="mm")
 
-    HELP_OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    image.save(HELP_OUTPUT_PATH)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(output_path)
 
 
 def generate_key_hint(size, key, text, output_path):
@@ -182,6 +193,7 @@ def generate_quit_hint():
 
 
 if __name__ == "__main__":
-    generate_help()
+    generate_help(CONTROLS, FLOWS, HELP_OUTPUT_PATH)
+    generate_help(CONTROLS, PLAY_SESSION_FLOWS, PLAY_SESSION_HELP_OUTPUT_PATH)
     generate_hint()
     generate_quit_hint()

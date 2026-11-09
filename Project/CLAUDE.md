@@ -78,6 +78,7 @@
   - プレイ会用の設定を足した（調整項目 `GameScene` グループの `playSessionMode`。初期値は OFF）。ON のときは次のようになる。
     - 開けられるのは正面（ステージ1）のゲートだけ。右・左のゲートの前に来ると「いまは遊べないよ!!」の画像を出す（`StageLockedNotice`、`resource/UI/stageLocked.png`、`tools/generate_stage_locked_notice.py`）。
     - ステージ1をクリアすると、大ジャンプで戻って壁が壊れるのを見せた後に、クリア画面へ移る（その後はタイトルへ戻り、次の人が最初から遊べる）。
+    - H キーの操作説明も、画面の流れをステージ1だけにしたもの（`resource/UI/helpPlaySession.png`）を出す。
     - プレイ会では、Global Variables パネルで `playSessionMode` を ON にして Save するか、`resource/GlobalVariables/GameScene.json` の `playSessionMode` を `true` にしたものを使う。提出用は OFF に戻す。
   - 場面ごとに画面の上へ操作の案内を1つずつ出すようにした（仮。`TutorialHints`、画像は `tools/generate_tutorial_hints.py`）。「WASD で移動・マウスで見回す（2m 歩いたら消える）→ 左クリックで試し撃ち（5 発撃ったら消える）→ ゲートの前で SPACE（ゲートを開けたら消える）→ レールで的を撃つ（的を1つ壊すか 6 秒で消える）」の順。タイトルから始め直すと最初から出し、落ちてやり直しても出し直さない。ゴールの的の案内は、見てから足すか決める。
   - 鍵の的を壊して出たレールへ飛び移れるとき、そのレールがある側の画面の端に「A + SPACE」「D + SPACE」を点滅させて出すようにした（`RailSwitchPrompt`、画像は `tools/generate_rail_switch_prompt.py`）。左右は飛び移る処理と同じ判定（`Player::FindSideRailDirection()`）で求める。一度乗った鍵のレールには出さない。最初にこの案内を出したときだけ、飛び移るまで（最大 3 秒）レールを進む・敵・弾・的・しぶきを 0.25 倍の速さにする（カメラとキーの入力は通常の速さ。タイトルから始め直すまでもう一度はしない）。
@@ -108,7 +109,7 @@
 ### 3.1 暫定対応のまま残っている箇所
 
 - **仮素材**：PRESS SPACE（`resource/Title/pressSpace.png`）、出発ゲートの目印・輪、操作案内・GO!・カウントダウンの数字（`tools/generate_start_stage_assets.py`）、「STAGE CLEAR!」（`tools/generate_stage_clear_assets.py`）、クリア・ゲームオーバー画面の画像（`tools/generate_result_assets.py`）、落下リスタートの「RETRY」の文字。本番の素材ができたら差し替える。
-- **確認用の処理**：Play 中の R キーでタイトルからやり直す処理が、一時的な処理のまま残っている（操作説明の画像にも R が載っている）。
+- **確認用の処理**：Play 中の R キーでタイトルからやり直す処理が、一時的な処理のまま残っている（プレイ会で係の人がやり直すのに使えるため残し、操作説明の画像からは消した）。
 - **ステージ2〜4**：まっすぐな仮のレール1本と仮の的4つだけ。
 
 ### 3.2 不足点（2026-10-30 にコードと起動で確認、要優先度調整）
