@@ -3,42 +3,21 @@
 #include "PlayerBulletManager.h"
 #include "ParticleManager.h"
 #include "ImGuiManager.h"
-#include "Editor/RailEditor.h"
 #include "Editor/EnemyEditor.h"
 
 EnemyManager::EnemyManager() = default;
 EnemyManager::~EnemyManager() = default;
 
 // 初期化処理
-void EnemyManager::Initialize(Obj3dCommon* objCommon,const RailEditor* railEditor){
+void EnemyManager::Initialize(Obj3dCommon* objCommon){
 	objCommon_ = objCommon;
 
 	// 敵の配置エディターの生成と初期化(保存済みJSONがあればここで読み込まれる)
 	editor_ = std::make_unique<EnemyEditor>();
 	editor_->Initialize();
 
-	// 保存済みの配置が無い初回起動時のみ、従来どおりレール中間地点への自動配置で初期データを作る
-	if(railEditor && editor_->GetEnemyCount() == 0){
-		CreateDefaultPlacement(railEditor);
-	}
-
 	// 配置エディターの内容をシーンの敵リストへ反映する
 	SyncFromEditor();
-}
-
-// 保存済みの配置が無いときの自動配置
-// レールの中間地点の少し上に置き、レールに対して直角な方向へ往復させる
-void EnemyManager::CreateDefaultPlacement(const RailEditor* railEditor){
-	constexpr Vector3 kEnemyWorldUp = {0.0f, 1.0f, 0.0f};
-
-	Vector3 enemyBasePos = railEditor->GetPositionOnRail(kSpawnRailT);
-	Vector3 enemyRailForward = railEditor->GetForwardOnRail(kSpawnRailT);
-	Vector3 enemyPatrolDir = Normalize(Cross(kEnemyWorldUp,enemyRailForward));
-
-	editor_->AddEnemyAt(enemyBasePos + kEnemyWorldUp * kUpOffset,enemyPatrolDir,EnemyEditor::kDefaultMaxHp);
-
-	// 自動配置直後は何も選択していない状態にしておく
-	editor_->SetSelectedIndex(-1);
 }
 
 // 配置エディターの更新(配置モード中のドラッグ移動もここで処理される)
@@ -50,6 +29,18 @@ void EnemyManager::UpdateEditor(){
 	editor_->Update();
 	// 編集結果(追加・削除・ドラッグ移動・パラメータ変更)をシーンの敵リストへ反映する
 	SyncFromEditor();
+}
+
+// 編集・プレイするステージを切り替える
+void EnemyManager::SetStageIndex(int stageIndex){
+	if(!editor_){
+		return;
+	}
+
+	editor_->SetStageIndex(stageIndex);
+	// 敵のリストを切り替えた先のステージの配置に合わせ、前のステージで減らした体力を持ち越さないよう、すべて初期状態に戻す
+	SyncFromEditor();
+	Reset();
 }
 
 // 配置エディターの内容を敵のリストに反映する

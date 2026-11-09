@@ -37,7 +37,7 @@
 - Edit / Play モードを切り替えられる（画面上部のボタンか F2）。
 - ImGui の「Skip Title」を ON にすると、タイトル・スタート演出を飛ばしてレールの始点からすぐプレイを始める。
 - ImGui の「Start From Selected Point」を ON にすると、Rail Editor で選んだ制御点の位置からプレイを始める。
-- レール・的・敵をエディターで配置・ドラッグ移動し、JSON に保存・読み込みできる。Rail Editor では螺旋の制御点をまとめて作れる。
+- レール・的・敵をエディターで配置・ドラッグ移動し、JSON に保存・読み込みできる。データはステージごと（`resource/stage/stage1/`〜`stage4/`）に分かれていて、Rail Editor の一番上で選んだステージを編集・プレイする。Rail Editor では螺旋の制御点をまとめて作れる。
 - レール・的・敵の編集は Ctrl+Z / Ctrl+Y で戻せる。保存していない変更は「未保存」と出し、Save All（Ctrl+S）でまとめて保存できる。シーンが切り替わっても保存していない変更は消えない。
 - GlobalVariables による調整項目は、実行中の ImGui 編集と外部ファイルの書き換えが反映される。
 - Edit モードの ImGui は、左に Rail Editor、右に「Editors」パネルで選んだエディター 1 つを出す。Scene ビューで的・敵をクリックするとそのエディターに切り替わる。
@@ -1684,3 +1684,35 @@ Visual Studio でのビルドはしていない（この環境には Windows の
 ### ビルド確認（4.）
 
 Visual Studio でのビルドはしていない（この環境には Windows の開発環境が無い）。DirectX まわりと Engine の他のクラスを仮のヘッダーに差し替えて、`ImGuiManager.cpp` を g++ で構文チェックした（USE_IMGUI あり・なしの両方）。画面では確認していない。
+
+---
+## 2026-11-09
+
+### 1. レール・的・敵のデータとエディターをステージごとに分けた
+
+対象ファイル: `Game/objects/StageInfo.h`（新規）、`Game/Editor/RailEditor.h/.cpp`、`Game/Editor/TargetEditor.h/.cpp`、`Game/Editor/EnemyEditor.h/.cpp`、`Game/objects/TargetManager.h/.cpp`、`Game/objects/EnemyManager.h/.cpp`、`Game/scenes/GameScene.h/.cpp`、`MyGameEngine.vcxproj(.filters)`、`resource/stage/stage1/`（`resource/rail/`・`resource/target/`・`resource/enemy/` から移動）
+
+- スタート台の4つの辺からステージを出す（CLAUDE.md の 9.）ための最初の作業。正面の辺をステージ1、右をステージ2、左をステージ3、後ろを最後のステージ（ステージ1〜3をすべてクリアすると出られる）にすると決めた。
+- ステージの数・番号・名前・データのフォルダを `StageInfo` にまとめた。今のステージ（`StageInfo::currentStageIndex`）は `StageResult` と同じく static な値で、シーンが作り直されても残る。
+- データの置き場所を次のように変えた。今までのデータはステージ1へ移した（中身は変えていない）。
+
+| データ | 前 | 後 |
+| --- | --- | --- |
+| レール | `resource/rail/rail.json`、`rail1.json`〜`rail5.json` | `resource/stage/stage1/rail/rail0.json`〜`rail5.json` |
+| 的 | `resource/target/target.json` | `resource/stage/stage1/target.json` |
+| 敵 | `resource/enemy/enemy.json` | `resource/stage/stage1/enemy.json` |
+
+- Rail Editor の一番上にステージの選択（Stage）を足し、「ステージ → レール → 制御点」の順に選ぶようにした。ステージを選び直すと、GameScene（`SwitchStage()`）が Target Editor・Enemy Editor も同じステージに切り替え、的・敵・レールの出方を初期状態に戻す。Play は選んでいるステージで始まる。
+- 3つのエディターは、起動時に全ステージのデータを読み込んで持つ。今のステージのデータだけを今までどおりの配列（`rails_` / `targets_` / `enemies_`）に置き、ほかのステージの分は預けておく配列に入れて、切り替えるときに中身を入れ替える。ほかの処理は今のステージの配列だけを見るので、レールの補間・描画・ドラッグなどはそのまま使える。
+- 編集履歴（Ctrl+Z）・未保存の判定・シーンをまたいで取っておく未保存の変更は、全ステージ分をまとめて持つ。ステージを切り替えても保存していない変更は消えない。Save / Load も全ステージまとめて行う（未保存かどうかを全ステージまとめて見ているため）。
+- ステージ2〜4はまだファイルが無いため、制御点1つのレール1本・的なし・敵なしから始まる。Save するとファイルが作られる。
+- 的・敵の「保存データが無いときの自動配置」（`TargetManager` / `EnemyManager` の `CreateDefaultPlacement()`）を消した。ステージごとに分けると、まだ何も置いていないステージで、仮のレールに沿って的・敵が勝手に置かれてしまうため。今までも、ステージ1の `enemy.json` が空なので、起動するたびに敵が1体自動で置かれていた（未保存の変更として）。
+
+### まだできていないこと（1.）
+
+- スタート台は今までどおり0番のレールの始点に合わせて置いている。ステージ2〜4を選んで Play すると、台が仮のレールの始点（原点付近）へ移る。台をワールドに固定して「凸」の形にし、各ステージのレールの始点を辺に合わせる作業はこれから。
+- ゴールのレールは `Player::kGoalRailIndex`（定数 5）のまま。
+
+### ビルド確認（1.）
+
+Visual Studio でのビルドはしていない（この環境には Windows の開発環境が無い）。DirectX・Windows のヘッダーを仮のものに差し替えて、変更した .cpp を clang で構文チェックした（USE_IMGUI あり・なしの両方）。画面では確認していない。

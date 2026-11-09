@@ -9,7 +9,6 @@
 class Obj3D;
 class Obj3dCommon;
 class Model;
-class RailEditor;
 class TargetEditor;
 class PlayerBulletManager;
 
@@ -24,15 +23,17 @@ public:
 
 	/// <summary>
 	/// 初期化処理
-	/// 配置エディターを生成し、保存済みの配置が無い初回起動時のみレール沿いに自動配置する
+	/// 配置エディターを生成し、全ステージの保存済みの配置を読み込む
 	/// </summary>
 	/// <param name="objCommon">3Dオブジェクト共通設定</param>
-	/// <param name="railEditor">自動配置の基準にするレール</param>
 	/// <param name="paramGroup">調整項目を登録するGlobalVariablesのグループ名</param>
-	void Initialize(Obj3dCommon* objCommon,const RailEditor* railEditor,const std::string& paramGroup);
+	void Initialize(Obj3dCommon* objCommon,const std::string& paramGroup);
 
 	// 配置エディターの更新と、編集結果(追加・削除・ドラッグ移動)の的リストへの反映
 	void UpdateEditor();
+
+	// 編集・プレイするステージを切り替え、的のリストを切り替えた先のステージの配置にして、すべて生存状態に戻す
+	void SetStageIndex(int stageIndex);
 
 	// 配置エディターで「Focus」が押されていれば、選択中の的の位置を返す(1回読むと消える)
 	bool ConsumeFocusRequest(Vector3& outPosition);
@@ -91,9 +92,6 @@ private:
 		// 壊すと出るレールのインデックス(-1: 鍵の的ではない)
 		int unlockRailIndex = -1;
 	};
-
-	// 保存済みの配置が無いときに、レール沿いへ自動配置した初期データを作る
-	void CreateDefaultPlacement(const RailEditor* railEditor);
 
 	// 配置エディターの内容を的のリストに反映する
 	void SyncFromEditor();

@@ -1,6 +1,6 @@
 # Game フォルダ クラス仕様書
 
-最終更新: 2026-10-30
+最終更新: 2026-11-09
 
 `Game/` 以下の各クラスについて、「何ができるか」「外から何を呼べるか」「中でどう動いているか」をまとめる。
 エンジン側（`Engine/`）のクラスは対象外（Game のために追加したものだけ、使う側の項目で触れる）。
@@ -30,7 +30,7 @@ Game/
 ├── scenes/    GameScene（本編）、ClearScene、GameOverScene
 ├── Title/     GameScene 内で動くステージ開始演出（タイトル → 回り込み → スタート台で準備 → 出発ゲート → レールへ乗り込む）と、クリア後にスタート台へ戻る大ジャンプ（ReturnJump）
 │   └── Departure/  スタート台からレールへ移るときの出発の演出（1 種類 1 クラス）
-├── objects/   Player / PlayerBulletManager / TargetManager / GoalTarget / Enemy / EnemyManager / Ground / Sun / StartPlatform / InkEffectManager / ComboCounter / StageResult
+├── objects/   Player / PlayerBulletManager / TargetManager / GoalTarget / Enemy / EnemyManager / Ground / Sun / StartPlatform / InkEffectManager / ComboCounter / StageResult / StageInfo
 ├── Camera/    RailCamera（プレイ用カメラ）/ DebugTopCamera（俯瞰デバッグカメラ）/ ScreenImpact（ヒットストップ・画面の揺れ）/ CameraPose（演出のカメラの補間）
 ├── UI/        Reticle（画面中央のレティクル）/ StageHUD（残機・的の数・連鎖数）/ StageClearUI（「STAGE CLEAR!」）/ SpeedLines（スピード線）/ DamageInkEffect（体力を画面の縁のインクで表現）/ HelpOverlay（H キーで開く操作説明）
 └── Editor/    RailEditor / TargetEditor / EnemyEditor（Editモード中の配置ツール）/ EditHistory・EditorDocumentManager（Undo/Redo と保存の管理）/ EditorPicking（Scene ビューでのマウス選択）
@@ -183,7 +183,7 @@ Game/
 2. スカイボックス、RailEditor、Ground を生成する。地面の格子はレールの開始地点を基準にそろえ、タイルは毎フレームの更新でカメラの真下を中心に並べる。
 3. GlobalVariables にグループ `GameScene` を作る。調整項目は各クラスが自分の Initialize で登録する。
 4. Player、RailCamera、DebugTopCamera（カメラ `"debug_top"` を作る）、PlayerBulletManager を生成する。
-5. TargetManager / GoalTarget / EnemyManager を生成する。保存データが無い初回起動時だけ自動配置する。
+5. TargetManager / GoalTarget / EnemyManager を生成する。
 6. Reticle、StageHUD、StageClearUI、撃破演出用パーティクルのグループ、StartSequence を生成する。StartSequence には出発ゲートを開け閉めするためにスタート台を渡す。
 7. DepartureDirector と ReturnJump を生成する。弾・しぶきが台に着いたらインクを塗るよう、PlayerBulletManager と InkEffectManager に着地の処理（`SetLandingHandler()`）を渡す。
 
@@ -660,13 +660,13 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | 見た目 | `Bullseye/bullseye.obj`（同心円の模様の円盤）、スケール 0.4（狙えているときは 0.6）。模様の面を常にカメラへ向ける |
 | 照準判定 | 「カメラ → 的」の向きとカメラの前方ベクトルのなす角が `aimHitAngle` 以内なら狙えている。的が大きくなり、レティクルの中心ドットが赤くなる |
 | 命中 | 弾と的の境界球が重なったら撃破し、火花パーティクルを出す。壊れた位置は `GetDestroyedPositions()` で受け取れる（GameScene が破片・しぶきの演出と連鎖数の加算に使う） |
-| 初回の自動配置 | 保存データが無いとき、レール上の 16 か所に左右交互・上下・奥行きをずらして配置する |
 | 鍵の的 | 壊すと出るレール（`unlockRailIndex`）を持つ的。水色（0.3, 0.85, 1.0）で描き、Target Editor の的の一覧に (Key: Rail N) と出す。同じレールを指定した的をすべて壊すとそのレールが出る |
 
 | 関数 | 内容 |
 | --- | --- |
-| `Initialize(Obj3dCommon*, railEditor, paramGroup)` | 調整項目 `aimHitAngle` の登録、TargetEditor の生成、初回の自動配置 |
+| `Initialize(Obj3dCommon*, paramGroup)` | 調整項目 `aimHitAngle` の登録、TargetEditor の生成（全ステージの配置を読み込む） |
 | `UpdateEditor()` | TargetEditor を更新し、個数・座標を的のリストに反映する。個数が変わったときだけ生成・削除する |
+| `SetStageIndex(stageIndex)` | TargetEditor を指定のステージに切り替え、的のリストをそのステージの配置にして、すべて復活させる |
 | `Update(cameraPosition, cameraForward, bullets)` | 照準判定・弾との当たり判定・行列の更新。いずれかの的を狙えていれば true を返す |
 | `FindAimedTarget(cameraPosition, cameraForward, minDistance, outPosition, outDistance)` | レティクルで狙えている的のうち、カメラの前方に沿った距離が `minDistance` 以上で一番近いものの位置と距離を返す（弾を撃つ点の奥行きを、その的に合わせるのに使う） |
 | `Reset()` / `Draw()` | 全ての的を復活させる / 生存している的を描画する |
@@ -707,8 +707,9 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 
 | 関数 | 内容 |
 | --- | --- |
-| `Initialize(Obj3dCommon*, railEditor)` | EnemyEditor の生成。保存データが無いときは、レールの中間地点（t = 0.5）の少し上（1.0）に 1 体置く |
+| `Initialize(Obj3dCommon*)` | EnemyEditor の生成（全ステージの配置を読み込む） |
 | `UpdateEditor()` | EnemyEditor を更新し、座標・往復方向・体力を敵のリストに反映する。体数が変わったときだけ生成・削除する |
+| `SetStageIndex(stageIndex)` | EnemyEditor を指定のステージに切り替え、敵のリストをそのステージの配置にして、すべて初期状態に戻す |
 | `Update(playerPosition, deltaTime)` | 全ての敵を更新する |
 | `CheckHitToPlayer(playerSphere)` | 全ての敵の弾とプレイヤーの当たり判定。命中した弾の合計数を返す |
 | `CheckHitByBullets(bullets)` | プレイヤーの弾と敵本体の当たり判定。当たった敵の体力を減らし、火花パーティクルを出す |
@@ -808,6 +809,18 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `AddHit()` | 連鎖数を 1 増やし、途切れるまでの時間を最初からにする |
 | `Update(deltaTime)` | 途切れるまでの時間と、増えたときに弾む表示の時間（0.15 秒）を進める |
 | `GetCombo` / `GetMaxCombo` / `GetRemainingRate` / `GetPopRate` | 今の連鎖数 / 最大連鎖数 / 途切れるまでの残りの割合 / 弾む表示の残りの割合 |
+
+### StageInfo（`objects/StageInfo.h`）
+
+ステージの数・番号・名前と、ステージごとのデータのフォルダ（ヘッダーオンリー）。スタート台の正面の辺がステージ1、右がステージ2、左がステージ3、後ろが最後のステージ（ステージ1〜3をすべてクリアすると出られる。まだ作っていない）。
+
+| 項目 | 内容 |
+| --- | --- |
+| `kStageCount` / `kFinalStageIndex` | ステージの数（4）/ 最後のステージの番号（3） |
+| `currentStageIndex` | 今編集・プレイしているステージ（0 始まり）。シーンが作り直されても残る |
+| `GetStageDirectory(stageIndex)` | `resource/stage/stage1/` などのフォルダ |
+| `GetStageLabel(stageIndex)` | エディターの一覧に出す名前（`Stage 1 (Front)` など） |
+| `ToStageNumber(stageIndex)` / `IsValidStageIndex(stageIndex)` | 画面に出す 1 始まりの番号 / 範囲内か |
 
 ### StageResult（`objects/StageResult.h`）
 
@@ -981,13 +994,20 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 
 3 つとも Edit モード中だけ動く。Play モード中は `Update()` の冒頭で何もせずに戻る。
 
+#### ステージごとのデータ
+
+- 3 つとも、全ステージ（`StageInfo::kStageCount` = 4）のデータを読み込んで持つ。編集・プレイしているステージのデータだけを今までどおりの配列（`rails_` / `targets_` / `enemies_`）に置き、ほかのステージの分は預けておく配列（`storedStageRails_` など）に入れる。`SetStageIndex()` で中身を入れ替えるので、ほかの処理は今のステージのデータだけを見ればよい。
+- 編集履歴・未保存の判定・`unsavedStash_` は全ステージ分をまとめて持つ。Save / Load も全ステージまとめて行う。Ctrl+Z で、ほかのステージで行った編集も戻る。
+- ステージは Rail Editor の一番上で選ぶ。選ぶと `RailEditor::ConsumeStageChangeRequest()` で GameScene に伝わり、`GameScene::SwitchStage()` が 3 つのエディター（TargetManager・EnemyManager 経由）を同じステージに切り替える。
+- 起動時・シーンの作り直し時は、`StageInfo::currentStageIndex`（シーンをまたいで残る）のステージから始める。
+
 ### RailEditor（`Editor/RailEditor.h/.cpp`）
 
 レールのデータを持ち、編集もできる。GameScene はこのクラスからレール上の位置・向きを受け取る。
 
 #### レールの仕組み
 
-- レールは複数本持てる。ゲームで使うのは「アクティブなレール」1 本。
+- レールはステージごとに複数本持てる。ゲームで使うのは、今のステージの「アクティブなレール」1 本。
 - 1 本のレールは制御点（ControlPoint）の配列で、各制御点は次の値を持つ。
   - `position`：座標
   - `rotation`：Z だけをロール（バンク）として使う
@@ -1010,10 +1030,11 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 
 | 操作 | 内容 |
 | --- | --- |
+| Stage | 編集・プレイするステージを選ぶ（的・敵のエディターも同じステージに切り替わる）。以下の操作は選んだステージのレールに対して行う |
 | レール一覧 | クリックでアクティブなレールを切り替える |
 | New Rail | レールを 1 本追加し、アクティブにする |
 | Add Control Point | アクティブなレールの末尾に、末尾 2 点と同じ向き・間隔で伸ばした位置へ制御点を追加し、選択する |
-| Save / Load | 全レールを JSON に保存する / JSON から読み込む |
+| Save / Load | 全ステージの全レールを JSON に保存する / JSON から読み込む |
 | Show Control Point Models / Show Rail Curve | 制御点の目印（`RailMarker/railMarker.obj`、上下に尖った宝石の形） / 曲線の表示切り替え |
 | Show Landing Range | 着地できる範囲（レールの左右、緑の点列）の表示切り替え |
 | Drag Points In Scene / Keep Height | ON の間、Scene ビュー上で制御点を左ドラッグして動かせる（初期は OFF。レイから 0.5 以内の制御点を全レールから探し、別のレールの点ならそのレールをアクティブにする）。Keep Height が ON（初期値）なら水平な面の上で動かし高さを変えない。OFF なら画面に平行な面の上で動かす。目印を隠しているレールの制御点は掴まない |
@@ -1032,6 +1053,7 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | `GetSpeedOnRail(t)` | 進行度 t の速度倍率（制御点の Speed を補間したもの） |
 | `FindNearestRail(worldPos)` | 全レールから最も近いレール・進行度・距離・最近傍点を求める。粗いサンプリング 200 点のあと、三分探索で 20 回絞り込む |
 | `SwitchActiveRail(index)` | アクティブなレールを切り替える |
+| `SetStageIndex(stageIndex)` / `GetStageIndex()` / `ConsumeStageChangeRequest(outStageIndex)` | ステージを切り替える（0 番のレールをアクティブにする）/ 今のステージ / Stage の一覧で選び直されたステージを返す（1 回読むと消える） |
 | `GetControlPointsCenter()` / `GetControlPointsRadius()` | 俯瞰カメラを自動で合わせるための、制御点全体の中心と半径 |
 | `SetLandingRangeRadius(radius)` | 着地範囲の表示に使う許容距離を受け取る |
 | `ToggleShowControlPointModels()` / `ToggleShowCurve()` | キー操作用の表示切り替え |
@@ -1055,7 +1077,7 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | Add Target | カメラの前方 15.0 の位置に的を追加し、選択する |
 | Duplicate（Ctrl+D） | 選択中の的を、カメラの右方向へ 1.5 ずらして複製する |
 | Delete Target（Delete キー） | 選択中の的を削除する |
-| Save / Load | `resource/target/target.json` への保存・読み込み |
+| Save / Load | 全ステージの `resource/stage/stageN/target.json` への保存・読み込み |
 | 選択中の的 | Position（座標）・Unlock Rail（壊すと出るレール）・Alive（生存フラグ。TargetManager が足す）を編集する |
 | 的の一覧 | 高さ 100 の枠の中でスクロールする。クリックで選択、ダブルクリックで Focus |
 | F キー | 選択中の的へ俯瞰カメラを寄せる（Focus） |
@@ -1084,14 +1106,14 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | Placement Mode | ON の間だけ、マウスでのドラッグ移動を受け付ける |
 | Add Enemy | カメラの前方 15.0 の位置に敵を追加し、選択する |
 | Delete Enemy | 選択中の敵を削除する |
-| Save / Load | `resource/enemy/enemy.json` への保存・読み込み |
+| Save / Load | 全ステージの `resource/stage/stageN/enemy.json` への保存・読み込み |
 | 敵一覧 | クリックで選択する |
 | 選択中の敵 | Position / Patrol Dir / Max HP をボタン UI で編集する |
 | マウスドラッグ | 掴める距離・動かし方は TargetEditor と同じ（Keep Height・Snap・Shift での高さだけの移動は無い） |
 
 - 古い保存データに `patrolDirection` や `maxHp` が無くても、初期値で補って読み込める。
 - Editors で選んでいないときの動き（Scene ビューで敵をクリックすると Enemy Editor に切り替わる）は TargetEditor と同じ。
-- ステージ1には敵を置かない方針のため、今の `resource/enemy/enemy.json` は空（敵 0 体）。
+- ステージ1には敵を置かない方針のため、今の `resource/stage/stage1/enemy.json` は空（敵 0 体）。
 
 ### EditHistory / EditorDocumentManager（`Editor/EditHistory.h`、`Editor/EditorDocumentManager.h`）
 
@@ -1113,9 +1135,9 @@ Scene ビュー上のマウス位置から画面奥へ伸びるレイを求め�
 
 | ファイル | 保存するクラス | 内容 | 反映のしかた |
 | --- | --- | --- | --- |
-| `resource/rail/rail.json`、`rail1.json`、`rail2.json` … | RailEditor | レールごとの制御点 | 起動時に自動で読み込む。以降は Save / Load ボタン |
-| `resource/target/target.json` | TargetEditor | 的の座標・壊すと出るレール | 同上 |
-| `resource/enemy/enemy.json` | EnemyEditor | 敵の座標・往復方向・最大 HP | 同上 |
+| `resource/stage/stageN/rail/rail0.json`、`rail1.json` … | RailEditor | ステージごと・レールごとの制御点（N はステージの番号 1〜4） | 起動時に全ステージを自動で読み込む。以降は Save / Load ボタン（全ステージまとめて） |
+| `resource/stage/stageN/target.json` | TargetEditor | ステージごとの的の座標・壊すと出るレール | 同上 |
+| `resource/stage/stageN/enemy.json` | EnemyEditor | ステージごとの敵の座標・往復方向・最大 HP | 同上 |
 | `resource/GlobalVariables/GameScene.json` | GlobalVariables（エンジン） | GameScene の調整項目（ゴールの的の体力・並走する距離・高さを含む） | 実行中の変更が自動で反映される |
 | `resource/GlobalVariables/Title.json` | GlobalVariables（エンジン） | タイトルロゴの位置・大きさ・消え方、BGM・効果音の音量、ゲートを映す画の位置 | 同上 |
 

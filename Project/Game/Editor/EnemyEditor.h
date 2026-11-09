@@ -2,6 +2,8 @@
 #include "MyMath.h"
 #include "EditHistory.h"
 #include "EditorDocumentManager.h"
+#include "objects/StageInfo.h"
+#include <array>
 #include <optional>
 #include <vector>
 
@@ -53,9 +55,14 @@ public:
 	// 選択中の敵のインデックスを設定する(-1で選択解除)
 	void SetSelectedIndex(int index);
 
-	// 配置内容をJSONファイルに保存する
+	// 編集・プレイするステージを切り替える(ステージごとの配置はすべて読み込んであり、切り替えても保存していない変更は消えない)
+	void SetStageIndex(int stageIndex);
+	// 今編集・プレイしているステージの番号を取得
+	int GetStageIndex() const{ return stageIndex_; }
+
+	// 全ステージの配置内容をJSONファイルに保存する
 	void SaveToJson() override;
-	// 配置内容をJSONファイルから読み込む
+	// 全ステージの配置内容をJSONファイルから読み込む
 	void LoadFromJson();
 
 	// 未保存の一覧に出す名前
@@ -88,19 +95,36 @@ private:
 	void UpdateMouseDrag();
 	// 選んでいないときに、Sceneビューで敵をクリックしたかを調べ、掴めたらEnemy Editorへの切り替えの候補として報告する
 	void ReportScenePickWhileInactive();
-	// 配置内容をJSONファイルから読み込む(編集履歴には触れない。起動時とLoadFromJsonで使う。ファイルが無ければfalse)
-	bool LoadEnemiesFromFile();
+	// 編集履歴に残す、全ステージ分の配置(並びはステージの番号と同じ)
+	using StagesSnapshot = std::array<std::vector<EnemyPoint>,StageInfo::kStageCount>;
+
+	// 指定ステージの配置の配列を取得(編集中のステージはenemies_、それ以外は預けてある配列)
+	std::vector<EnemyPoint>& GetStageEnemies(int stageIndex);
+	const std::vector<EnemyPoint>& GetStageEnemies(int stageIndex) const;
+	// 指定ステージの配置の保存先ファイルパスを求める(resource/stage/stage1/enemy.json など)
+	std::string GetSaveFilePath(int stageIndex) const;
+	// 今の全ステージの配置を編集履歴に残す形で取得する
+	StagesSnapshot MakeSnapshot() const;
+	// 編集履歴の状態を全ステージの配置に反映する(Undo/Redo用)
+	void ApplySnapshot(const StagesSnapshot& snapshot);
+	// 指定ステージの配置をJSONファイルから読み込む(編集履歴には触れない。起動時とLoadFromJsonで使う。ファイルが無ければfalse)
+	bool LoadEnemiesFromFile(int stageIndex);
 	// 配置内容が、最後に確定した状態から変わっていれば確定して履歴に積む
 	void CommitEditIfChanged();
 
-	std::vector<EnemyPoint> enemies_; // 配置されている敵の配列
+	// 編集・プレイしているステージに配置されている敵の配列
+	// ほかの処理はすべてこの配列を見るため、ステージを切り替えるときは中身をstoredStageEnemies_と入れ替える
+	std::vector<EnemyPoint> enemies_;
+	// 編集・プレイしていないステージの配置を預けておく場所(並びはステージの番号と同じ。編集中のステージの分は空)
+	StagesSnapshot storedStageEnemies_;
+	int stageIndex_ = 0; // 編集・プレイしているステージの番号
 
 	// 編集履歴(Undo/Redo)と、保存していない変更があるかの管理
-	EditHistory<std::vector<EnemyPoint>> history_;
+	EditHistory<StagesSnapshot> history_;
 	// シーンが切り替わってエディターが破棄されたときに、保存していなかった変更を取っておく場所(次に作ったエディターで戻す)
 	// クリア・ゲームオーバーなどでシーンが切り替わると、エディターは作り直されてファイルから読み込み直すため、取っておかないと消えてしまう
 	// ファイルには書き込まず、戻した後も「未保存」のままにして、保存するか(Save)捨てるか(Load・Ctrl+Z)を選べるようにする
-	static inline std::optional<std::vector<EnemyPoint>> unsavedStash_;
+	static inline std::optional<StagesSnapshot> unsavedStash_;
 
 	int selectedIndex_ = -1;      // 選択中の敵のインデックス(-1: 未選択)
 	int pendingPickIndex_ = -1;   // 選んでいないときにSceneビューでクリックした敵(切り替わった次のフレームで選ぶ。-1: 無し)

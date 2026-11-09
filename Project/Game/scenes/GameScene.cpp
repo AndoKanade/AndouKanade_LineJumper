@@ -41,6 +41,7 @@
 #include "objects/ComboCounter.h"
 #include "objects/ContinuePoint.h"
 #include "objects/StageResult.h"
+#include "objects/StageInfo.h"
 // カメラ
 #include "Camera/RailCamera.h"
 #include "Camera/DebugTopCamera.h"
@@ -254,7 +255,7 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 
 	// 的の生成(保存済みの配置が無い初回起動時はレール沿いに自動配置する)
 	targetManager_ = std::make_unique<TargetManager>();
-	targetManager_->Initialize(object3dCommon_,railEditor_.get(),kGameSceneGroup);
+	targetManager_->Initialize(object3dCommon_,kGameSceneGroup);
 
 	// ゴールの的の生成(ゴールのレールに乗るまでは出さない)
 	goalTarget_ = std::make_unique<GoalTarget>();
@@ -262,7 +263,7 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 
 	// 雑魚敵の生成(保存済みの配置が無い初回起動時はレールの中間地点に自動配置する)
 	enemyManager_ = std::make_unique<EnemyManager>();
-	enemyManager_->Initialize(object3dCommon_,railEditor_.get());
+	enemyManager_->Initialize(object3dCommon_);
 
 	// 画面中央固定のレティクルを生成
 	reticle_ = std::make_unique<Reticle>();
@@ -552,6 +553,26 @@ void GameScene::ApplyRailLocks(bool isInstant){
 	}
 }
 
+// 編集・プレイするステージを切り替える
+void GameScene::SwitchStage(int stageIndex){
+	if(!StageInfo::IsValidStageIndex(stageIndex)){
+		return;
+	}
+
+	// シーンが作り直されても同じステージから始めるよう、シーンをまたいで残る値にも書き込む
+	StageInfo::currentStageIndex = stageIndex;
+	railEditor_->SetStageIndex(stageIndex);
+	targetManager_->SetStageIndex(stageIndex);
+	enemyManager_->SetStageIndex(stageIndex);
+
+	// Playから戻ったときに選び直すレール・制御点は前のステージのものなので、切り替えた先の0番のレールにする
+	editRailIndex_ = 0;
+	editPointIndex_ = -1;
+
+	// 的をすべて復活させたため、鍵の的があるレールは出ていない状態にすぐ戻す
+	ApplyRailLocks(true);
+}
+
 // 出発の演出が動かす・参照するものをまとめる
 DepartureContext GameScene::MakeDepartureContext() const{
 	DepartureContext context;
@@ -678,6 +699,12 @@ void GameScene::Update(){
 		Vector3 focusPosition{};
 		if(railEditor_->ConsumeFocusRequest(focusPosition)){
 			debugTopCamera_->FocusOnPoint(focusPosition);
+		}
+
+		// Rail Editorの一覧でステージを選び直したら、的・敵のエディターも一緒にそのステージへ切り替える
+		int requestedStageIndex = 0;
+		if(railEditor_->ConsumeStageChangeRequest(requestedStageIndex)){
+			SwitchStage(requestedStageIndex);
 		}
 	}
 

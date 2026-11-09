@@ -18,10 +18,10 @@
 #include <iomanip>
 
 namespace{
-	// 制御点データの保存先ディレクトリ・拡張子(LevelManagerと同じくresource配下の相対パス)
-	const std::string kRailSaveDir = "resource/rail/";
-	// 0番目のレールのみ、複数化対応前から存在するファイルパスと互換性を保つ
-	const std::string kFirstRailSaveFilePath = "resource/rail/rail.json";
+	// 制御点データの保存先(ステージのフォルダの中のフォルダ名と、ファイル名の頭・拡張子)
+	const std::string kRailSaveSubDir = "rail/";
+	const std::string kRailFileNamePrefix = "rail";
+	const std::string kRailFileExtension = ".json";
 	// 制御点リセット用のデフォルト値(初期制御点/Add Control Pointボタンと同じ初期値)
 	constexpr RailEditor::ControlPoint kDefaultControlPoint = {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, 1.0f};
 
@@ -225,24 +225,63 @@ void RailEditor::GenerateSpiral(Rail& rail,size_t startIndex){
 
 // 新しいレールを1本追加し、アクティブなレールとして切り替える
 void RailEditor::AddRail(){
+	AppendRail(rails_);
+	activeRailIndex_ = static_cast<int>(rails_.size()) - 1;
+}
+
+// railsの末尾に、制御点1つだけの新しいレールを足す
+void RailEditor::AppendRail(std::vector<Rail>& rails){
 	Rail rail;
-	rail.name = "Rail " + std::to_string(rails_.size());
+	rail.name = "Rail " + std::to_string(rails.size());
 	rail.controlPoints.push_back(kDefaultControlPoint);
 	rail.pointObjects.push_back(CreatePointObject(kControlPointModelPath));
 
 	// 曲線・着地できる範囲の管はEdit中の描画でUpdateEditTubes()、レール本体の管はPlayに入ったときにBuildTubes()でレールの形から作るため、
 	// ここでは制御点の目印1つだけを作る
 
-	rails_.push_back(std::move(rail));
-	activeRailIndex_ = static_cast<int>(rails_.size()) - 1;
+	rails.push_back(std::move(rail));
 }
 
-// レールのインデックスから保存先ファイルパスを求める(0番目のみ既存の互換パスを使う)
-std::string RailEditor::GetRailFilePath(int index) const{
-	if(index <= 0){
-		return kFirstRailSaveFilePath;
+// 指定ステージのレールの配列を取得(編集中のステージはrails_、それ以外は預けてある配列)
+std::vector<RailEditor::Rail>& RailEditor::GetStageRails(int stageIndex){
+	return (stageIndex == stageIndex_)?rails_:storedStageRails_[stageIndex];
+}
+const std::vector<RailEditor::Rail>& RailEditor::GetStageRails(int stageIndex) const{
+	return (stageIndex == stageIndex_)?rails_:storedStageRails_[stageIndex];
+}
+
+// ステージとレールのインデックスから保存先ファイルパスを求める
+std::string RailEditor::GetRailFilePath(int stageIndex,int railIndex) const{
+	return StageInfo::GetStageDirectory(stageIndex) + kRailSaveSubDir + kRailFileNamePrefix + std::to_string(railIndex) + kRailFileExtension;
+}
+
+// 編集・プレイするステージを切り替える
+void RailEditor::SetStageIndex(int stageIndex){
+	if(!StageInfo::IsValidStageIndex(stageIndex) || stageIndex == stageIndex_){
+		return;
 	}
-	return kRailSaveDir + "rail" + std::to_string(index) + ".json";
+
+	// 今のステージのレールを預け、切り替えた先のステージのレールを取り出す
+	std::swap(rails_,storedStageRails_[stageIndex_]);
+	std::swap(rails_,storedStageRails_[stageIndex]);
+	stageIndex_ = stageIndex;
+
+	// 前のステージのレール・制御点を指したままにならないよう、0番のレールにして選択を解除する
+	activeRailIndex_ = 0;
+	selectedPointIndex_ = -1;
+	isDragging_ = false;
+	// 切り替えた先のステージのレールの管を、次の描画で作り直す
+	areTubesBuilt_ = false;
+}
+
+// 一覧でステージが選び直されていれば、そのステージの番号を返す(1回読むと消える)
+bool RailEditor::ConsumeStageChangeRequest(int& outStageIndex){
+	if(requestedStageIndex_ == kNoStageRequest){
+		return false;
+	}
+	outStageIndex = requestedStageIndex_;
+	requestedStageIndex_ = kNoStageRequest;
+	return true;
 }
 
 // エディターの初期化処理
@@ -252,10 +291,10 @@ void RailEditor::Initialize(Obj3dCommon* objCommon){
 	// 制御点の目印のモデルをロード
 	ModelManager::GetInstance()->LoadModel(kControlPointModelPath);
 
-	// 最初のレールを1本用意する
-	AddRail();
+	// 前のシーンで編集・プレイしていたステージから始める
+	stageIndex_ = StageInfo::IsValidStageIndex(StageInfo::currentStageIndex)?StageInfo::currentStageIndex:0;
 
-	// 保存済みのJSONがあれば読み込んで初期状態を上書きする(ホットロードの起動時オート読込)
+	// 全ステージのレールを、保存済みのJSONから読み込む(ファイルが無いステージは制御点1つだけのレールを1本用意する)
 	LoadRailsFromFiles();
 
 	// 読み込んだ状態を編集の基準(保存済み)にし、Ctrl+Z・すべて保存の対象に登録する
@@ -279,6 +318,21 @@ void RailEditor::Update(){
 
 	// 固定タイルレイアウトの左の列に縦いっぱいで配置
 	EditorWidgets::BeginFixedPanel("Rail Editor",EditorWidgets::ComputeLayout().railEditor);
+
+	// ステージの切り替えUI(ステージ → レール → 制御点の順に選ぶ)
+	// 的・敵のエディターも同じステージに合わせるため、ここでは選んだことだけを伝え、切り替えはGameScene側で行う
+	ImGui::Text("Stage");
+	ImGui::SetNextItemWidth(-FLT_MIN);
+	if(ImGui::BeginCombo("##Stage",StageInfo::GetStageLabel(stageIndex_))){
+		for(int i = 0; i < StageInfo::kStageCount; ++i){
+			if(ImGui::Selectable(StageInfo::GetStageLabel(i),i == stageIndex_) && i != stageIndex_){
+				requestedStageIndex_ = i;
+			}
+		}
+		ImGui::EndCombo();
+	}
+
+	ImGui::Separator();
 
 	// レールの切り替え・新規作成UI
 	ImGui::Text("Active Rail: %s",rails_[activeRailIndex_].name.c_str());
@@ -315,7 +369,8 @@ void RailEditor::Update(){
 		LoadFromJson();
 	}
 	ImGui::SameLine();
-	ImGui::Text("(%s)",GetRailFilePath(activeRailIndex_).c_str());
+	ImGui::Text("(%s)",GetRailFilePath(stageIndex_,activeRailIndex_).c_str());
+	ImGui::TextDisabled("(Save / Load は全ステージまとめて行う)");
 	EditorWidgets::ShowUnsavedMark(history_.IsModified());
 
 	ImGui::Separator();
@@ -1412,9 +1467,8 @@ void RailEditor::ToggleShowCurve(){
 	rails_[activeRailIndex_].showCurve = !rails_[activeRailIndex_].showCurve;
 }
 
-// 指定インデックスのレール1本だけをJSONファイルに保存する(書き込めなかったときはfalse)
-bool RailEditor::SaveRailToFile(int index){
-	Rail& rail = rails_[index];
+// レール1本だけをfilePathのJSONファイルに保存する(書き込めなかったときはfalse)
+bool RailEditor::SaveRailToFile(const Rail& rail,const std::string& filePath) const{
 
 	// ルート要素。nameは読み込み時の簡易フォーマットチェック・レール名の保存用
 	nlohmann::json root;
@@ -1435,16 +1489,14 @@ bool RailEditor::SaveRailToFile(int index){
 	}
 	root["control_points"] = pointsJson;
 
-	std::string savePathStr = GetRailFilePath(index);
-
 	// 保存先フォルダが無ければ作成しておく
-	std::filesystem::path savePath(savePathStr);
+	std::filesystem::path savePath(filePath);
 	if(savePath.has_parent_path()){
 		std::filesystem::create_directories(savePath.parent_path());
 	}
 
 	// ファイルへ書き出し(setwで人が読める整形出力にする)
-	std::ofstream file(savePathStr);
+	std::ofstream file(filePath);
 	if(!file.is_open()){
 		return false;
 	}
@@ -1452,11 +1504,9 @@ bool RailEditor::SaveRailToFile(int index){
 	return true;
 }
 
-// 指定インデックスのレール1本だけをJSONファイルから読み込む(ファイルが無ければ何もしない)
-void RailEditor::LoadRailFromFile(int index){
-	Rail& rail = rails_[index];
-
-	std::ifstream file(GetRailFilePath(index));
+// レール1本だけをfilePathのJSONファイルから読み込む(ファイルが無ければ何もしない)
+void RailEditor::LoadRailFromFile(Rail& rail,const std::string& filePath){
+	std::ifstream file(filePath);
 	if(!file.is_open()){
 		// ファイルがまだ無い(初回起動・新規追加直後など)ときは現状維持
 		return;
@@ -1503,15 +1553,19 @@ void RailEditor::LoadRailFromFile(int index){
 	SyncPointObjectsToControlPoints(rail);
 }
 
-// 全レールをそれぞれ対応するJSONファイルへ保存する
+// 全ステージの全レールをそれぞれ対応するJSONファイルへ保存する
+// 保存していない変更があるかは全ステージまとめて見ているため、保存も全ステージまとめて行う
 void RailEditor::SaveToJson(){
 	// まだ履歴に積んでいない編集があれば先に確定し、保存した状態を保存済みとして記録できるようにする
 	CommitEditIfChanged();
 
 	bool isAllSaved = true;
-	for(size_t i = 0; i < rails_.size(); ++i){
-		if(!SaveRailToFile(static_cast<int>(i))){
-			isAllSaved = false;
+	for(int stage = 0; stage < StageInfo::kStageCount; ++stage){
+		const std::vector<Rail>& rails = GetStageRails(stage);
+		for(size_t i = 0; i < rails.size(); ++i){
+			if(!SaveRailToFile(rails[i],GetRailFilePath(stage,static_cast<int>(i)))){
+				isAllSaved = false;
+			}
 		}
 	}
 
@@ -1521,7 +1575,7 @@ void RailEditor::SaveToJson(){
 	}
 }
 
-// 全レールをJSONファイルから読み込む(Loadボタン用)
+// 全ステージのレールをJSONファイルから読み込む(Loadボタン用)
 // 読み込みも1回の編集として履歴に積み、Ctrl+Zで読み込む前に戻せるようにする
 void RailEditor::LoadFromJson(){
 	LoadRailsFromFiles();
@@ -1529,56 +1583,73 @@ void RailEditor::LoadFromJson(){
 	history_.MarkSaved();
 }
 
-// 全レールをJSONファイルから読み込む
+// 全ステージのレールをJSONファイルから読み込む
 // メモリ上に既にあるレールは対応ファイルで上書きし、ディスクにのみ存在するレール(rail1.json, rail2.json...)は
 // New Rail相当の追加をしながら連番で読み込んでいく(ファイルが途切れたところで打ち切り)
 void RailEditor::LoadRailsFromFiles(){
-	// 既存のレールを、それぞれ対応するファイルがあれば読み込み直す
-	for(size_t i = 0; i < rails_.size(); ++i){
-		LoadRailFromFile(static_cast<int>(i));
-	}
+	for(int stage = 0; stage < StageInfo::kStageCount; ++stage){
+		std::vector<Rail>& rails = GetStageRails(stage);
 
-	// メモリ上にまだ無いレールも、ファイルが存在する限り新規追加しながら連番で読み込む
-	int index = static_cast<int>(rails_.size());
-	while(std::filesystem::exists(GetRailFilePath(index))){
-		AddRail();
-		LoadRailFromFile(index);
-		++index;
+		// レールが1本も無いと他の処理(補間など)が破綻するため、ファイルが無いステージにも最低1本は用意する
+		if(rails.empty()){
+			AppendRail(rails);
+		}
+
+		// 既存のレールを、それぞれ対応するファイルがあれば読み込み直す
+		for(size_t i = 0; i < rails.size(); ++i){
+			LoadRailFromFile(rails[i],GetRailFilePath(stage,static_cast<int>(i)));
+		}
+
+		// メモリ上にまだ無いレールも、ファイルが存在する限り新規追加しながら連番で読み込む
+		int index = static_cast<int>(rails.size());
+		while(std::filesystem::exists(GetRailFilePath(stage,index))){
+			AppendRail(rails);
+			LoadRailFromFile(rails.back(),GetRailFilePath(stage,index));
+			++index;
+		}
 	}
 
 	// 読み込み後は先頭のレールをアクティブな編集対象にする
 	activeRailIndex_ = 0;
+	selectedPointIndex_ = -1;
 }
-// 今のレールの状態を編集履歴に残す形で取得する
-RailEditor::RailsSnapshot RailEditor::MakeSnapshot() const{
-	RailsSnapshot snapshot;
-	snapshot.reserve(rails_.size());
-	for(const Rail& rail : rails_){
-		snapshot.push_back({rail.name, rail.controlPoints});
+// 今の全ステージのレールの状態を編集履歴に残す形で取得する
+RailEditor::StagesSnapshot RailEditor::MakeSnapshot() const{
+	StagesSnapshot snapshot;
+	for(int stage = 0; stage < StageInfo::kStageCount; ++stage){
+		const std::vector<Rail>& rails = GetStageRails(stage);
+		snapshot[stage].reserve(rails.size());
+		for(const Rail& rail : rails){
+			snapshot[stage].push_back({rail.name, rail.controlPoints});
+		}
 	}
 	return snapshot;
 }
 
-// 編集履歴の状態をレールに反映する
-void RailEditor::ApplySnapshot(const RailsSnapshot& snapshot){
+// 編集履歴の状態を全ステージのレールに反映する
+void RailEditor::ApplySnapshot(const StagesSnapshot& snapshot){
 	const int prevActiveRailIndex = activeRailIndex_;
 
-	// レールの本数を履歴の状態にそろえる(New Railを戻したときは減らし、やり直したときは増やす)
-	while(rails_.size() < snapshot.size()){
-		AddRail();
-	}
-	while(rails_.size() > snapshot.size()){
-		rails_.pop_back();
-	}
+	for(int stage = 0; stage < StageInfo::kStageCount; ++stage){
+		std::vector<Rail>& rails = GetStageRails(stage);
+		const RailsSnapshot& stageSnapshot = snapshot[stage];
 
-	for(size_t i = 0; i < rails_.size(); ++i){
-		rails_[i].name = snapshot[i].name;
-		rails_[i].controlPoints = snapshot[i].controlPoints;
-		SyncPointObjectsToControlPoints(rails_[i]);
+		// レールの本数を履歴の状態にそろえる(New Railを戻したときは減らし、やり直したときは増やす)
+		while(rails.size() < stageSnapshot.size()){
+			AppendRail(rails);
+		}
+		while(rails.size() > stageSnapshot.size()){
+			rails.pop_back();
+		}
+
+		for(size_t i = 0; i < rails.size(); ++i){
+			rails[i].name = stageSnapshot[i].name;
+			rails[i].controlPoints = stageSnapshot[i].controlPoints;
+			SyncPointObjectsToControlPoints(rails[i]);
+		}
 	}
 
 	// アクティブなレールは戻す前のものを残し、消えたレールを指していれば最後のレールにする
-	// (AddRail()は追加したレールをアクティブにするため、ここで戻す)
 	activeRailIndex_ = (std::min)(prevActiveRailIndex,static_cast<int>(rails_.size()) - 1);
 	if(activeRailIndex_ != prevActiveRailIndex){
 		selectedPointIndex_ = -1;
@@ -1587,12 +1658,17 @@ void RailEditor::ApplySnapshot(const RailsSnapshot& snapshot){
 }
 
 // 今のレールの状態が、最後に確定した状態から変わっていれば確定して履歴に積む
-// 毎フレームの比較で状態を丸ごとコピーしないよう、変わっていたときだけ状態を作る
+// 毎フレームの比較で状態を丸ごとコピーしないよう、ステージ・レールごとに比べて、変わっていたときだけ状態を作る
 void RailEditor::CommitEditIfChanged(){
-	const RailsSnapshot& committed = history_.GetCommitted();
-	bool isChanged = (committed.size() != rails_.size());
-	for(size_t i = 0; !isChanged && i < rails_.size(); ++i){
-		isChanged = (committed[i].name != rails_[i].name || committed[i].controlPoints != rails_[i].controlPoints);
+	const StagesSnapshot& committed = history_.GetCommitted();
+	bool isChanged = false;
+	for(int stage = 0; !isChanged && stage < StageInfo::kStageCount; ++stage){
+		const std::vector<Rail>& rails = GetStageRails(stage);
+		const RailsSnapshot& committedRails = committed[stage];
+		isChanged = (committedRails.size() != rails.size());
+		for(size_t i = 0; !isChanged && i < rails.size(); ++i){
+			isChanged = (committedRails[i].name != rails[i].name || committedRails[i].controlPoints != rails[i].controlPoints);
+		}
 	}
 	if(!isChanged){
 		return;
@@ -1604,7 +1680,7 @@ void RailEditor::CommitEditIfChanged(){
 
 // 1つ前の状態に戻す(Ctrl+Z)
 bool RailEditor::UndoEdit(){
-	RailsSnapshot snapshot;
+	StagesSnapshot snapshot;
 	if(!history_.Undo(snapshot)){
 		return false;
 	}
@@ -1614,7 +1690,7 @@ bool RailEditor::UndoEdit(){
 
 // Undoで戻した状態をやり直す(Ctrl+Y)
 bool RailEditor::RedoEdit(){
-	RailsSnapshot snapshot;
+	StagesSnapshot snapshot;
 	if(!history_.Redo(snapshot)){
 		return false;
 	}

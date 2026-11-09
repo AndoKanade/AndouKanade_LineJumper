@@ -85,6 +85,11 @@ private:
 	/// </summary>
 	/// <param name="isInstant">true なら管を伸ばす演出を飛ばしてすぐに反映する(リスタート・チェックポイントからのやり直し用)</param>
 	void ApplyRailLocks(bool isInstant);
+	/// <summary>
+	/// 編集・プレイするステージを切り替える(レール・的・敵のエディターを同じステージに合わせ、的・敵・レールの出方を初期状態に戻す)
+	/// </summary>
+	/// <param name="stageIndex">切り替えるステージの番号(0始まり)</param>
+	void SwitchStage(int stageIndex);
 	// 遠くの物を空の色に溶け込ませる距離を、全オブジェクト共通の設定にする(Play中だけ溶け込ませ、Edit中は溶け込ませない)
 	void UpdateSceneDistanceFade();
 

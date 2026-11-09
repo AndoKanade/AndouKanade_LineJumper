@@ -7,7 +7,6 @@
 
 // 前方宣言
 class Obj3dCommon;
-class RailEditor;
 class Enemy;
 class EnemyEditor;
 class PlayerBulletManager;
@@ -23,14 +22,16 @@ public:
 
 	/// <summary>
 	/// 初期化処理
-	/// 配置エディターを生成し、保存済みの配置が無い初回起動時のみレールの中間地点に自動配置する
+	/// 配置エディターを生成し、全ステージの保存済みの配置を読み込む
 	/// </summary>
 	/// <param name="objCommon">3Dオブジェクト共通設定</param>
-	/// <param name="railEditor">自動配置の基準にするレール</param>
-	void Initialize(Obj3dCommon* objCommon,const RailEditor* railEditor);
+	void Initialize(Obj3dCommon* objCommon);
 
 	// 配置エディターの更新と、編集結果(追加・削除・ドラッグ移動・パラメータ変更)の敵リストへの反映
 	void UpdateEditor();
+
+	// 編集・プレイするステージを切り替え、敵のリストを切り替えた先のステージの配置にして、すべて初期状態に戻す
+	void SetStageIndex(int stageIndex);
 
 	/// <summary>
 	/// 全ての敵の更新(往復移動・プレイヤー検知・発射)
@@ -73,9 +74,6 @@ public:
 #endif
 
 private:
-	// 保存済みの配置が無いときに、レールの中間地点へ自動配置した初期データを作る
-	void CreateDefaultPlacement(const RailEditor* railEditor);
-
 	// 配置エディターの内容を敵のリストに反映する
 	void SyncFromEditor();
 
@@ -86,9 +84,4 @@ private:
 
 	// 雑魚敵(固定パターンで往復移動し、プレイヤーを検知すると向きを変える)
 	std::vector<std::unique_ptr<Enemy>> enemies_;
-
-	// 初回起動時に自動配置する雑魚敵のレール進行度(レールの中間地点)
-	static constexpr float kSpawnRailT = 0.5f;
-	// 雑魚敵をレールより上に置くオフセット
-	static constexpr float kUpOffset = 1.0f;
 };

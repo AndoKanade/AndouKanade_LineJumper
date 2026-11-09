@@ -15,8 +15,8 @@
 #include <string>
 
 namespace{
-	// 敵の配置データの保存先ファイルパス(TargetEditorと同じくresource配下の相対パス)
-	const std::string kEnemySaveFilePath = "resource/enemy/enemy.json";
+	// 敵の配置データの保存先(ステージのフォルダの中のファイル名)
+	const std::string kSaveFileName = "enemy.json";
 
 	// レイと平面が平行かどうかを判定するしきい値(内積の絶対値がこの値未満なら平行とみなす)
 	constexpr float kRayPlaneEpsilon = 1e-6f;
@@ -59,7 +59,7 @@ EnemyEditor::~EnemyEditor(){
 	// 操作の途中でまだ履歴に積んでいない変更も含めるため、先に確定してから判定する
 	CommitEditIfChanged();
 	if(history_.IsModified()){
-		unsavedStash_ = enemies_;
+		unsavedStash_ = MakeSnapshot();
 	} else{
 		unsavedStash_.reset();
 	}
@@ -69,16 +69,22 @@ EnemyEditor::~EnemyEditor(){
 
 // 初期化処理(保存済みJSONがあれば読み込む)
 void EnemyEditor::Initialize(){
-	LoadEnemiesFromFile();
+	// 前のシーンで編集・プレイしていたステージから始める
+	stageIndex_ = StageInfo::IsValidStageIndex(StageInfo::currentStageIndex)?StageInfo::currentStageIndex:0;
+
+	// 全ステージの配置を、保存済みのJSONから読み込む
+	for(int stage = 0; stage < StageInfo::kStageCount; ++stage){
+		LoadEnemiesFromFile(stage);
+	}
 
 	// 読み込んだ状態を編集の基準(保存済み)にし、Ctrl+Z・すべて保存の対象に登録する
-	history_.Reset(enemies_);
+	history_.Reset(MakeSnapshot());
 	EditorDocumentManager::GetInstance()->Register(this);
 
 	// 前のシーンで保存せずに残していた変更があれば戻す
 	// 読み込んだファイルの状態からの1回の編集として積み、未保存のままにする(Ctrl+Zで読み込んだファイルの状態に戻せる)
 	if(unsavedStash_){
-		enemies_ = *unsavedStash_;
+		ApplySnapshot(*unsavedStash_);
 		unsavedStash_.reset();
 		CommitEditIfChanged();
 	}
@@ -148,7 +154,8 @@ void EnemyEditor::Update(){
 		LoadFromJson();
 	}
 	ImGui::SameLine();
-	ImGui::Text("(%s)",kEnemySaveFilePath.c_str());
+	ImGui::Text("(%s)",GetSaveFilePath(stageIndex_).c_str());
+	ImGui::TextDisabled("(Save / Load は全ステージまとめて行う)");
 	EditorWidgets::ShowUnsavedMark(history_.IsModified());
 
 	ImGui::Separator();
@@ -464,52 +471,69 @@ void EnemyEditor::SetSelectedIndex(int index){
 	selectedIndex_ = index;
 }
 
-// 配置内容をJSONファイルに保存する
+// 全ステージの配置内容をそれぞれのステージのJSONファイルに保存する
+// 保存していない変更があるかは全ステージまとめて見ているため、保存も全ステージまとめて行う
 void EnemyEditor::SaveToJson(){
 	// まだ履歴に積んでいない編集があれば先に確定し、保存した状態を保存済みとして記録できるようにする
 	CommitEditIfChanged();
 
-	// ルート要素。enemiesは読み込み時の簡易フォーマットチェックにも使う
-	nlohmann::json root;
+	bool isAllSaved = true;
+	for(int stage = 0; stage < StageInfo::kStageCount; ++stage){
+		// ルート要素。enemiesは読み込み時の簡易フォーマットチェックにも使う
+		nlohmann::json root;
 
-	nlohmann::json enemiesJson = nlohmann::json::array();
-	for(const auto& enemy : enemies_){
-		nlohmann::json ej;
-		ej["position"] = {enemy.position.x, enemy.position.y, enemy.position.z};
-		ej["patrolDirection"] = {enemy.patrolDirection.x, enemy.patrolDirection.y, enemy.patrolDirection.z};
-		ej["maxHp"] = enemy.maxHp;
-		enemiesJson.push_back(ej);
-	}
-	root["enemies"] = enemiesJson;
+		nlohmann::json enemiesJson = nlohmann::json::array();
+		for(const auto& enemy : GetStageEnemies(stage)){
+			nlohmann::json ej;
+			ej["position"] = {enemy.position.x, enemy.position.y, enemy.position.z};
+			ej["patrolDirection"] = {enemy.patrolDirection.x, enemy.patrolDirection.y, enemy.patrolDirection.z};
+			ej["maxHp"] = enemy.maxHp;
+			enemiesJson.push_back(ej);
+		}
+		root["enemies"] = enemiesJson;
 
-	// 保存先フォルダが無ければ作成しておく
-	std::filesystem::path savePath(kEnemySaveFilePath);
-	if(savePath.has_parent_path()){
-		std::filesystem::create_directories(savePath.parent_path());
+		const std::string savePathStr = GetSaveFilePath(stage);
+
+		// 保存先フォルダが無ければ作成しておく
+		std::filesystem::path savePath(savePathStr);
+		if(savePath.has_parent_path()){
+			std::filesystem::create_directories(savePath.parent_path());
+		}
+
+		// ファイルへ書き出し(setwで人が読める整形出力にする)
+		std::ofstream file(savePathStr);
+		if(!file.is_open()){
+			isAllSaved = false;
+			continue;
+		}
+		file << std::setw(4) << root << std::endl;
 	}
 
-	// ファイルへ書き出し(setwで人が読める整形出力にする)
-	std::ofstream file(kEnemySaveFilePath);
-	if(!file.is_open()){
-		return;
+	// 1つでも書き込めなかったときは、未保存の表示を残す
+	if(isAllSaved){
+		history_.MarkSaved();
 	}
-	file << std::setw(4) << root << std::endl;
-	history_.MarkSaved();
 }
 
-// 配置内容をJSONファイルから読み込む(Loadボタン用。ファイルが無ければ何もしない)
+// 全ステージの配置内容をJSONファイルから読み込む(Loadボタン用。どのステージのファイルも無ければ何もしない)
 // 読み込みも1回の編集として履歴に積み、Ctrl+Zで読み込む前に戻せるようにする
 void EnemyEditor::LoadFromJson(){
-	if(!LoadEnemiesFromFile()){
+	bool isAnyLoaded = false;
+	for(int stage = 0; stage < StageInfo::kStageCount; ++stage){
+		if(LoadEnemiesFromFile(stage)){
+			isAnyLoaded = true;
+		}
+	}
+	if(!isAnyLoaded){
 		return;
 	}
 	CommitEditIfChanged();
 	history_.MarkSaved();
 }
 
-// 配置内容をJSONファイルから読み込む(ファイルが無い・形式が違うときは現状維持でfalse)
-bool EnemyEditor::LoadEnemiesFromFile(){
-	std::ifstream file(kEnemySaveFilePath);
+// 指定ステージの配置内容をJSONファイルから読み込む(ファイルが無い・形式が違うときは現状維持でfalse)
+bool EnemyEditor::LoadEnemiesFromFile(int stageIndex){
+	std::ifstream file(GetSaveFilePath(stageIndex));
 	if(!file.is_open()){
 		// ファイルがまだ無い(初回起動など)ときは現状維持
 		return false;
@@ -524,7 +548,8 @@ bool EnemyEditor::LoadEnemiesFromFile(){
 	}
 
 	// 読み込んだ内容で配置を置き換える
-	enemies_.clear();
+	std::vector<EnemyPoint>& points = GetStageEnemies(stageIndex);
+	points.clear();
 	for(const auto& ej : root["enemies"]){
 		EnemyPoint point{};
 		point.position.x = ej["position"][0].get<float>();
@@ -548,7 +573,7 @@ bool EnemyEditor::LoadEnemiesFromFile(){
 			point.maxHp = kMinMaxHp;
 		}
 
-		enemies_.push_back(point);
+		points.push_back(point);
 	}
 
 	// 読み込みで敵の体数が変わるため、選択とドラッグ状態は解除する
@@ -558,19 +583,27 @@ bool EnemyEditor::LoadEnemiesFromFile(){
 }
 
 // 配置内容が、最後に確定した状態から変わっていれば確定して履歴に積む
+// 毎フレームの比較で状態を丸ごとコピーしないよう、ステージごとに比べて、変わっていたときだけ状態を作る
 void EnemyEditor::CommitEditIfChanged(){
-	if(enemies_ == history_.GetCommitted()){
+	const StagesSnapshot& committed = history_.GetCommitted();
+	bool isChanged = false;
+	for(int stage = 0; !isChanged && stage < StageInfo::kStageCount; ++stage){
+		isChanged = (GetStageEnemies(stage) != committed[stage]);
+	}
+	if(!isChanged){
 		return;
 	}
-	history_.Commit(enemies_);
+	history_.Commit(MakeSnapshot());
 	EditorDocumentManager::GetInstance()->RecordEdit(this);
 }
 
 // 1つ前の状態に戻す(Ctrl+Z)
 bool EnemyEditor::UndoEdit(){
-	if(!history_.Undo(enemies_)){
+	StagesSnapshot snapshot;
+	if(!history_.Undo(snapshot)){
 		return false;
 	}
+	ApplySnapshot(snapshot);
 	// 戻した結果敵が減っていれば、選択が範囲外を指さないよう解除する
 	if(selectedIndex_ >= static_cast<int>(enemies_.size())){
 		selectedIndex_ = -1;
@@ -581,13 +614,61 @@ bool EnemyEditor::UndoEdit(){
 
 // Undoで戻した状態をやり直す(Ctrl+Y)
 bool EnemyEditor::RedoEdit(){
-	if(!history_.Redo(enemies_)){
+	StagesSnapshot snapshot;
+	if(!history_.Redo(snapshot)){
 		return false;
 	}
+	ApplySnapshot(snapshot);
 	// やり直した結果敵が減っていれば、選択が範囲外を指さないよう解除する
 	if(selectedIndex_ >= static_cast<int>(enemies_.size())){
 		selectedIndex_ = -1;
 	}
 	isDragging_ = false;
 	return true;
+}
+
+// 指定ステージの配置の配列を取得(編集中のステージはenemies_、それ以外は預けてある配列)
+std::vector<EnemyEditor::EnemyPoint>& EnemyEditor::GetStageEnemies(int stageIndex){
+	return (stageIndex == stageIndex_)?enemies_:storedStageEnemies_[stageIndex];
+}
+const std::vector<EnemyEditor::EnemyPoint>& EnemyEditor::GetStageEnemies(int stageIndex) const{
+	return (stageIndex == stageIndex_)?enemies_:storedStageEnemies_[stageIndex];
+}
+
+// 指定ステージの配置の保存先ファイルパスを求める
+std::string EnemyEditor::GetSaveFilePath(int stageIndex) const{
+	return StageInfo::GetStageDirectory(stageIndex) + kSaveFileName;
+}
+
+// 今の全ステージの配置を編集履歴に残す形で取得する
+EnemyEditor::StagesSnapshot EnemyEditor::MakeSnapshot() const{
+	StagesSnapshot snapshot;
+	for(int stage = 0; stage < StageInfo::kStageCount; ++stage){
+		snapshot[stage] = GetStageEnemies(stage);
+	}
+	return snapshot;
+}
+
+// 編集履歴の状態を全ステージの配置に反映する
+void EnemyEditor::ApplySnapshot(const StagesSnapshot& snapshot){
+	for(int stage = 0; stage < StageInfo::kStageCount; ++stage){
+		GetStageEnemies(stage) = snapshot[stage];
+	}
+}
+
+// 編集・プレイするステージを切り替える
+void EnemyEditor::SetStageIndex(int stageIndex){
+	if(!StageInfo::IsValidStageIndex(stageIndex) || stageIndex == stageIndex_){
+		return;
+	}
+
+	// 今のステージの配置を預け、切り替えた先のステージの配置を取り出す
+	std::swap(enemies_,storedStageEnemies_[stageIndex_]);
+	std::swap(enemies_,storedStageEnemies_[stageIndex]);
+	stageIndex_ = stageIndex;
+
+	// 前のステージの敵を指したままにならないよう、選択とドラッグ状態を解除する
+	selectedIndex_ = -1;
+	pendingPickIndex_ = -1;
+	isDragging_ = false;
 }
