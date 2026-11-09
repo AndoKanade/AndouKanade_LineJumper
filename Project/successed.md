@@ -1754,3 +1754,17 @@ Visual Studio でのビルドはしていない（この環境には Windows の
 ### ビルド確認（3.）
 
 Visual Studio でのビルドはしていない。変更した .cpp を、仮のヘッダーに差し替えて clang で構文チェックした（USE_IMGUI あり・なしの両方）。画面では確認していない。
+
+### 4. ImGui の日本語のフォントを Noto Sans JP にした
+
+対象ファイル: `Engine/Manager/ImGuiManager.cpp`、`resource/fonts/NotoSansJP-Regular.ttf`（新規）、`resource/fonts/NotoSansJP-OFL.txt`（新規）
+
+- ImGui の日本語は操作説明の画像と同じ Mochiy Pop P One で描いていたが、エディターの小さい文字では読みにくいため、ゴシック体の Noto Sans JP（Regular）に変えた。`ImGuiManager.cpp` の `kJapaneseFontPath` を差し替えただけで、読み込み方（標準フォントに日本語の文字だけを重ねる）と大きさは変えていない。
+- フォントは SIL Open Font License 1.1 の無料フォントで、Google Fonts と同じ TTF（npm の `@expo-google-fonts/noto-sans-jp` 0.4.4 に入っているもの）を使った。ライセンスの文を `NotoSansJP-OFL.txt` として一緒に置いた。
+- エディターの文字列で使っている日本語 211 文字が、すべてこのフォントに入っていることを確かめた。
+- 操作説明の画像（`tools/generate_help_texture.py`）は今までどおり Mochiy Pop P One のまま。
+
+### ビルド確認（4.）
+
+Visual Studio でのビルド・画面での確認はしていない。変更はフォントのパスだけ。
+

@@ -276,7 +276,7 @@ Game/
 | GameScene Debug | Edit のみ（Editors で選んだとき） | タイトルを飛ばす設定、選んだ制御点から始める設定（Start From Selected Point）、落下リスタート・クリアへの切り替えの演出の選択と Preview、復活の見せ方（Respawn Reveal）の選択と Preview、出発の演出の選択（Departure。次にゲートを開けたときから使われる）、カメラ座標・回転の編集、ライティング |
 
 - Edit モードの画面は、左の列に Rail Editor（縦いっぱい）、右の列に Editors で選んだエディター（縦いっぱい）、中央に Scene ビュー、下段の左半分に Editors、右半分に Global Variables を並べる（`EditorWidgets::ComputeLayout()`）。
-- ImGui の英数字は標準フォント、日本語は `resource/fonts/MochiyPopPOne-Regular.ttf` で描く（`ImGuiManager::Initialize()` で標準フォントに日本語フォントを重ねて読み込む）。
+- ImGui の英数字は標準フォント、日本語は `resource/fonts/NotoSansJP-Regular.ttf`（Noto Sans JP、SIL Open Font License。ライセンスは `NotoSansJP-OFL.txt`）で描く（`ImGuiManager::Initialize()` で標準フォントに日本語フォントを重ねて読み込む）。
 
 ### ClearScene（`scenes/ClearScene.h/.cpp`）
 
