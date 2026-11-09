@@ -722,7 +722,50 @@ float StartPlatform::Raycast(const Vector3& origin,const Vector3& direction,floa
 	// 台の本体の中心は上面から厚みの半分だけ下になる。通路は正方形の部分の後ろの辺に付いている
 	const float squareDistance = RaycastBox({0.0f, -kHalfHeight, 0.0f},{kSquareHalfSize, kHalfHeight, kSquareHalfSize},origin,direction,maxDistance,radius);
 	const float corridorDistance = RaycastBox({0.0f, -kHalfHeight, -(kSquareHalfSize + kCorridorLength * kHalf)},{kCorridorHalfWidth, kHalfHeight, kCorridorLength * kHalf},origin,direction,maxDistance,radius);
-	return (std::min)(squareDistance,corridorDistance);
+	const float barrierDistance = RaycastBarriers(origin,direction,maxDistance,radius);
+	return (std::min)((std::min)(squareDistance,corridorDistance),barrierDistance);
+}
+
+// 通路に立っている壁の、台の中央側の面とレイの交差を調べる
+// プレイヤーは立っている壁より奥へは進めないため、レイの始点(カメラの回転の中心)はいつも壁の手前にある。そこで手前の面だけを調べる
+// プレイヤーは壁の面から kGateWallMargin まで近づけ、radius より近いことがあるため、箱の判定(始点が箱の中なら当たらない扱い)は使わない
+// 面から radius だけ手前の位置で止め、始点がそれより面に近いときは始点の位置(距離 0)で止める
+float StartPlatform::RaycastBarriers(const Vector3& origin,const Vector3& direction,float maxDistance,float radius) const{
+	const Vector3 backward = -forwardXZ_;
+	const Vector3 diff = origin - topCenter_;
+	// 始点と向きの、通路の奥へ向かう成分
+	const float originDepth = Dot(diff,backward);
+	const float directionDepth = Dot(direction,backward);
+	// 通路の奥へ向かわないレイは、手前の面に当たらない
+	if(directionDepth < kParallelEpsilon){
+		return maxDistance;
+	}
+
+	float result = maxDistance;
+	for(int i = 0; i < kBarrierCount; ++i){
+		if(!IsBarrierStanding(i)){
+			continue;
+		}
+		const float faceDepth = kBarrierDistances[i] - kBarrierHalfThickness;
+		// 壁より奥にある始点からは調べない(壊れていない壁の奥へは行けないため、念のため)
+		if(originDepth > faceDepth){
+			continue;
+		}
+
+		// 面に届く距離で、当たった点が壁の幅・高さ(radius だけ広げた範囲)に入っているかを調べる
+		const float faceDistance = (faceDepth - originDepth) / directionDepth;
+		if(faceDistance >= result){
+			continue;
+		}
+		const Vector3 hitDiff = diff + direction * faceDistance;
+		const bool isWithinWidth = std::abs(Dot(hitDiff,rightXZ_)) <= kCorridorHalfWidth + radius;
+		const bool isWithinHeight = hitDiff.y <= kBarrierHeight + radius;
+		if(!isWithinWidth || !isWithinHeight){
+			continue;
+		}
+		result = (std::max)((faceDepth - radius - originDepth) / directionDepth,0.0f);
+	}
+	return result;
 }
 
 // 台の向きでの中心・大きさの直方体とレイの交差を調べる

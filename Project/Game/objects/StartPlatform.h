@@ -283,6 +283,13 @@ private:
 	float RaycastBox(const Vector3& localCenter,const Vector3& halfSize,const Vector3& origin,const Vector3& direction,float maxDistance,float radius) const;
 
 	/// <summary>
+	/// 通路に立っている壁の、台の中央側の面にレイが最初に当たるまでの距離を求める(カメラが壁の奥へ入らないようにする)
+	/// 面から radius だけ手前で止める。始点が面にそれより近いときは 0 を返す
+	/// </summary>
+	/// <returns>止める距離(当たらないときは maxDistance)</returns>
+	float RaycastBarriers(const Vector3& origin,const Vector3& direction,float maxDistance,float radius) const;
+
+	/// <summary>
 	/// 選んでいるゲートを開けている間に、前のフレームから今のフレームまでにインクが進んだ分だけ、床・柱・梁にインクを塗る
 	/// </summary>
 	/// <param name="previousTimer">前のフレームでのゲートを開け始めてからの経過時間(秒)</param>
