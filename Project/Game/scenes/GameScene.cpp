@@ -54,6 +54,7 @@
 #include "UI/StageHUD.h"
 #include "UI/StageClearUI.h"
 #include "UI/StageLockedNotice.h"
+#include "UI/TutorialHints.h"
 #include "UI/SpeedLines.h"
 #include "UI/DamageInkEffect.h"
 #include "UI/HelpOverlay.h"
@@ -305,6 +306,8 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	stageClearUI_->Initialize(spriteCommon_);
 	stageLockedNotice_ = std::make_unique<StageLockedNotice>();
 	stageLockedNotice_->Initialize(spriteCommon_);
+	tutorialHints_ = std::make_unique<TutorialHints>();
+	tutorialHints_->Initialize(spriteCommon_);
 
 	// レールを進んでいる間に出すスピード線
 	speedLines_ = std::make_unique<SpeedLines>();
@@ -871,9 +874,10 @@ void GameScene::UpdateGameplay(){
 		// 残機も満タンから始める(コンティニューで戻ってきたときも満タンにする)
 		checkpoint_ = Checkpoint{};
 		lives_ = kMaxLives;
-		// タイトルから新しく始めるときは、クリアしたステージも忘れる(コンティニューのときは残す)
+		// タイトルから新しく始めるときは、クリアしたステージも忘れ、操作の案内も最初から出す(コンティニューのときは残す)
 		if(!ContinuePoint::isRequested){
 			StageInfo::ResetProgress();
+			tutorialHints_->Reset();
 		}
 		ResetPlayState();
 		// ゲームオーバー画面でコンティニューを選んで戻ってきたときは、最後に通ったチェックポイントから始める
@@ -901,6 +905,7 @@ void GameScene::UpdateGameplay(){
 		checkpoint_ = Checkpoint{};
 		lives_ = kMaxLives;
 		StageInfo::ResetProgress();
+		tutorialHints_->Reset();
 		ResetPlayState();
 		StartPlaySequence();
 	}
@@ -1315,6 +1320,15 @@ void GameScene::UpdateGameplay(){
 	stageClearUI_->Update(kDeltaTime);
 	// プレイ会用の設定で閉じているゲートの前に、台の上を歩いて来たら「いまは遊べないよ!!」を出す
 	stageLockedNotice_->Update(isPlayerMovable && startPlatform_->IsInFrontOfPlaySessionClosedGate(player_->GetPosition()),kDeltaTime);
+	// 操作の案内を、台の上・レールの上での操作に合わせて進める
+	TutorialHints::Situation tutorialSituation;
+	tutorialSituation.isOnPlatform = isPlayerMovable;
+	tutorialSituation.isRiding = isGameplayActive && player_->IsOnRail();
+	tutorialSituation.playerPosition = player_->GetPosition();
+	tutorialSituation.hasFired = shootTriggered;
+	tutorialSituation.hasOpenedGate = startSequence_->IsGateOpenTriggered();
+	tutorialSituation.hasDestroyedTarget = !targetManager_->GetDestroyedPositions().empty();
+	tutorialHints_->Update(tutorialSituation,kDeltaTime);
 }
 
 #ifdef USE_IMGUI
@@ -1639,6 +1653,7 @@ void GameScene::Draw(){
 		// 「STAGE CLEAR!」は画面表示より手前に出す
 		stageClearUI_->Draw();
 		stageLockedNotice_->Draw();
+		tutorialHints_->Draw();
 	}
 
 	// 開始演出のタイトル表示(PRESS SPACE)と、出発までの表示(操作案内・GO!)を最前面に描画する

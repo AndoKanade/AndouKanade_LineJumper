@@ -79,6 +79,7 @@
     - 開けられるのは正面（ステージ1）のゲートだけ。右・左のゲートの前に来ると「いまは遊べないよ!!」の画像を出す（`StageLockedNotice`、`resource/UI/stageLocked.png`、`tools/generate_stage_locked_notice.py`）。
     - ステージ1をクリアすると、大ジャンプで戻って壁が壊れるのを見せた後に、クリア画面へ移る（その後はタイトルへ戻り、次の人が最初から遊べる）。
     - プレイ会では、Global Variables パネルで `playSessionMode` を ON にして Save するか、`resource/GlobalVariables/GameScene.json` の `playSessionMode` を `true` にしたものを使う。提出用は OFF に戻す。
+  - 場面ごとに画面の上へ操作の案内を1つずつ出すようにした（仮。`TutorialHints`、画像は `tools/generate_tutorial_hints.py`）。「WASD で移動・マウスで見回す（2m 歩いたら消える）→ 左クリックで試し撃ち（5 発撃ったら消える）→ ゲートの前で SPACE（ゲートを開けたら消える）→ レールで的を撃つ（的を1つ壊すか 6 秒で消える）」の順。タイトルから始め直すと最初から出し、落ちてやり直しても出し直さない。鍵の的・並走レールへの乗り換え・ゴールの的の案内は、見てから足すか決める。
 - 残っていること
   - ステージ2〜4の中身を作る。
   - クリアしたステージの結果（壊した的の数・最大連鎖数）を出していない。

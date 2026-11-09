@@ -924,6 +924,28 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Update(lives, maxLives, destroyedCount, totalCount, combo)` | 表示内容の更新 |
 | `Draw()` | スプライト共通の描画前処理を行ってから描画する |
 
+### TutorialHints（`UI/TutorialHints.h/.cpp`）
+
+場面ごとに画面の上（高さ 13%、720 × 72）に1つずつ出す操作の案内（仮）。画像は `tools/generate_tutorial_hints.py` で生成する（`UI/hintMove.png`・`hintShoot.png`・`hintGate.png`・`hintRailShoot.png`）。
+
+| 段階 | 出す場面 | 消える条件 |
+| --- | --- | --- |
+| Move「WASD で移動 / マウスで見回す」 | スタート台の上を動ける間 | 出し始めた位置から水平に 2.0 歩く |
+| Shoot「左クリックでインクを撃つ」 | 同上 | 案内を出している間に 5 発撃つ |
+| Gate「ゲートの前の目印で SPACE を押して出発」 | 同上 | 出発ゲートを開け始める |
+| RailShoot「的を左クリックで撃ちながら進もう」 | レールを進んでいる間 | 的を1つ壊すか、6 秒たつ |
+
+- 消えた案内は 0.3 秒で薄くなり、0.4 秒置いて次の案内が少し上から下りてきながら出る。
+- 先の操作を先にしたとき（案内の前にゲートを開けた・レールに乗った）は、レールの案内まで飛ばす。
+- GameScene は Play に入ったとき（コンティニューを除く）と R キーのやり直しで `Reset()` を呼ぶ。落ちてやり直しても出し直さない。
+
+| 関数 | 内容 |
+| --- | --- |
+| `Initialize(SpriteCommon*)` | テクスチャの読み込みとスプライトの生成 |
+| `Reset()` | 最初の案内から出し直す |
+| `Update(situation, deltaTime)` | 台の上か・レールの上か・プレイヤーの位置・撃ったか・ゲートを開けたか・的を壊したか（`Situation`）から案内を進める |
+| `Draw()` | 今の案内と、消えていく前の案内を描く |
+
 ### StageLockedNotice（`UI/StageLockedNotice.h/.cpp`）
 
 プレイ会用の設定（`StageInfo::isPlaySessionMode`）のときに、閉じている右・左のゲートの前（ゲートの幅の中で、ゲートから手前へ 1.5 以内。`StartPlatform::IsInFrontOfPlaySessionClosedGate()`）に来たら出す「いまは遊べないよ!!」の画像（`UI/stageLocked.png`、`tools/generate_stage_locked_notice.py` で生成）。来た瞬間に 1.4 倍から 0.25 秒で弾むように縮んで出し（`EaseOutBack`）、離れたら 0.25 秒で薄くなって消える。画面の上から 3 割の高さに、832 × 260 で出す。

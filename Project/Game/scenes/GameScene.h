@@ -32,6 +32,7 @@ class ComboCounter;
 class StageHUD;
 class StageClearUI;
 class StageLockedNotice;
+class TutorialHints;
 class SpeedLines;
 class DamageInkEffect;
 class HelpOverlay;
@@ -224,6 +225,9 @@ private:
 
 	// プレイ会用の設定のときに、遊べないステージのゲートの前で出す「いまは遊べないよ!!」の表示
 	std::unique_ptr<StageLockedNotice> stageLockedNotice_;
+
+	// 場面ごとに画面の上に出す操作の案内(チュートリアル)
+	std::unique_ptr<TutorialHints> tutorialHints_;
 
 	// レールを進んでいる間に出すスピード線
 	std::unique_ptr<SpeedLines> speedLines_;
