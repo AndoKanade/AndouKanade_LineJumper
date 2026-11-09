@@ -897,10 +897,10 @@ void GameScene::UpdateGameplay(){
 		if(startSequence_->IsGateOpenTriggered()){
 			SwitchStage(startPlatform_->GetSelectedGateIndex());
 			// 台の上での基準の向きを、そのステージのレールの始点の向きに付け替える
-			// 見えている向きは変えずに照準オフセットへ差を移すため、ゲートの方を向いていれば、レールに乗ったときにレールの正面を向く
+			// 照準オフセットは見えている向きを変えずに0へ戻し、どこを向いていてもカウントダウンの間にレールの正面へ回るようにする
 			const Vector3 stageStartRotation = railEditor_->GetRotationOnRail(0.0f);
 			player_->SetPlatformBaseRotation(stageStartRotation);
-			railCamera_->RebaseFollowRotation(stageStartRotation);
+			railCamera_->RecenterAim();
 		}
 
 		// ゲートのカウントダウンに合わせて飛び乗る演出は、ゲートを開け始めた瞬間に選んで始める

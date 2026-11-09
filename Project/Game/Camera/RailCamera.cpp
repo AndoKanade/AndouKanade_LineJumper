@@ -57,12 +57,14 @@ void RailCamera::Reset(){
 	isFollowSnapRequested_ = true;
 }
 
-// 追従する基準の向きを付け替える
-// 左右は「基準の向き + 照準オフセット」が変わらないよう、照準オフセットに元の基準の向きとの差を足す
-// 上下・ロールはレールの始点ではほぼ水平なため、そのまま新しい基準の向きにする
-void RailCamera::RebaseFollowRotation(const Vector3& newBaseRotation){
-	aimYawOffset_ = WrapAngle(aimYawOffset_ + WrapAngle(followRotation_.y - newBaseRotation.y,kPi),kPi);
-	followRotation_ = newBaseRotation;
+// 照準オフセットを、見えている向きを変えずに0へ戻す
+// 「追従中の向き + 照準オフセット」が変わらないよう、照準オフセットを追従中の向きへ足してから0にする
+// 追従中の向きは毎フレーム基準の向きへ寄っていくため、カメラは振り向いていた向きからレールの正面へなめらかに回る
+void RailCamera::RecenterAim(){
+	followRotation_.x += aimPitchOffset_;
+	followRotation_.y = WrapAngle(followRotation_.y + aimYawOffset_,kPi);
+	aimYawOffset_ = 0.0f;
+	aimPitchOffset_ = 0.0f;
 }
 
 // 更新処理

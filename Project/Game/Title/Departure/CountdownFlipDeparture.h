@@ -113,7 +113,8 @@ private:
 	// 飛び乗った瞬間に画面の中央にかける放射ブラーの強さと、消えるまでの時間(秒)
 	static constexpr float kLandRadialBlurWidth = 0.025f;
 	static constexpr float kLandRadialBlurDuration = 0.5f;
-	// 飛び乗った瞬間に広げる視野角(ラジアン)と、元の視野角へ戻るまでの時間(秒)
+	// 飛び乗った後に広げる視野角(ラジアン)と、広げきるまでの時間(秒)、飛び乗ってから元の視野角へ戻りきるまでの時間(秒)
 	static constexpr float kFovKick = 0.35f;
+	static constexpr float kFovKickInDuration = 0.15f;
 	static constexpr float kFovReturnDuration = 1.2f;
 };

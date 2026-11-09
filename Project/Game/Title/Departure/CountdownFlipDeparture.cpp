@@ -133,10 +133,12 @@ void CountdownFlipDeparture::Update(float deltaTime,const CameraPose& gameplayCa
 
 	case State::Launch:
 	{
-		// 視野角は飛び乗った瞬間に広げ、少しずつ元に戻す(速さが上がって景色が流れていくように見せる)
-		const float fovProgress = StageRate(timer_,0.0f,kFovReturnDuration);
+		// 視野角は飛び乗ってから短い時間で広げ、少しずつ元に戻す(速さが上がって景色が流れていくように見せる)
+		// 一瞬で広げると、画面が急に引いてカメラが後ろへ飛んだように見えるため、広げるときも補間する
+		const float kickInRate = Easing::EaseOutCubic(StageRate(timer_,0.0f,kFovKickInDuration));
+		const float fovProgress = StageRate(timer_,kFovKickInDuration,kFovReturnDuration);
 		if(isFovChanged_){
-			context_.camera->SetFov(baseFov_ + kFovKick * (1.0f - Easing::EaseOutCubic(fovProgress)));
+			context_.camera->SetFov(baseFov_ + kFovKick * kickInRate * (1.0f - Easing::EaseOutCubic(fovProgress)));
 		}
 		if(fovProgress >= 1.0f){
 			RestoreFov();
