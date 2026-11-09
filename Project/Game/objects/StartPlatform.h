@@ -235,6 +235,8 @@ private:
 		std::vector<std::unique_ptr<Obj3D>> lamps;
 		// 遮断棒
 		std::unique_ptr<Obj3D> bar;
+		// 遮断棒の今の高さ(Update() で決め、カメラのめり込み防止で使う)
+		float barHeight = kBarClosedHeight;
 		// ゲートの前の目印(ここに立つと出発の操作ができる)
 		std::unique_ptr<Obj3D> marker;
 		// 出発台の目印(出発の演出を始める場所)
@@ -288,6 +290,22 @@ private:
 	/// </summary>
 	/// <returns>止める距離(当たらないときは maxDistance)</returns>
 	float RaycastBarriers(const Vector3& origin,const Vector3& direction,float maxDistance,float radius) const;
+
+	/// <summary>
+	/// 中心・向きを決めた直方体を各面から radius だけ外側へ広げた範囲に、レイが最初に当たる距離を求める(RaycastBox・ゲートの部品で共用)
+	/// </summary>
+	/// <param name="worldCenter">直方体の中心(ワールド座標)</param>
+	/// <param name="right">直方体の右の向き(XZ平面の正規化ベクトル)</param>
+	/// <param name="forward">直方体の前の向き(XZ平面の正規化ベクトル)</param>
+	/// <param name="halfSizeLocal">直方体の各辺の長さの半分(x: 右、y: 上、z: 前)</param>
+	/// <returns>当たった距離(始点が範囲の中にあるとき・maxDistance までに当たらないときは maxDistance)</returns>
+	float RaycastOrientedBox(const Vector3& worldCenter,const Vector3& right,const Vector3& forward,const Vector3& halfSizeLocal,const Vector3& origin,const Vector3& direction,float maxDistance,float radius) const;
+
+	/// <summary>
+	/// ゲートの柱・梁・遮断棒に、レイが最初に当たる距離を求める(カメラがゲートの部品の中へ入らないようにする)
+	/// </summary>
+	/// <returns>当たった距離(当たらないときは maxDistance)</returns>
+	float RaycastGates(const Vector3& origin,const Vector3& direction,float maxDistance,float radius) const;
 
 	/// <summary>
 	/// 選んでいるゲートを開けている間に、前のフレームから今のフレームまでにインクが進んだ分だけ、床・柱・梁にインクを塗る
@@ -362,6 +380,8 @@ private:
 	static constexpr float kGateEdgeInset = 4.1f;
 	// ゲートの幅の半分(左右の柱の外側の端まで)
 	static constexpr float kGateHalfWidth = 3.0f;
+	// カメラがゲートの部品(柱・梁・遮断棒)へ近づける距離(カメラの近平面 0.1 より少し大きくし、部品の中が見えないようにする)
+	static constexpr float kGateCameraMargin = 0.12f;
 	// 台の向きで見た、各ゲートから出ていく向き(x: 右、z: 前。並びはステージの番号と同じ: 正面・右・左・後ろ)
 	static constexpr Vector3 kGateLocalDirections[kGateCount] = {
 		{0.0f, 0.0f, 1.0f},

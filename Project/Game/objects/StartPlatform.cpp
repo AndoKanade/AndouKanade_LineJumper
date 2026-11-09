@@ -531,6 +531,8 @@ void StartPlatform::Update(float deltaTime){
 		}
 		const float barHeight = Lerp(kBarClosedHeight,kBarOpenedHeight,Easing::EaseOutBack(barProgress));
 		UpdatePart(*gate.bar,gate,{0.0f, barHeight, 0.0f},{barHalfLength + barHalfLength, kBarThickness, kBarThickness});
+		// カメラのめり込み防止で、今の高さの遮断棒を調べるのに使う
+		gate.barHeight = barHeight;
 
 		SetColor(*gate.marker,blinkColor);
 		SetColor(*gate.departurePad,blinkColor);
@@ -723,7 +725,32 @@ float StartPlatform::Raycast(const Vector3& origin,const Vector3& direction,floa
 	const float squareDistance = RaycastBox({0.0f, -kHalfHeight, 0.0f},{kSquareHalfSize, kHalfHeight, kSquareHalfSize},origin,direction,maxDistance,radius);
 	const float corridorDistance = RaycastBox({0.0f, -kHalfHeight, -(kSquareHalfSize + kCorridorLength * kHalf)},{kCorridorHalfWidth, kHalfHeight, kCorridorLength * kHalf},origin,direction,maxDistance,radius);
 	const float barrierDistance = RaycastBarriers(origin,direction,maxDistance,radius);
-	return (std::min)((std::min)(squareDistance,corridorDistance),barrierDistance);
+	const float gateDistance = RaycastGates(origin,direction,maxDistance,radius);
+	return (std::min)((std::min)(squareDistance,corridorDistance),(std::min)(barrierDistance,gateDistance));
+}
+
+// ゲートの柱・梁・遮断棒とレイの交差を調べ、一番先に当たる距離を返す
+// 部品は細く、プレイヤーが柱のそばに立つこともあるため、余白は radius より小さい kGateCameraMargin までにする
+// (余白が大きいと始点が余白の範囲に入り、当たらない扱いになってしまう。近平面より大きくしておけば、部品の中は見えない)
+float StartPlatform::RaycastGates(const Vector3& origin,const Vector3& direction,float maxDistance,float radius) const{
+	const float margin = (std::min)(radius,kGateCameraMargin);
+	const float pillarOffsetX = kGateHalfWidth - kPillarSize.x * kHalf;
+	const float barHalfLength = pillarOffsetX - kPillarSize.x * kHalf;
+	float result = maxDistance;
+	for(const Gate& gate : gates_){
+		// 左右の柱
+		for(int i = 0; i < kPillarCount; ++i){
+			const Vector3 center = GateToWorld(gate,{pillarOffsetX * kPillarSides[i], kPillarSize.y * kHalf, 0.0f});
+			result = RaycastOrientedBox(center,gate.right,gate.forward,kPillarSize * kHalf,origin,direction,result,margin);
+		}
+		// 上の梁
+		const Vector3 beamCenter = GateToWorld(gate,{0.0f, kPillarSize.y + kBeamHeight * kHalf, 0.0f});
+		result = RaycastOrientedBox(beamCenter,gate.right,gate.forward,Vector3{kGateHalfWidth + kGateHalfWidth, kBeamHeight, kBeamDepth} * kHalf,origin,direction,result,margin);
+		// 遮断棒(今の高さで調べる)
+		const Vector3 barCenter = GateToWorld(gate,{0.0f, gate.barHeight, 0.0f});
+		result = RaycastOrientedBox(barCenter,gate.right,gate.forward,Vector3{barHalfLength + barHalfLength, kBarThickness, kBarThickness} * kHalf,origin,direction,result,margin);
+	}
+	return result;
 }
 
 // 通路に立っている壁の、台の中央側の面とレイの交差を調べる
@@ -771,9 +798,15 @@ float StartPlatform::RaycastBarriers(const Vector3& origin,const Vector3& direct
 // 台の向きでの中心・大きさの直方体とレイの交差を調べる
 // レイを台の向きの座標(x: 右、y: 上、z: 前)に直し、軸ごとの面の間に入っている区間が3軸すべてで重なる最初の距離を求める
 float StartPlatform::RaycastBox(const Vector3& localCenter,const Vector3& halfSizeLocal,const Vector3& origin,const Vector3& direction,float maxDistance,float radius) const{
-	const Vector3 diff = origin - ToWorld(localCenter);
-	const float localOrigin[kAxisCount] = {Dot(diff,rightXZ_), diff.y, Dot(diff,forwardXZ_)};
-	const float localDirection[kAxisCount] = {Dot(direction,rightXZ_), direction.y, Dot(direction,forwardXZ_)};
+	return RaycastOrientedBox(ToWorld(localCenter),rightXZ_,forwardXZ_,halfSizeLocal,origin,direction,maxDistance,radius);
+}
+
+// 中心・向きを決めた直方体とレイの交差を調べる
+// レイを直方体の向きの座標(x: 右、y: 上、z: 前)に直し、軸ごとの面の間に入っている区間が3軸すべてで重なる最初の距離を求める
+float StartPlatform::RaycastOrientedBox(const Vector3& worldCenter,const Vector3& right,const Vector3& forward,const Vector3& halfSizeLocal,const Vector3& origin,const Vector3& direction,float maxDistance,float radius) const{
+	const Vector3 diff = origin - worldCenter;
+	const float localOrigin[kAxisCount] = {Dot(diff,right), diff.y, Dot(diff,forward)};
+	const float localDirection[kAxisCount] = {Dot(direction,right), direction.y, Dot(direction,forward)};
 	const float halfSize[kAxisCount] = {halfSizeLocal.x + radius, halfSizeLocal.y + radius, halfSizeLocal.z + radius};
 
 	// 3軸すべての面の間に入っている区間(入る距離と出る距離)

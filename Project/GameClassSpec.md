@@ -776,7 +776,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Update(float)` | ランプ・遮断棒・目印・輪の動きを進める |
 | `Draw()` / `DrawEffects()` | 台とゲートを描画 / 半透明の目印と輪を描画（3D オブジェクトの最後のほうで呼ぶ） |
 | `IsInsideTop(position)` / `GetTopHeight()` | 上面（正方形の部分か通路）の範囲に入っているか / 上面の高さ（Player が台の上に立たせるのに使う） |
-| `Raycast(origin, direction, maxDistance, radius)` | 台の本体（正方形の部分と通路）を各面から `radius` だけ広げた直方体と、通路に立っている壁の台の中央側の面に、レイが最初に当たる距離（当たらない・始点が直方体の中にあるときは `maxDistance`）。RailCamera のめり込み防止に使う。壁は手前の面から `radius` だけ手前で止め、始点がそれより面に近いときは 0 にする（プレイヤーは壁の面から 0.25 まで近づけるため、箱の判定だと始点が中に入って当たらない扱いになる） |
+| `Raycast(origin, direction, maxDistance, radius)` | 台の本体（正方形の部分と通路）を各面から `radius` だけ広げた直方体と、通路に立っている壁の台の中央側の面に、レイが最初に当たる距離（当たらない・始点が直方体の中にあるときは `maxDistance`）。RailCamera のめり込み防止に使う。壁は手前の面から `radius` だけ手前で止め、始点がそれより面に近いときは 0 にする（プレイヤーは壁の面から 0.25 まで近づけるため、箱の判定だと始点が中に入って当たらない扱いになる）。ゲートの柱・梁・遮断棒（今の高さ）も箱として調べ、余白は `radius` と 0.12（`kGateCameraMargin`。カメラの近平面 0.1 より少し大きい）の小さい方にする |
 | `FindGateArea(position)` | どのゲートも開いていないときに、どのゲートの目印の上（中心から 0.6 以内、上面との高さの差 0.1 以内）に立っているか（いないときは -1。まだ開けられないゲートは除く） |
 | `ClampBehindClosedGate(position)` | 閉じているゲートより先へ進めないよう押し戻した座標を返す |
 | `GetSpawnPosition()` | プレイヤーの開始位置（上面の真ん中） |
