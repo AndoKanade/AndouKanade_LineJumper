@@ -55,6 +55,7 @@
 #include "UI/StageClearUI.h"
 #include "UI/StageLockedNotice.h"
 #include "UI/TutorialHints.h"
+#include "UI/RailSwitchPrompt.h"
 #include "UI/SpeedLines.h"
 #include "UI/DamageInkEffect.h"
 #include "UI/HelpOverlay.h"
@@ -308,6 +309,8 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	stageLockedNotice_->Initialize(spriteCommon_);
 	tutorialHints_ = std::make_unique<TutorialHints>();
 	tutorialHints_->Initialize(spriteCommon_);
+	railSwitchPrompt_ = std::make_unique<RailSwitchPrompt>();
+	railSwitchPrompt_->Initialize(spriteCommon_);
 
 	// レールを進んでいる間に出すスピード線
 	speedLines_ = std::make_unique<SpeedLines>();
@@ -385,6 +388,8 @@ void GameScene::ResetPlayState(){
 		// 的をすべて復活させたため、鍵の的があるレールは出ていない状態にすぐ戻す
 		ApplyRailLocks(true);
 		ResetOtherStageRailLocks();
+		// 始め直したら、どのレールにもまだ乗っていないことにする
+		riddenRails_.assign(static_cast<size_t>(railEditor_->GetRailCount()),false);
 	}
 
 	// 出ている演出・連鎖数・スピード線・画面の揺れ・出発の演出も消す
@@ -399,6 +404,7 @@ void GameScene::ResetPlayState(){
 	speedLines_->Reset();
 	stageClearUI_->Reset();
 	stageLockedNotice_->Reset();
+	railSwitchPrompt_->Reset();
 
 	// 雑魚敵も撃破前の初期状態(体力満タン)から始める
 	enemyManager_->Reset();
@@ -594,6 +600,8 @@ void GameScene::SwitchStage(int stageIndex){
 	// 的をすべて復活させたため、鍵の的があるレールは出ていない状態にすぐ戻す
 	ApplyRailLocks(true);
 	ResetOtherStageRailLocks();
+	// 乗ったレールの記録は前のステージのレールのものなので、切り替えた先のレールの本数で作り直す
+	riddenRails_.assign(static_cast<size_t>(railEditor_->GetRailCount()),false);
 }
 
 // 今のステージ以外のレールの出方を、そのステージの鍵の的がすべて残っている状態にする
@@ -1329,6 +1337,23 @@ void GameScene::UpdateGameplay(){
 	tutorialSituation.hasOpenedGate = startSequence_->IsGateOpenTriggered();
 	tutorialSituation.hasDestroyedTarget = !targetManager_->GetDestroyedPositions().empty();
 	tutorialHints_->Update(tutorialSituation,kDeltaTime);
+
+	// 鍵の的を壊して出た、まだ乗っていないレールへ飛び移れるときは、そのレールがある側に押すキーを出す
+	// 乗っているレールは乗ったことにし、一度乗った鍵のレールには案内を出さない(戻る向きに出さないようにする)
+	const int activeRailIndex = railEditor_->GetActiveRailIndex();
+	if(isGameplayActive && player_->IsOnRail() && activeRailIndex >= 0 && activeRailIndex < static_cast<int>(riddenRails_.size())){
+		riddenRails_[activeRailIndex] = true;
+	}
+	int railSwitchSide = 0;
+	if(isGameplayActive && player_->IsGroundedOnRail()){
+		int sideRailIndex = -1;
+		const int side = player_->FindSideRailDirection(railEditor_.get(),railCamera_->GetRight(),sideRailIndex);
+		const bool isRidden = sideRailIndex >= 0 && sideRailIndex < static_cast<int>(riddenRails_.size()) && riddenRails_[sideRailIndex];
+		if(side != 0 && targetManager_->IsKeyRail(sideRailIndex) && !isRidden){
+			railSwitchSide = side;
+		}
+	}
+	railSwitchPrompt_->Update(railSwitchSide,kDeltaTime);
 }
 
 #ifdef USE_IMGUI
@@ -1654,6 +1679,7 @@ void GameScene::Draw(){
 		stageClearUI_->Draw();
 		stageLockedNotice_->Draw();
 		tutorialHints_->Draw();
+		railSwitchPrompt_->Draw();
 	}
 
 	// 開始演出のタイトル表示(PRESS SPACE)と、出発までの表示(操作案内・GO!)を最前面に描画する

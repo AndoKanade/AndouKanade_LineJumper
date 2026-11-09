@@ -278,6 +278,19 @@ void TargetManager::FillStageLockedRails(int stageIndex,std::vector<bool>& locke
 	}
 }
 
+// 指定したレールが、鍵の的を壊すと出るレールか
+bool TargetManager::IsKeyRail(int railIndex) const{
+	if(railIndex < 0){
+		return false;
+	}
+	for(const auto& target : targets_){
+		if(target.unlockRailIndex == railIndex){
+			return true;
+		}
+	}
+	return false;
+}
+
 // 生存している的だけ描画する
 void TargetManager::Draw(){
 	for(auto& target : targets_){

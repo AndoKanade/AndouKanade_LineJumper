@@ -80,6 +80,9 @@ public:
 	/// <param name="lockedRails">レールごとに、出ていないかを受け取る配列(呼び出し側でレールの本数分を false で用意しておく)</param>
 	void FillStageLockedRails(int stageIndex,std::vector<bool>& lockedRails) const;
 
+	// 指定したレールが、鍵の的を壊すと出るレールか(飛び移り方の案内を出すかの判定に使う)
+	bool IsKeyRail(int railIndex) const;
+
 	// 生存している的を描画する
 	void Draw();
 

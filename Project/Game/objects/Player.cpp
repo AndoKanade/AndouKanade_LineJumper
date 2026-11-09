@@ -409,25 +409,14 @@ bool Player::UpdateMovement(Input* input,RailEditor* railEditor,const StartPlatf
 // 今のレール以外で最も近いレールを探し、「近い」「押した方向の真横にある」「高さが近い」をすべて満たすときだけ乗り換える
 // 乗り換え自体はすぐに行い、見た目の位置だけを乗り換え前の位置から乗り換え先へ山なりに寄せていく
 bool Player::TrySwitchToSideRail(RailEditor* railEditor,const Vector3& sideDirXZ){
-	RailEditor::NearestRailResult nearest = railEditor->FindNearestRail(basePosition_,railEditor->GetActiveRailIndex());
-	if(nearest.railIndex < 0){
-		return false;
-	}
-
-	// 水平方向(XZ平面)だけで見た、乗り換え先レールの最近傍点までの向きと距離
-	Vector3 toRailXZ = {nearest.position.x - basePosition_.x, 0.0f, nearest.position.z - basePosition_.z};
-	float horizontalDistance = Length(toRailXZ);
-	if(horizontalDistance > kSideRailSwitchMaxDistance){
+	RailEditor::NearestRailResult nearest;
+	Vector3 toRailXZ;
+	if(!FindSideRailInReach(railEditor,nearest,toRailXZ)){
 		return false;
 	}
 
 	// 押した方向の真横にあるか(前後にずれた位置のレールには乗り換えない)
 	if(Dot(Normalize(toRailXZ),sideDirXZ) < kSideRailDirectionThreshold){
-		return false;
-	}
-
-	// 高さが大きく違うレールには乗り換えない
-	if(std::abs(nearest.position.y - basePosition_.y) > kSideRailSwitchMaxHeightDiff){
 		return false;
 	}
 
@@ -442,6 +431,46 @@ bool Player::TrySwitchToSideRail(RailEditor* railEditor,const Vector3& sideDirXZ
 	railSwitchTimer_ = 0.0f;
 	isSwitchingRail_ = true;
 	return true;
+}
+
+// 今のレール以外で最も近いレールが、飛び移れる近さと高さにあるかを調べる
+bool Player::FindSideRailInReach(const RailEditor* railEditor,RailEditor::NearestRailResult& outNearest,Vector3& outToRailXZ) const{
+	outNearest = railEditor->FindNearestRail(basePosition_,railEditor->GetActiveRailIndex());
+	if(outNearest.railIndex < 0){
+		return false;
+	}
+
+	// 水平方向(XZ平面)だけで見た、乗り換え先レールの最近傍点までの向きと距離
+	outToRailXZ = {outNearest.position.x - basePosition_.x, 0.0f, outNearest.position.z - basePosition_.z};
+	if(Length(outToRailXZ) > kSideRailSwitchMaxDistance){
+		return false;
+	}
+
+	// 高さが大きく違うレールには乗り換えない
+	return std::abs(outNearest.position.y - basePosition_.y) <= kSideRailSwitchMaxHeightDiff;
+}
+
+// 今のレールから飛び移れる並走レールが、左右どちらにあるかを求める
+// A/D で飛び移る向き(カメラの右方向)と、レールまでの向きが真横に近いかで左右を決める
+int Player::FindSideRailDirection(const RailEditor* railEditor,const Vector3& cameraRight,int& outRailIndex) const{
+	outRailIndex = -1;
+	RailEditor::NearestRailResult nearest;
+	Vector3 toRailXZ;
+	if(!railEditor || !FindSideRailInReach(railEditor,nearest,toRailXZ)){
+		return 0;
+	}
+
+	const Vector3 rightXZ = Normalize(Vector3{cameraRight.x, 0.0f, cameraRight.z});
+	const float side = Dot(Normalize(toRailXZ),rightXZ);
+	if(side >= kSideRailDirectionThreshold){
+		outRailIndex = nearest.railIndex;
+		return 1;
+	}
+	if(side <= -kSideRailDirectionThreshold){
+		outRailIndex = nearest.railIndex;
+		return -1;
+	}
+	return 0;
 }
 
 // レール上でのジャンプ(その場で跳ねる)と、並走レールへ飛び移る動きを進める

@@ -924,6 +924,19 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Update(lives, maxLives, destroyedCount, totalCount, combo)` | 表示内容の更新 |
 | `Draw()` | スプライト共通の描画前処理を行ってから描画する |
 
+### RailSwitchPrompt（`UI/RailSwitchPrompt.h/.cpp`）
+
+鍵の的を壊して出たレールへ飛び移れるときに、そのレールがある側の画面の端に出す「A + SPACE」「D + SPACE」の案内（`UI/railSwitchLeft.png`・`railSwitchRight.png`。`tools/generate_rail_switch_prompt.py` で生成）。どちらのキーを押せばよいかを考えずに済むよう、レールがある側に、その向きのキーだけを出す。
+
+- 左は画面の幅の 20%、右は 80% の位置、高さ 55% に 432 × 168 で出す。0.6〜1 の濃さで点滅させ、飛び移る向きへ 10 ピクセル揺らす。出すときは 0.12 秒で濃くし、消すときは 0.25 秒で薄くする。
+- GameScene は、足がレールに着いていて（`Player::IsGroundedOnRail()`）、飛び移れる並走レールがあり（`Player::FindSideRailDirection()`。距離 8.0・高さの差 3.0 以内で真横。飛び移る処理と同じ条件）、それが鍵の的で出るレール（`TargetManager::IsKeyRail()`）で、今回のプレイでまだ乗っていない（`riddenRails_`）ときに、その側を渡す。乗ったレールの記録は、やり直しとステージの切り替えで消す。
+
+| 関数 | 内容 |
+| --- | --- |
+| `Initialize(SpriteCommon*)` / `Reset()` | テクスチャの読み込みとスプライトの生成 / 消した状態に戻す |
+| `Update(side, deltaTime)` | 飛び移れる側（右 1、左 -1、無い 0）に合わせて、案内を出す・消す |
+| `Draw()` | 描画 |
+
 ### TutorialHints（`UI/TutorialHints.h/.cpp`）
 
 場面ごとに画面の上（高さ 13%、720 × 72）に1つずつ出す操作の案内（仮）。画像は `tools/generate_tutorial_hints.py` で生成する（`UI/hintMove.png`・`hintShoot.png`・`hintGate.png`・`hintRailShoot.png`）。

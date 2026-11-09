@@ -1808,3 +1808,16 @@ Visual Studio でのビルド・画面での確認はしていない。変更し
 
 Visual Studio でのビルド・画面での確認はしていない。変更した .cpp を、仮のヘッダーに差し替えて clang で構文チェックした（USE_IMGUI あり・なしの両方）。画像の上下・左右の向きは、モデルの読み込み（`aiProcess_FlipUVs`）から画像の上が的の上になると見ているが、実際の画面では確かめていない。
 
+### 8. 鍵の的で出たレールへ飛び移れるときに、押すキーをその側に出すようにした
+
+対象ファイル: `Game/UI/RailSwitchPrompt.h/.cpp`（新規）、`Game/objects/Player.h/.cpp`、`Game/objects/TargetManager.h/.cpp`、`Game/scenes/GameScene.h/.cpp`、`tools/generate_rail_switch_prompt.py`（新規）、`resource/UI/railSwitchLeft.png`・`railSwitchRight.png`（新規）、`MyGameEngine.vcxproj(.filters)`
+
+- 「鍵の的を撃つ → レールが出る → 出た方向のキーを押しながら SPACE で飛び移る」を一度に覚えるのが難しいため、レールが出て飛び移れるようになったら、そのレールがある側の画面の端に「A + SPACE」「D + SPACE」と矢印を点滅させて出すようにした。どちらのキーかを考えずに押せ、繰り返すうちに「出た方向のキー」だと覚えられるようにする。
+- 左右は、飛び移る処理（`TrySwitchToSideRail()`）と同じ条件で求める。近さと高さの判定を `FindSideRailInReach()` にまとめて、飛び移る処理と案内（`FindSideRailDirection()`）で使い回すようにした（飛び移る処理の動きは変えていない）。
+- 鍵の的で出るレールだけに出し、一度乗った鍵のレールには出さない（乗り換えた後に、元の側へ戻る案内が出ないようにする）。
+- 最初の1回だけスローにする案と、鍵の的を開くレールの側に置く配置の見直しは、動かして見てから決める。
+
+### ビルド確認（8.）
+
+Visual Studio でのビルド・画面での確認はしていない。変更した .cpp を、仮のヘッダーに差し替えて clang で構文チェックした（USE_IMGUI あり・なしの両方）。
+

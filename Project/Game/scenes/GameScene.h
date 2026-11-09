@@ -33,6 +33,7 @@ class StageHUD;
 class StageClearUI;
 class StageLockedNotice;
 class TutorialHints;
+class RailSwitchPrompt;
 class SpeedLines;
 class DamageInkEffect;
 class HelpOverlay;
@@ -228,6 +229,11 @@ private:
 
 	// 場面ごとに画面の上に出す操作の案内(チュートリアル)
 	std::unique_ptr<TutorialHints> tutorialHints_;
+
+	// 鍵の的を壊して出たレールへ飛び移れるときに、そのレールがある側に出す「A + SPACE」「D + SPACE」の案内
+	std::unique_ptr<RailSwitchPrompt> railSwitchPrompt_;
+	// 今のステージのレールごとに、今回のプレイで乗ったか(乗ったことのある鍵のレールには、飛び移り方の案内を出さない)
+	std::vector<bool> riddenRails_;
 
 	// レールを進んでいる間に出すスピード線
 	std::unique_ptr<SpeedLines> speedLines_;

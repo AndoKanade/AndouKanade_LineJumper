@@ -136,6 +136,16 @@ public:
 	bool IsOnRail() const{ return isOnRail_; }
 	// 足がレールに着いているかどうか(オンレール中で、跳ねている途中でも並走レールへ飛び移っている途中でもないときtrue)
 	bool IsGroundedOnRail() const{ return isOnRail_ && !isRailHopping_ && !isSwitchingRail_; }
+
+	/// <summary>
+	/// 今のレールから飛び移れる並走レールが、左右どちらにあるかを求める(A/D+SPACE の案内を出すのに使う)
+	/// 飛び移るとき(TrySwitchToSideRail)と同じく、近さ・高さの差・真横にあるかで判定する
+	/// </summary>
+	/// <param name="railEditor">探すレール</param>
+	/// <param name="cameraRight">カメラの右方向(A/D で飛び移る向きの基準)</param>
+	/// <param name="outRailIndex">飛び移れるレールのインデックス(無いときは -1)</param>
+	/// <returns>右(D)にあれば 1、左(A)にあれば -1、無ければ 0</returns>
+	int FindSideRailDirection(const RailEditor* railEditor,const Vector3& cameraRight,int& outRailIndex) const;
 	float GetFreeVelocityY() const{ return freeVelocityY_; }
 	int GetHp() const{ return hp_; }
 	int GetMaxHp() const{ return kMaxHp; }
@@ -156,6 +166,15 @@ private:
 	/// <param name="sideDirXZ">乗り換えたい方向(XZ平面の正規化ベクトル)</param>
 	/// <returns>乗り換えられたときtrue</returns>
 	bool TrySwitchToSideRail(RailEditor* railEditor,const Vector3& sideDirXZ);
+
+	/// <summary>
+	/// 今のレール以外で最も近いレールが、飛び移れる近さと高さにあるかを調べる(向きは調べない)
+	/// </summary>
+	/// <param name="railEditor">探すレール</param>
+	/// <param name="outNearest">最も近いレール</param>
+	/// <param name="outToRailXZ">水平方向(XZ平面)で見た、そのレールの最近傍点までの向きと距離(正規化していない)</param>
+	/// <returns>飛び移れる近さと高さにあれば true</returns>
+	bool FindSideRailInReach(const RailEditor* railEditor,RailEditor::NearestRailResult& outNearest,Vector3& outToRailXZ) const;
 
 	/// <summary>
 	/// レール上でのジャンプ(その場で跳ねる)と、並走レールへ飛び移る動きを進める
