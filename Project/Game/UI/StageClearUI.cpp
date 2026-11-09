@@ -9,8 +9,6 @@
 #include <string>
 
 namespace{
-	// tools/generate_stage_clear_assets.py で生成した画像
-	const std::string kStageClearTexture = "resource/UI/stageClear.png";
 	// 白(画像の色をそのまま出す)。α値だけ変えて使う
 	constexpr Vector4 kWhite = {1.0f, 1.0f, 1.0f, 1.0f};
 }
@@ -20,12 +18,13 @@ StageClearUI::~StageClearUI() = default;
 
 // テクスチャの読み込みとスプライトの生成
 // 位置・大きさ・角度・濃さは毎フレームのUpdate()で決めるため、ここでは生成と基準点の設定だけ行う
-void StageClearUI::Initialize(SpriteCommon* spriteCommon){
+void StageClearUI::Initialize(SpriteCommon* spriteCommon,const std::string& texturePath,float heightRate){
 	spriteCommon_ = spriteCommon;
+	heightRate_ = heightRate;
 
-	TextureManager::GetInstance()->LoadTexture(kStageClearTexture);
+	TextureManager::GetInstance()->LoadTexture(texturePath);
 	sprite_ = std::make_unique<Sprite>();
-	sprite_->Initialize(spriteCommon,kStageClearTexture);
+	sprite_->Initialize(spriteCommon,texturePath);
 	sprite_->SetSize(kSize);
 	sprite_->SetAnchorPoint(kCenterAnchor);
 }
@@ -78,7 +77,7 @@ void StageClearUI::Update(float deltaTime){
 
 	const float screenWidth = static_cast<float>(WinAPI::kClientWidth);
 	const float screenHeight = static_cast<float>(WinAPI::kClientHeight);
-	sprite_->SetPosition({screenWidth * kCenterXRate, screenHeight * kHeightRate - rise});
+	sprite_->SetPosition({screenWidth * kCenterXRate, screenHeight * heightRate_ - rise});
 	sprite_->SetSize({kSize.x * scale, kSize.y * scale});
 	sprite_->SetRotation(angle);
 	sprite_->SetColor({kWhite.x, kWhite.y, kWhite.z, alpha});

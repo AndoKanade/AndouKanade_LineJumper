@@ -59,6 +59,8 @@ public:
 
 	// 体力が0になって壊れたかどうか
 	bool IsDestroyed() const{ return isDestroyed_; }
+	// ゴールのレールに乗って現れたかどうか(現れた瞬間に「撃ちまくれ!!!」を出すのに使う)
+	bool IsAppeared() const{ return isAppeared_; }
 	// 現在の座標を取得(壊れたときの破片の演出の発生位置に使う)
 	const Vector3& GetPosition() const{ return position_; }
 

@@ -12,8 +12,9 @@
 #include <cmath>
 
 namespace{
-	// 的の表示に使用するモデル(普通の的と同じ、同心円の模様の円盤)
-	const std::string kTargetModelPath = "Bullseye/bullseye.obj";
+	// 的の表示に使用するモデル(普通の的と同じ円盤に、王冠ととげの付いた白黒の模様の画像を貼ったもの)
+	// 体力に合わせて黄色から赤へ変わる色を掛けるため、画像の明るい部分は白にしている(tools/generate_goal_target_texture.py で画像を生成する)
+	const std::string kTargetModelPath = "Bullseye/goalTarget.obj";
 	// 調整項目名(体力の最大値・プレイヤーより先を並走する距離・レールからの高さ)
 	const char* kMaxHpKey = "goalTargetMaxHp";
 	const char* kAheadDistanceKey = "goalTargetAheadDistance";

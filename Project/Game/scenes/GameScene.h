@@ -4,6 +4,7 @@
 #include "systems/SceneTransition.h"
 #include "MyMath.h"
 #include <memory>
+#include <string>
 #include <vector>
 
 // 前方宣言
@@ -231,6 +232,10 @@ private:
 
 	// ゴールの的を壊したときに出す「STAGE CLEAR!」の表示
 	std::unique_ptr<StageClearUI> stageClearUI_;
+	// ゴールの的が現れたときに出す「撃ちまくれ!!!」の表示(「STAGE CLEAR!」と同じ出し方)
+	std::unique_ptr<StageClearUI> goalBannerUI_;
+	// 前のフレームでゴールの的が現れていたか(現れた瞬間に「撃ちまくれ!!!」を出す)
+	bool wasGoalTargetAppeared_ = false;
 
 	// プレイ会用の設定のときに、遊べないステージのゲートの前で出す「いまは遊べないよ!!」の表示
 	std::unique_ptr<StageLockedNotice> stageLockedNotice_;
@@ -321,6 +326,9 @@ private:
 	static constexpr float kDefeatTimeScale = 0.35f;
 	// 鍵の的の目印・案内を出す、プレイヤーから鍵の的までの距離
 	static constexpr float kKeyTargetGuideDistance = 35.0f;
+	// ゴールの的が現れたときに出す「撃ちまくれ!!!」の画像(tools/generate_stage_clear_assets.py で生成する)と、出す高さ(画面の上からの割合)
+	inline static const std::string kGoalBannerTexturePath = "resource/UI/goalBanner.png";
+	static constexpr float kGoalBannerHeightRate = 0.2f;
 	// 最初に飛び移り方の案内を出したときの、ゲームの進む速さ(通常の何倍か)と、ゆっくりにしておく最大の時間(秒。実際の時間)
 	// 飛び移るか、飛び移れなくなったら、最大の時間より前でも元に戻す
 	static constexpr float kRailSwitchSlowTimeScale = 0.25f;

@@ -307,6 +307,9 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// ゴールの的を壊したときに出す「STAGE CLEAR!」の表示
 	stageClearUI_ = std::make_unique<StageClearUI>();
 	stageClearUI_->Initialize(spriteCommon_);
+	// ゴールの的はプレイヤーの先(画面の真ん中あたり)を並走するため、「撃ちまくれ!!!」は的に重ならないよう画面の上の方に出す
+	goalBannerUI_ = std::make_unique<StageClearUI>();
+	goalBannerUI_->Initialize(spriteCommon_,kGoalBannerTexturePath,kGoalBannerHeightRate);
 	stageLockedNotice_ = std::make_unique<StageLockedNotice>();
 	stageLockedNotice_->Initialize(spriteCommon_);
 	tutorialHints_ = std::make_unique<TutorialHints>();
@@ -407,6 +410,8 @@ void GameScene::ResetPlayState(){
 	comboCounter_->Reset();
 	speedLines_->Reset();
 	stageClearUI_->Reset();
+	goalBannerUI_->Reset();
+	wasGoalTargetAppeared_ = false;
 	stageLockedNotice_->Reset();
 	railSwitchPrompt_->Reset();
 	keyTargetMarker_->Reset();
@@ -1315,6 +1320,11 @@ void GameScene::UpdateGameplay(){
 	// プレイヤーがゴールのレールに乗っている間だけ、プレイヤーより先を並走させる(Edit中・開始演出中は出さない)
 	const bool isOnGoalRail = isGameplayActive && player_->IsOnRail() && railEditor_->IsGoalRail(railEditor_->GetActiveRailIndex());
 	goalTarget_->Update(railEditor_.get(),player_->GetRailT(),isOnGoalRail,cameraPos,*bulletManager_,isGameplayActive?worldDeltaTime:0.0f);
+	// ゴールの的が現れた瞬間に「撃ちまくれ!!!」を出し、体力の多い的を撃ち続ければよいと伝える
+	if(goalTarget_->IsAppeared() && !wasGoalTargetAppeared_){
+		goalBannerUI_->Begin();
+	}
+	wasGoalTargetAppeared_ = goalTarget_->IsAppeared();
 
 	// クリア判定
 	// ゴールの的の体力を0にして壊したらステージクリアとし、撃破演出を見せてから大ジャンプでスタート台へ戻る
@@ -1368,6 +1378,7 @@ void GameScene::UpdateGameplay(){
 	stageHUD_->Update(lives_,kMaxLives,targetManager_->GetDestroyedCount(),targetManager_->GetTotalCount(),*comboCounter_);
 	// 「STAGE CLEAR!」の表示の動きを進める(出していないときは何もしない)
 	stageClearUI_->Update(kDeltaTime);
+	goalBannerUI_->Update(kDeltaTime);
 	// プレイ会用の設定で閉じているゲートの前に、台の上を歩いて来たら「いまは遊べないよ!!」を出す
 	stageLockedNotice_->Update(isPlayerMovable && startPlatform_->IsInFrontOfPlaySessionClosedGate(player_->GetPosition()),kDeltaTime);
 	// レールを進んでいる間に、生きている鍵の的が近くにあるかを調べる(鍵の的の目印と案内に使う)
@@ -1733,6 +1744,7 @@ void GameScene::Draw(){
 		stageHUD_->Draw();
 		// 「STAGE CLEAR!」は画面表示より手前に出す
 		stageClearUI_->Draw();
+		goalBannerUI_->Draw();
 		stageLockedNotice_->Draw();
 		keyTargetMarker_->Draw();
 		tutorialHints_->Draw();

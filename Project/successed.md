@@ -1923,3 +1923,19 @@ Visual Studio でのビルド・画面での確認はしていない。StartPlat
 
 Visual Studio でのビルド・画面での確認はしていない。StartPlatform.cpp・RailCamera.cpp を、仮のヘッダーに差し替えて clang で構文チェックした。
 
+### 17. ゴールの的（ボスの的）の画像を分け、現れたときに「撃ちまくれ!!!」を出すようにした
+
+対象ファイル: `Game/objects/GoalTarget.h/.cpp`、`Game/UI/StageClearUI.h/.cpp`、`Game/scenes/GameScene.h/.cpp`、`tools/generate_goal_target_texture.py`（新規）、`tools/generate_stage_clear_assets.py`、`resource/Bullseye/goalTarget.obj`・`goalTarget.mtl`・`goalTarget.png`（新規）、`resource/UI/goalBanner.png`（新規）
+
+- ゴールの的は普通の的と同じ画像（緑・オレンジ）に色を掛けていたため、普通の的との違いが大きさと色だけで、ボスらしさが無かった。王冠と、縁に並んだとげの付いた専用の画像にした。
+  - ゴールの的は体力の減り具合に合わせて黄色から赤へ変わる色を画像に掛けているため、明るい部分を白、模様を濃い紺で描き、その色がそのまま見えるようにした（体力の表し方は変えていない）。
+  - モデルは普通の的と同じ円盤（`bullseye.obj` の写し）で、貼る画像だけ違う。当たり判定の大きさは変わらない。
+- ゴールの的が現れた瞬間に、「撃ちまくれ!!!」を「STAGE CLEAR!」と同じ押しつける出し方で出すようにした。体力の多い的を撃ち続ければよいと伝えるため。
+  - `StageClearUI` に、出す画像と高さを渡せるようにし（省略すると今までの「STAGE CLEAR!」）、もう1つ作って使った。
+  - ゴールの的はプレイヤーの先（画面の真ん中あたり）を並走するため、的に重ならないよう画面の上から 2 割の高さに出す。
+  - 画像は「STAGE CLEAR!」と同じスクリプト（`tools/generate_stage_clear_assets.py`）で、色を敵のインクに近いピンクにして作る。
+
+### ビルド確認（17.）
+
+Visual Studio でのビルド・画面での確認はしていない。変更した .cpp を、仮のヘッダーに差し替えて clang で構文チェックした（USE_IMGUI あり・なしの両方）。
+
