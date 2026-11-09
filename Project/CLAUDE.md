@@ -130,7 +130,7 @@
 
 **サウンド**
 - 鳴らしているのはタイトルの BGM・決定音・ゲートのカウントダウン（3・2・1 と GO!）（StartSequence）と、カタパルトの溜め・発射音（CatapultDeparture）。ほかのスタート演出の効果音（遮断棒・宙返り・着地）、発射音・被弾音・プレイ中の BGM はまだない。素材をユーザーが見つけて置いたら対応する（音量は調整項目 `seVolume` / `bgmVolume`）。
-- `resource/music/se/` の `cancel.mp3`・`move.mp3`・`catapult_preview.mp3` は、今はどこからも鳴らしていない。
+- `resource/music/se/` の `catapult_preview.mp3` は、今はどこからも鳴らしていない（`cancel.mp3`・`move.mp3` は ESC の終了確認メニューで鳴らす）。
 
 **実装品質・パフォーマンス**
 - インクのしぶき・破片（`InkEffectManager`）は、1 個ずつ別の Obj3D で描いていて描画命令が多い。レールの管（Play 中は 2026-10-24、Edit 中の曲線・着地範囲は 2026-10-28）は 1 本のモデルにまとめて軽くした（`RailEditor::AppendTubeMesh`）ので、重くなったら同じやり方かインスタンシングで描く。

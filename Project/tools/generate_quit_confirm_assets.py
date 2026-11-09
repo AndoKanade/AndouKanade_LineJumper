@@ -46,15 +46,15 @@ EDGE_SOFTNESS = 0.006
 
 # 見出し・操作の案内の文言・文字の大きさ・縁取りの太さ・中心の高さ(画像の高さに対する割合)
 TITLE_TEXT = "ゲームをやめる？"
-TITLE_FONT_SIZE = 100
+TITLE_FONT_SIZE = 88
 TITLE_OUTLINE_WIDTH = 10
-TITLE_CENTER_RATE = 0.27
+TITLE_CENTER_RATE = 0.3
 # 見出しを右へ傾ける量(斜体)
 TITLE_SHEAR = 0.12
 HINT_TEXT = "A / D : えらぶ　　SPACE : けってい　　ESC : もどる"
 HINT_FONT_SIZE = 32
 HINT_OUTLINE_WIDTH = 0
-HINT_CENTER_RATE = 0.82
+HINT_CENTER_RATE = 0.745
 
 # --- ボタン ---
 BUTTON_SIZE = (420, 200)
