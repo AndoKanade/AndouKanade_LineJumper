@@ -66,11 +66,13 @@ public:
 
 	/// <summary>
 	/// レールの進行(プレイ可能かつオンレール中、かつ終端未到達のときだけ進める)
+	/// 調整項目 manualRailMode が ON のときは自動で進まず、W/S で前後へ進める(デバッグ用)
 	/// </summary>
+	/// <param name="input">入力(手動モードのW/Sに使う)</param>
 	/// <param name="railEditor">進行するレール</param>
 	/// <param name="isGameplayActive">プレイ可能かどうか</param>
 	/// <param name="deltaTime">経過時間(秒)</param>
-	void UpdateRailProgress(const RailEditor* railEditor,bool isGameplayActive,float deltaTime);
+	void UpdateRailProgress(Input* input,const RailEditor* railEditor,bool isGameplayActive,float deltaTime);
 
 	// オンレール/オフレールの状態に応じて、カメラ・プレイヤーの基準位置と基準向きを求める
 	void UpdateBasePose(const RailEditor* railEditor);
@@ -268,6 +270,12 @@ private:
 	static constexpr float kMoveSpeed = 5.0f;
 	// レールの終端の進行度
 	static constexpr float kRailEndT = 1.0f;
+	// レールの始点の進行度(手動モードで後ろへ進めたときにここで止める)
+	static constexpr float kRailStartT = 0.0f;
+	// デバッグ用の手動モードを切り替える調整項目の名前
+	static constexpr const char* kManualRailModeKey = "manualRailMode";
+	// 手動モードでWを押したときの進む向き(Sではこの逆向きにする)
+	static constexpr float kManualRailForward = 1.0f;
 	// ゴール以外のレールの終点から飛び出すときに、レールを進んでいた速さに掛ける割合(1で同じ速さのまま飛び出す)
 	static constexpr float kRailEndLaunchSpeedRate = 0.4f;
 	// ゴール以外のレールの終点から飛び出すときの、上向きの初速(通常のジャンプより小さくして飛びすぎないようにする)

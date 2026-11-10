@@ -1014,7 +1014,7 @@ void GameScene::UpdateGameplay(){
 	UpdateCursorVisibility(isPlayMode);
 
 	// レール進行度を時間で進める
-	player_->UpdateRailProgress(railEditor_.get(),isGameplayActive,worldDeltaTime);
+	player_->UpdateRailProgress(input_,railEditor_.get(),isGameplayActive,worldDeltaTime);
 
 	// オンレール/オフレールの状態に応じて、カメラ・プレイヤーの基準位置と基準向きを求める
 	player_->UpdateBasePose(railEditor_.get());

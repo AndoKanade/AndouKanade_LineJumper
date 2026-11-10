@@ -39,6 +39,8 @@ void Player::Initialize(Obj3dCommon* objCommon,const std::string& paramGroup){
 
 	// 調整項目の登録(第3引数はデフォルト値。保存済みJSONがあればそちらが優先される)
 	GlobalVariables::GetInstance()->AddItem(paramGroup_,"railSpeed",kDefaultRailSpeed);
+	// デバッグ用に、レールを自動で進まずW/Sで前後へ進めるモードにするか(初期値はOFF)
+	GlobalVariables::GetInstance()->AddItem(paramGroup_,kManualRailModeKey,false);
 }
 
 // レール先頭・オンレール・体力満タンの初期状態に戻す
@@ -126,7 +128,7 @@ void Player::StartRailBoost(float rate,float duration){
 // レールの進行
 // Edit中・開始演出中・オフレール中はその位置で静止させる
 // 終端に到達したらループさせず、その場で停止させる
-void Player::UpdateRailProgress(const RailEditor* railEditor,bool isGameplayActive,float deltaTime){
+void Player::UpdateRailProgress(Input* input,const RailEditor* railEditor,bool isGameplayActive,float deltaTime){
 	if(!railEditor || !isGameplayActive || !isOnRail_ || isRailFinished_){
 		return;
 	}
@@ -150,7 +152,17 @@ void Player::UpdateRailProgress(const RailEditor* railEditor,bool isGameplayActi
 	}
 
 	const float railMoveSpeed = pointSpeed * railSpeed;
-	railT_ = railEditor->AdvanceTByDistance(railT_,railMoveSpeed * deltaTime);
+
+	// デバッグ用の手動モードでは、Wを押している間だけ前へ、Sを押している間だけ後ろへ進め、どちらも押していなければその場で止める
+	// 後ろへ進めたときは、レールの始点より手前へ戻らないよう始点で止める
+	if(GlobalVariables::GetInstance()->GetBoolValue(paramGroup_,kManualRailModeKey)){
+		float moveDirection = 0.0f;
+		if(input && input->PushKey(DIK_W)) moveDirection += kManualRailForward;
+		if(input && input->PushKey(DIK_S)) moveDirection -= kManualRailForward;
+		railT_ = (std::max)(railEditor->AdvanceTByDistance(railT_,railMoveSpeed * moveDirection * deltaTime),kRailStartT);
+	} else{
+		railT_ = railEditor->AdvanceTByDistance(railT_,railMoveSpeed * deltaTime);
+	}
 	if(railT_ >= kRailEndT){
 		railT_ = kRailEndT; // 終端で固定する
 		isRailFinished_ = true;
