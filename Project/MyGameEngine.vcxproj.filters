@@ -40,6 +40,9 @@
     <Filter Include="ソース ファイル\Game\System">
       <UniqueIdentifier>{c132f0ea-9f7e-4382-98de-ab9d1a835808}</UniqueIdentifier>
     </Filter>
+    <Filter Include="ソース ファイル\Game\System\Transition">
+      <UniqueIdentifier>{01d57bf2-ce72-4b69-a445-36bac9b5fc70}</UniqueIdentifier>
+    </Filter>
     <Filter Include="ヘッダー ファイル">
       <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
     </Filter>
@@ -78,6 +81,9 @@
     </Filter>
     <Filter Include="ヘッダー ファイル\Game\System">
       <UniqueIdentifier>{b1a19401-e6c4-4b53-a1b9-d42788fc8bc4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ヘッダー ファイル\Game\System\Transition">
+      <UniqueIdentifier>{2d3d988a-b8c1-4f25-9e3f-e27f88d56200}</UniqueIdentifier>
     </Filter>
     <Filter Include="Resources">
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
@@ -236,6 +242,33 @@
     </ClCompile>
     <ClCompile Include="Game\systems\SceneTransition.cpp">
       <Filter>ソース ファイル\Game\System</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\systems\transition\FadeTransition.cpp">
+      <Filter>ソース ファイル\Game\System\Transition</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\systems\transition\RailStripesTransition.cpp">
+      <Filter>ソース ファイル\Game\System\Transition</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\systems\transition\FallAndLiftTransition.cpp">
+      <Filter>ソース ファイル\Game\System\Transition</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\systems\transition\RetryCutInTransition.cpp">
+      <Filter>ソース ファイル\Game\System\Transition</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\systems\transition\InkBurstTransition.cpp">
+      <Filter>ソース ファイル\Game\System\Transition</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\systems\transition\InkDripTransition.cpp">
+      <Filter>ソース ファイル\Game\System\Transition</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\systems\transition\RailPaintTransition.cpp">
+      <Filter>ソース ファイル\Game\System\Transition</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\systems\transition\GoalStampTransition.cpp">
+      <Filter>ソース ファイル\Game\System\Transition</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\systems\transition\CloudRiseTransition.cpp">
+      <Filter>ソース ファイル\Game\System\Transition</Filter>
     </ClCompile>
     <ClCompile Include="Game\scenes\GameScene.cpp">
       <Filter>ソース ファイル\Game\Scenes</Filter>
@@ -535,6 +568,39 @@
     </ClInclude>
     <ClInclude Include="Game\systems\SceneTransition.h">
       <Filter>ヘッダー ファイル\Game\System</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\systems\transition\ITransitionEffect.h">
+      <Filter>ヘッダー ファイル\Game\System\Transition</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\systems\transition\TransitionEffectUtil.h">
+      <Filter>ヘッダー ファイル\Game\System\Transition</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\systems\transition\FadeTransition.h">
+      <Filter>ヘッダー ファイル\Game\System\Transition</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\systems\transition\RailStripesTransition.h">
+      <Filter>ヘッダー ファイル\Game\System\Transition</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\systems\transition\FallAndLiftTransition.h">
+      <Filter>ヘッダー ファイル\Game\System\Transition</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\systems\transition\RetryCutInTransition.h">
+      <Filter>ヘッダー ファイル\Game\System\Transition</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\systems\transition\InkBurstTransition.h">
+      <Filter>ヘッダー ファイル\Game\System\Transition</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\systems\transition\InkDripTransition.h">
+      <Filter>ヘッダー ファイル\Game\System\Transition</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\systems\transition\RailPaintTransition.h">
+      <Filter>ヘッダー ファイル\Game\System\Transition</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\systems\transition\GoalStampTransition.h">
+      <Filter>ヘッダー ファイル\Game\System\Transition</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\systems\transition\CloudRiseTransition.h">
+      <Filter>ヘッダー ファイル\Game\System\Transition</Filter>
     </ClInclude>
     <ClInclude Include="Game\scenes\GameScene.h">
       <Filter>ヘッダー ファイル\Game\Scenes</Filter>

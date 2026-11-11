@@ -480,6 +480,17 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClInclude Include="Game\systems\SceneFactory.h" />
     <ClInclude Include="Game\systems\SceneManager.h" />
     <ClInclude Include="Game\systems\SceneTransition.h" />
+    <ClInclude Include="Game\systems\transition\ITransitionEffect.h" />
+    <ClInclude Include="Game\systems\transition\TransitionEffectUtil.h" />
+    <ClInclude Include="Game\systems\transition\FadeTransition.h" />
+    <ClInclude Include="Game\systems\transition\RailStripesTransition.h" />
+    <ClInclude Include="Game\systems\transition\FallAndLiftTransition.h" />
+    <ClInclude Include="Game\systems\transition\RetryCutInTransition.h" />
+    <ClInclude Include="Game\systems\transition\InkBurstTransition.h" />
+    <ClInclude Include="Game\systems\transition\InkDripTransition.h" />
+    <ClInclude Include="Game\systems\transition\RailPaintTransition.h" />
+    <ClInclude Include="Game\systems\transition\GoalStampTransition.h" />
+    <ClInclude Include="Game\systems\transition\CloudRiseTransition.h" />
     <ClInclude Include="Game\scenes\ClearScene.h" />
     <ClInclude Include="Game\scenes\GameOverScene.h" />
     <ClInclude Include="resource\resource.h" />
@@ -577,6 +588,15 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClCompile Include="Game\systems\SceneFactory.cpp" />
     <ClCompile Include="Game\systems\SceneManager.cpp" />
     <ClCompile Include="Game\systems\SceneTransition.cpp" />
+    <ClCompile Include="Game\systems\transition\FadeTransition.cpp" />
+    <ClCompile Include="Game\systems\transition\RailStripesTransition.cpp" />
+    <ClCompile Include="Game\systems\transition\FallAndLiftTransition.cpp" />
+    <ClCompile Include="Game\systems\transition\RetryCutInTransition.cpp" />
+    <ClCompile Include="Game\systems\transition\InkBurstTransition.cpp" />
+    <ClCompile Include="Game\systems\transition\InkDripTransition.cpp" />
+    <ClCompile Include="Game\systems\transition\RailPaintTransition.cpp" />
+    <ClCompile Include="Game\systems\transition\GoalStampTransition.cpp" />
+    <ClCompile Include="Game\systems\transition\CloudRiseTransition.cpp" />
     <ClCompile Include="Game\scenes\ClearScene.cpp" />
     <ClCompile Include="Game\scenes\GameOverScene.cpp" />
   </ItemGroup>
