@@ -476,6 +476,7 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClInclude Include="Game\systems\AbstractSceneFactory.h" />
     <ClInclude Include="Game\systems\BaseScene.h" />
     <ClInclude Include="Game\scenes\GameScene.h" />
+    <ClInclude Include="Game\scenes\GameSceneInternal.h" />
     <ClInclude Include="Game\systems\SceneFactory.h" />
     <ClInclude Include="Game\systems\SceneManager.h" />
     <ClInclude Include="Game\systems\SceneTransition.h" />
@@ -570,6 +571,9 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClCompile Include="Game\Title\TitleLogo.cpp" />
     <ClCompile Include="Game\Title\TitleUI.cpp" />
     <ClCompile Include="Game\scenes\GameScene.cpp" />
+    <ClCompile Include="Game\scenes\GameSceneDebugUI.cpp" />
+    <ClCompile Include="Game\scenes\GameSceneFlow.cpp" />
+    <ClCompile Include="Game\scenes\GameSceneGameplay.cpp" />
     <ClCompile Include="Game\systems\SceneFactory.cpp" />
     <ClCompile Include="Game\systems\SceneManager.cpp" />
     <ClCompile Include="Game\systems\SceneTransition.cpp" />

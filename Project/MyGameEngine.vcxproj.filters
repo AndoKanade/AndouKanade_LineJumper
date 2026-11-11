@@ -240,6 +240,15 @@
     <ClCompile Include="Game\scenes\GameScene.cpp">
       <Filter>ソース ファイル\Game\Scenes</Filter>
     </ClCompile>
+    <ClCompile Include="Game\scenes\GameSceneDebugUI.cpp">
+      <Filter>ソース ファイル\Game\Scenes</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\scenes\GameSceneFlow.cpp">
+      <Filter>ソース ファイル\Game\Scenes</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\scenes\GameSceneGameplay.cpp">
+      <Filter>ソース ファイル\Game\Scenes</Filter>
+    </ClCompile>
     <ClCompile Include="Game\scenes\ClearScene.cpp">
       <Filter>ソース ファイル\Game\Scenes</Filter>
     </ClCompile>
@@ -528,6 +537,9 @@
       <Filter>ヘッダー ファイル\Game\System</Filter>
     </ClInclude>
     <ClInclude Include="Game\scenes\GameScene.h">
+      <Filter>ヘッダー ファイル\Game\Scenes</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\scenes\GameSceneInternal.h">
       <Filter>ヘッダー ファイル\Game\Scenes</Filter>
     </ClInclude>
     <ClInclude Include="Game\scenes\ClearScene.h">
