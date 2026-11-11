@@ -1,6 +1,6 @@
 # Game フォルダ クラス仕様書
 
-最終更新: 2026-11-09
+最終更新: 2026-11-11
 
 `Game/` 以下の各クラスについて、「何ができるか」「外から何を呼べるか」「中でどう動いているか」をまとめる。
 エンジン側（`Engine/`）のクラスは対象外（Game のために追加したものだけ、使う側の項目で触れる）。
@@ -27,6 +27,7 @@
 ```
 Game/
 ├── systems/   シーンの生成・切り替えの仕組み
+│   └── transition/  画面を覆う演出（SceneTransition）の見た目（1 種類 1 クラス）
 ├── scenes/    GameScene（本編）、ClearScene、GameOverScene
 ├── Title/     GameScene 内で動くステージ開始演出（タイトル → 回り込み → スタート台で準備 → 出発ゲート → レールへ乗り込む）と、クリア後にスタート台へ戻る大ジャンプ（ReturnJump）
 │   └── Departure/  スタート台からレールへ移るときの出発の演出（1 種類 1 クラス）
@@ -35,6 +36,8 @@ Game/
 ├── UI/        Reticle（画面中央のレティクル）/ StageHUD（残機・的の数・連鎖数）/ StageClearUI（「STAGE CLEAR!」）/ SpeedLines（スピード線）/ DamageInkEffect（体力を画面の縁のインクで表現）/ HelpOverlay（H キーで開く操作説明）
 └── Editor/    RailEditor / TargetEditor / EnemyEditor（Editモード中の配置ツール）/ EditHistory・EditorDocumentManager（Undo/Redo と保存の管理）/ EditorPicking（Scene ビューでのマウス選択）
 ```
+
+- 処理の多いクラス（GameScene・RailEditor・TargetEditor・StartPlatform）は、ヘッダーは 1 つのまま、`.cpp` を役割ごとのファイルに分けている（`クラス名` + 役割の名前。例: `RailEditorDraw.cpp`）。どのファイルに何があるかは各クラスの項目の表を参照。分けたファイルだけで共有する定数・関数は `クラス名Internal.h` に置き、ほかのクラスからは読み込まない。
 
 ### シーンの流れ
 
@@ -112,10 +115,17 @@ Game/
 - 切り替えのたびにシーンは破棄・再生成されるため、シーンをまたいで状態は残らない。
 - `Update()` では暗転を進めてから、シーンの切り替え予約の処理とシーンの更新を行う。`Draw()` ではシーンの描画の後に暗転を重ねる。
 
-### SceneTransition（`systems/SceneTransition.h/.cpp`）
+### SceneTransition（`systems/SceneTransition.h/.cpp`、`systems/transition/`）
 
 画面のつながりが切れる瞬間（シーンの切り替え・落下リスタート）を隠す暗転。シーンを切り替えても途中で消えないよう SceneManager が持つ。
 タイトル → プレイはカメラワークでつながっているため使わない。
+
+| ファイル | 内容 |
+| --- | --- |
+| `systems/SceneTransition.h/.cpp` | 暗転の進め方（段階・覆い具合・覆い終わったときの処理の呼び出し）と、画面全体を覆う黒のスプライト。演出のクラスを種類ごとに 1 つずつ生成して持ち（コンストラクタ）、今の演出の `Update()` / `Draw()` を呼ぶ。`Style` の範囲外の番号は `Fade` として扱う（`GetCurrentEffect()`） |
+| `systems/transition/ITransitionEffect.h` | 演出 1 種類分の見た目の基底クラス。`Initialize(spriteCommon, fadeSprite)` / `Finalize()` / `GetCoverDuration()` / `GetRevealDuration()` / `Update(coverRate, isRevealing)` / `Draw()` |
+| `systems/transition/TransitionEffectUtil.h` | 演出どうしで共有するもの（画像のパス・色・画面の大きさ・中心基準のスプライトの生成 `CreateBandSprite()`・スプライトを置く `PlaceSprite()`・進み具合の計算 `GetStaggeredProgress()` / `GetRangeProgress()` など） |
+| `systems/transition/○○Transition.h/.cpp` | 演出ごとのクラス（`FadeTransition` / `RailStripesTransition` / `FallAndLiftTransition` / `RetryCutInTransition` / `InkBurstTransition` / `InkDripTransition` / `RailPaintTransition` / `GoalStampTransition` / `CloudRiseTransition`）。その演出のスプライト・調整用の定数・スプライトの置き方・重ねる順番を持つ |
 
 | 段階 | 内容 |
 | --- | --- |
@@ -135,18 +145,28 @@ Game/
 | `GoalStamp` | ゲーム → クリア（案） | 1.4 / 0.6 秒 | 画面を少し暗くし、「GOAL!」の文字を 3 倍の大きさから押しつけて左右に揺らす。押した衝撃で周りにしみが 5 つ飛び、中央から黄色いインクが広がって覆う。戻すときは、広がったインクが縮みながら下へ落ちる |
 | `CloudRise` | ゲーム → クリア（案） | 1.0 / 0.7 秒 | 7 段 × 9 個の雲のかたまり（白と薄い水色の円）が、下の段から順にふくらみながら湧き上がって画面を包む。戻すときは画面の中央から左右に割れる |
 
-- 演出の画像（インクのしみ・白い円・「GOAL!」）は `tools/generate_transition_assets.py` で生成する（`resource/UI/transition/`）。しみの位置・大きさ・傾きは `SceneTransition.cpp` の `kInkSplatLayouts` / `kStampSplashLayouts` で決めている。
+- 演出の画像（インクのしみ・白い円・「GOAL!」）は `tools/generate_transition_assets.py` で生成する（`resource/UI/transition/`）。しみの位置・大きさ・傾きは `InkBurstTransition.cpp` の `kInkSplatLayouts` / `GoalStampTransition.cpp` の `kStampSplashLayouts` で決めている。
 - クリアへ切り替える演出は、Edit モードの「GameScene Debug」パネルの「Clear Transition」で選び、「Preview Clear Transition」でその場で見た目を確認できる（落下リスタートの「Fall Transition」と同じ使い方）。今は CLEAR へ移る処理が無いため、ボス戦を作るときに使う。
-- 進め方（`Update()`）と見た目（`Draw()`）を分けているため、後から見た目だけを別の演出に差し替えられる。
+- 進め方（SceneTransition）と見た目（`ITransitionEffect` を継承した演出ごとのクラス）を分けているため、後から見た目だけを別の演出に差し替えられる。
+- 画面全体を覆うスプライトは SceneTransition が 1 枚だけ持ち、各演出の `Initialize()` に渡す（`Fade` は黒の濃さを変え、`RetryCutIn` / `InkBurst` / `InkDrip` / `GoalStamp` / `CloudRise` は色を掛けて画面を暗くする・隙間を塗るのに使う）。
+- 演出を足すときは、`ITransitionEffect` を継承したクラスを `systems/transition/` に作り、`SceneTransition::Style` と SceneTransition のコンストラクタの一覧に足す（`Style` の最後の種類が変わったら `kStyleCount` も直す）。
 
 ---
 
 ## 3. scenes（シーン）
 
-### GameScene（`scenes/GameScene.h/.cpp`）
+### GameScene（`scenes/GameScene.h`、`scenes/GameScene*.cpp`）
 
 本編。レールに沿ってカメラとプレイヤーが進み、的と敵を撃つ。
 プレイヤー・カメラ・弾・的・敵などの処理はそれぞれのクラスに任せ、GameScene は「呼び出す順番」「Edit / Play モードの切り替え」「開始演出とのつなぎ」「勝敗判定」「デバッグ表示」を担当する。
+
+| ファイル | 内容 |
+| --- | --- |
+| `GameScene.cpp` | シーンの骨組み。`Initialize()` / `Finalize()` / `Update()`（更新の入口）/ `UpdateCursorVisibility()` / `UpdateSceneDistanceFade()` / `Draw()` |
+| `GameSceneGameplay.cpp` | プレイ中の毎フレームのゲーム処理。`UpdateGameplay()` / `UpdateRailSwitchSlow()` |
+| `GameSceneFlow.cpp` | ゲームの流れ。始め直し（`ResetPlayState()` / `StartPlaySequence()` / `StartFromContinuePoint()` / `BoardAtPlayStartPoint()`）・チェックポイント（`UpdateCheckpoint()` / `RespawnAtCheckpoint()`）・ミスと残機（`RestartAfterMiss()` / `LoseLife()` / `StartDefeat()` / `UpdateDefeat()`）・鍵のレールとステージの切り替え（`ApplyRailLocks()` / `SwitchStage()` / `ResetOtherStageRailLocks()`）・出発と帰還（`MakeDepartureContext()` / `PlayBoardedEffects()` / `RestartFromReturnJump()` / `PlayReturnLandEffects()` / `PlayBarrierBreakEffects()`）・クリア（`StartStageClear()` / `UpdateStageClear()` / `WriteStageResult()`） |
+| `GameSceneDebugUI.cpp` | ImGui のデバッグ用の画面。`ShowStatusWindow()` / `ShowEditorPanels()` / `ShowEditorSelector()` / `ShowDebugPanelContents()` |
+| `GameSceneInternal.h` | 上の 4 つのファイルで共通して使う定数（調整項目のグループ名・項目名など）と、調整項目から演出の種類を取得する関数（`GameSceneInternal` 名前空間） |
 
 #### 持っているもの
 
@@ -738,9 +758,16 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Draw()` / `DrawFog()` | 映るマスを求めて雲を描く / 同じ結果で霧を描く（半透明なので 3D オブジェクトの最後に描く。必ず `Draw()` の後に呼ぶ） |
 | `GetHeight()` | 地面の高さを取得する（落下リスタートの判定に使う） |
 
-### StartPlatform（`objects/StartPlatform.h/.cpp`）
+### StartPlatform（`objects/StartPlatform.h`、`objects/StartPlatform*.cpp`）
 
 ワールドに固定して置くスタート台（ステージ選択の場所）と、台の上に立てる4つの出発ゲート。プレイヤーは台の真ん中から始まり、行きたいステージのゲートを開けてからレールへ乗る。台・柱・梁はインクで塗れる。
+
+| ファイル | 内容 |
+| --- | --- |
+| `StartPlatform.cpp` | 台とゲートの本体。部品の生成と配置（`Initialize()` / `PlaceParts()`）・ゲートの開閉（`ResetGate()` / `BeginOpenGate()` / `OpenGateImmediately()` など）・通路の壁（`HoldBarrier()` / `ReleaseBarrierHold()` など）・位置の取得（`GetRailStartPosition()` / `GetDeparturePadPosition()` など）・動きと描画（`Update()` / `Draw()` / `DrawEffects()`） |
+| `StartPlatformInk.cpp` | 台の上面と柱・梁にインクを塗る処理。`PaintInk()` / `TryLandInk()` / `ClearInk()` / `PaintClearedGateFloors()` / `FlushInk()` / `PaintGateInk()` / `GetInkClimbHeight()` |
+| `StartPlatformCollision.cpp` | 範囲の判定（`IsInsideTop()` / `IsPastDepartureLine()` / `FindGateArea()` / `IsInFrontOfPlaySessionClosedGate()` など）・押し戻し（`ClampBehindClosedGate()` / `ClampInsideTop()`）・カメラ用のレイ判定（`Raycast()` と、その中で使う `RaycastGates()` / `RaycastBarriers()` / `RaycastBox()` / `RaycastOrientedBox()`） |
+| `StartPlatformInternal.h` | 上の 3 つのファイルで共通して使う定数（`kHalf` / `kPillarSides` / `kPillarCount`） |
 
 | 部品 | モデル | 内容 |
 | --- | --- | --- |
@@ -1069,9 +1096,17 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 - ステージは Rail Editor の一番上で選ぶ。選ぶと `RailEditor::ConsumeStageChangeRequest()` で GameScene に伝わり、`GameScene::SwitchStage()` が 3 つのエディター（TargetManager・EnemyManager 経由）を同じステージに切り替える。
 - 起動時・シーンの作り直し時は、`StageInfo::currentStageIndex`（シーンをまたいで残る）のステージから始める。
 
-### RailEditor（`Editor/RailEditor.h/.cpp`）
+### RailEditor（`Editor/RailEditor.h`、`Editor/RailEditor*.cpp`）
 
 レールのデータを持ち、編集もできる。GameScene はこのクラスからレール上の位置・向きを受け取る。
+
+| ファイル | 内容 |
+| --- | --- |
+| `RailEditor.cpp` | 編集の操作。初期化とパネルの UI（`Initialize()` / `Update()`）・制御点やレールの追加（`InsertControlPoint()` / `GenerateSpiral()` / `AddRail()` など）・ステージやレールの選択（`SetStageIndex()` / `SwitchActiveRail()` / `SelectPoint()` など）・Scene ビューでのドラッグ（`UpdateMouseDrag()`） |
+| `RailEditorDraw.cpp` | 見た目。描画（`Draw()`）・Edit 中の曲線の管（`UpdateEditTubes()` / `AppendTubeMesh()`）・Play 中のレール本体の管（`BuildTubes()` / `DrawTubes()`）・通った区間の塗り（`PaintActiveRail()` / `ClearPaint()`）・鍵のレールの出し入れ（`UpdateRailLocks()` / `ResetRailLocks()` / `ResetStageRailLocks()`） |
+| `RailEditorCurve.cpp` | 曲線の計算。レール上の位置・向き・速さ（`GetPositionOnRail()` / `GetRotationOnRail()` / `GetForwardOnRail()` / `GetSpeedOnRail()` / `AdvanceTByDistance()`）・一番近いレール（`ComputeNearestTOnRail()` / `FindNearestRail()`）・制御点やチェックポイントの問い合わせ（`GetTOfControlPoint()` / `FindPassedCheckpoint()` など）・統計（`ComputeActiveRailStats()`） |
+| `RailEditorData.cpp` | 保存・読み込み（`SaveToJson()` / `LoadFromJson()` / `LoadRailsFromFiles()` と `rail*.json` の読み書き）・編集履歴（`MakeSnapshot()` / `ApplySnapshot()` / `CommitEditIfChanged()` / `UndoEdit()` / `RedoEdit()`） |
+| `RailEditorInternal.h` | 上の 4 つのファイルで共通して使う定数 |
 
 #### レールの仕組み
 
@@ -1134,9 +1169,15 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | `FindPassedCheckpoint(t)` | アクティブなレールで、進行度 t までに通ったチェックポイントのうち最も先の制御点を返す（無ければ -1）。途中に着地した場合も、手前のチェックポイントは通ったものとする |
 | `ConsumeFocusRequest(outPos)` / `SetBaseRailSpeed(speed)` | Focus の操作があれば選択中の制御点の位置を返す / 走り切るまでの秒数の計算に使う railSpeed を受け取る |
 
-### TargetEditor（`Editor/TargetEditor.h/.cpp`）
+### TargetEditor（`Editor/TargetEditor.h`、`Editor/TargetEditor*.cpp`）
 
 的の配置データを持ち、Scene ビュー上で編集できる。
+
+| ファイル | 内容 |
+| --- | --- |
+| `TargetEditor.cpp` | パネルの UI（`Initialize()` / `Update()` / `DrawSelectedTargetUI()` / `DrawTargetList()` / `UpdateShortcuts()`）・的の追加・複製・削除（`AddTargetInFrontOfCamera()` / `AddTargetAt()` / `DuplicateSelectedTarget()` / `DeleteSelectedTarget()`）・取得と設定（`GetTargetCount()` / `GetTargetPosition()` / `SetSelectedIndex()` など） |
+| `TargetEditorPicking.cpp` | Scene ビューでのマウス操作。レイ（`ComputeGameViewportRect()` / `ComputeMouseRay()`）・掴む判定（`PickTargetIndex()`）・ドラッグ（`UpdateMouseDrag()` / `StartDrag()`）・スナップ（`ApplySnap()`）・選んでいないときのクリックの通知（`ReportScenePickWhileInactive()`） |
+| `TargetEditorData.cpp` | 保存・読み込み（`SaveToJson()` / `LoadFromJson()` / `LoadTargetsFromFile()` / `GetSaveFilePath()`）・編集履歴（`MakeSnapshot()` / `ApplySnapshot()` / `CommitEditIfChanged()` / `UndoEdit()` / `RedoEdit()`）・ステージの切り替え（`SetStageIndex()` / `GetStageTargets()`） |
 
 #### ImGui パネル「Target Editor」
 
