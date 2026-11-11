@@ -261,6 +261,12 @@
     <ClCompile Include="Game\Editor\TargetEditor.cpp">
       <Filter>ソース ファイル\Game\Editor</Filter>
     </ClCompile>
+    <ClCompile Include="Game\Editor\TargetEditorData.cpp">
+      <Filter>ソース ファイル\Game\Editor</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Editor\TargetEditorPicking.cpp">
+      <Filter>ソース ファイル\Game\Editor</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Editor\EnemyEditor.cpp">
       <Filter>ソース ファイル\Game\Editor</Filter>
     </ClCompile>
