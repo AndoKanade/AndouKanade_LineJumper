@@ -419,6 +419,7 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClInclude Include="Engine\Manager\SrvManager.h" />
     <ClInclude Include="Engine\Manager\TextureManager.h" />
     <ClInclude Include="Game\Editor\RailEditor.h" />
+    <ClInclude Include="Game\Editor\RailEditorInternal.h" />
     <ClInclude Include="Game\Editor\TargetEditor.h" />
     <ClInclude Include="Game\Editor\EnemyEditor.h" />
     <ClInclude Include="Game\Editor\EditHistory.h" />
@@ -519,6 +520,9 @@ if not defined GITHUB_ACTIONS if exist "$(WindowsSdkDir)bin\$(TargetPlatformVers
     <ClCompile Include="Engine\Manager\SrvManager.cpp" />
     <ClCompile Include="Engine\Manager\TextureManager.cpp" />
     <ClCompile Include="Game\Editor\RailEditor.cpp" />
+    <ClCompile Include="Game\Editor\RailEditorCurve.cpp" />
+    <ClCompile Include="Game\Editor\RailEditorData.cpp" />
+    <ClCompile Include="Game\Editor\RailEditorDraw.cpp" />
     <ClCompile Include="Game\Editor\TargetEditor.cpp" />
     <ClCompile Include="Game\Editor\TargetEditorData.cpp" />
     <ClCompile Include="Game\Editor\TargetEditorPicking.cpp" />

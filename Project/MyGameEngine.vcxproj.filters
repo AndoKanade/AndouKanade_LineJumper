@@ -258,6 +258,15 @@
     <ClCompile Include="Game\Editor\RailEditor.cpp">
       <Filter>ソース ファイル\Game\Editor</Filter>
     </ClCompile>
+    <ClCompile Include="Game\Editor\RailEditorCurve.cpp">
+      <Filter>ソース ファイル\Game\Editor</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Editor\RailEditorData.cpp">
+      <Filter>ソース ファイル\Game\Editor</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\Editor\RailEditorDraw.cpp">
+      <Filter>ソース ファイル\Game\Editor</Filter>
+    </ClCompile>
     <ClCompile Include="Game\Editor\TargetEditor.cpp">
       <Filter>ソース ファイル\Game\Editor</Filter>
     </ClCompile>
@@ -534,6 +543,9 @@
       <Filter>ヘッダー ファイル\Engine\Manager</Filter>
     </ClInclude>
     <ClInclude Include="Game\Editor\RailEditor.h">
+      <Filter>ヘッダー ファイル\Game\Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Editor\RailEditorInternal.h">
       <Filter>ヘッダー ファイル\Game\Editor</Filter>
     </ClInclude>
     <ClInclude Include="Game\Editor\TargetEditor.h">
