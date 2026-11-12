@@ -25,6 +25,9 @@ namespace{
 	// 高さを保って動かすときのドラッグ面の法線(水平な面)
 	constexpr Vector3 kHorizontalDragPlaneNormal = {0.0f, 1.0f, 0.0f};
 
+	// JSONの座標の要素数(x, y, z)
+	constexpr size_t kPositionComponentCount = 3;
+
 	// 座標に行列を掛け、同次座標のwで割る(NDCからワールド座標への逆変換に使用)
 	Vector3 TransformWithDivide(const Vector3& v,const Matrix4x4& m){
 		float x = v.x * m.m[0][0] + v.y * m.m[1][0] + v.z * m.m[2][0] + m.m[3][0];
@@ -53,6 +56,12 @@ namespace{
 
 		outPos = origin + direction * t;
 		return true;
+	}
+
+	// 座標がすべて有限の値か(NaN・無限大が混ざっていないか)
+	// NaNは自分自身とも等しくならず、毎フレーム変更ありと判定されて保存済みにできなくなるため、配置に入れる前に調べる
+	bool IsFinitePosition(const Vector3& position){
+		return std::isfinite(position.x) && std::isfinite(position.y) && std::isfinite(position.z);
 	}
 }
 
@@ -295,7 +304,11 @@ void TargetEditor::DrawSelectedTargetUI(){
 	}
 
 	// ドラッグで細かく、ダブルクリックで数値を直接入力できる
-	ImGui::DragFloat3("Position",&target.position.x,kPositionDragSpeed);
+	// 有限の値でない入力(nanなど)は配置に入れず、元の座標のままにする
+	Vector3 editPosition = target.position;
+	if(ImGui::DragFloat3("Position",&editPosition.x,kPositionDragSpeed) && IsFinitePosition(editPosition)){
+		target.position = editPosition;
+	}
 
 	// 壊すと出るレール(-1より小さい値は意味が無いため-1に揃える)
 	if(ImGui::InputInt("Unlock Rail",&target.unlockRailIndex)){
@@ -532,7 +545,10 @@ void TargetEditor::UpdateMouseDrag(){
 				newPosition.x = dragPlanePoint_.x;
 				newPosition.z = dragPlanePoint_.z;
 			}
-			targets_[selectedIndex_].position = newPosition;
+			// カメラの向きなどでレイの計算が崩れたときは、的を動かさない
+			if(IsFinitePosition(newPosition)){
+				targets_[selectedIndex_].position = newPosition;
+			}
 		}
 	}
 #endif
@@ -715,26 +731,38 @@ bool TargetEditor::LoadTargetsFromFile(int stageIndex){
 		return false;
 	}
 
-	nlohmann::json root;
-	file >> root;
+	// 書き方が壊れたJSONでも例外で落ちないよう、例外を投げない読み方にする(失敗するとdiscardedになる)
+	nlohmann::json root = nlohmann::json::parse(file,nullptr,false);
 
 	// 最低限のフォーマットチェック。想定外なら読み込みを中止して現状維持
-	if(!root.is_object() || !root.contains("targets") || !root["targets"].is_array()){
+	if(root.is_discarded() || !root.is_object() || !root.contains("targets") || !root["targets"].is_array()){
 		return false;
 	}
 
-	// 読み込んだ内容で配置を置き換える
-	std::vector<TargetPoint>& points = GetStageTargets(stageIndex);
-	points.clear();
+	// 先に全ての的を読み込んでから置き換え、途中に壊れた的があっても配置を中途半端に消さないようにする
+	std::vector<TargetPoint> loadedPoints;
 	for(const auto& tj : root["targets"]){
+		// 座標は3つの数でなければならない(NaNで保存されたnullなどは読めないため、ファイルごと読み込みを中止する)
+		if(!tj.is_object() || !tj.contains("position")){
+			return false;
+		}
+		const nlohmann::json& positionJson = tj["position"];
+		if(!positionJson.is_array() || positionJson.size() != kPositionComponentCount
+			|| !positionJson[0].is_number() || !positionJson[1].is_number() || !positionJson[2].is_number()){
+			return false;
+		}
+
 		TargetPoint point{};
-		point.position.x = tj["position"][0].get<float>();
-		point.position.y = tj["position"][1].get<float>();
-		point.position.z = tj["position"][2].get<float>();
+		point.position.x = positionJson[0].get<float>();
+		point.position.y = positionJson[1].get<float>();
+		point.position.z = positionJson[2].get<float>();
 		// 壊すと出るレール(旧フォーマットのJSONには無いため、value()で既定値-1を補う)
 		point.unlockRailIndex = tj.value("unlockRailIndex",-1);
-		points.push_back(point);
+		loadedPoints.push_back(point);
 	}
+
+	// 読み込んだ内容で配置を置き換える
+	GetStageTargets(stageIndex) = std::move(loadedPoints);
 
 	// 読み込みで的の個数が変わるため、選択とドラッグ状態は解除する
 	selectedIndex_ = -1;
