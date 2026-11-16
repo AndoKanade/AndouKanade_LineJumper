@@ -103,7 +103,6 @@ void GameScene::ResetPlayState(){
 	defeatTimer_ = 0.0f;
 	isStageCleared_ = false;
 	stageClearTimer_ = 0.0f;
-	isPlaySessionClearPending_ = false;
 
 	// やり直したら、ゆっくりにしている途中でも元の速さに戻す(最初の1回を済ませたかは残す)
 	isRailSwitchSlowActive_ = false;

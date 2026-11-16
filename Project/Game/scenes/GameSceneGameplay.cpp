@@ -109,7 +109,6 @@ void GameScene::UpdateGameplay(){
 		returnJump_->Reset();
 		barrierCutscene_->Reset();
 		startPlatform_->ReleaseBarrierHold();
-		isPlaySessionClearPending_ = false;
 		// Play中に現れたゴールの的が、Editモードで出たままにならないよう消す
 		goalTarget_->Reset();
 		// Editモードに戻ったら、Play前に見ていた位置のまま俯瞰デバッグカメラに戻す
@@ -266,13 +265,7 @@ void GameScene::UpdateGameplay(){
 			if(railEditor_->GetStageIndex() == StageInfo::kFinalStageIndex){
 				StartStageClear(landedPos);
 			} else{
-				// プレイ会用の設定では、壁が壊れるのを見せた後にクリア画面へ移り、次の人がタイトルから遊べるようにする
-				// 始め直すと的・連鎖数が初期状態に戻るため、結果は先に書き込んでおく
-				if(StageInfo::isPlaySessionMode){
-					WriteStageResult();
-				}
 				RestartFromReturnJump(landedPos);
-				isPlaySessionClearPending_ = StageInfo::isPlaySessionMode;
 				// クリアしたステージの通路の壁は、演出で壊れるまで立たせておき、カメラを向けて壊れるところを見せる
 				startPlatform_->HoldBarrier(railEditor_->GetStageIndex());
 				barrierCutscene_->Begin(*startPlatform_,railEditor_->GetStageIndex());
@@ -287,12 +280,6 @@ void GameScene::UpdateGameplay(){
 		if(barrierCutscene_->ConsumeBroken()){
 			PlayBarrierBreakEffects(barrierCutscene_->GetStageIndex(),barrierCutscene_->IsRunning());
 		}
-	}
-
-	// プレイ会用の設定では、壁が壊れるのを見せ終えたらクリア画面へ移る
-	if(isPlayMode && isPlaySessionClearPending_ && !barrierCutscene_->IsRunning() && !sceneManager_->IsTransitioning()){
-		isPlaySessionClearPending_ = false;
-		sceneManager_->ChangeScene("CLEAR",GetTransitionStyle(kClearTransitionKey));
 	}
 
 	// 着地の演出を見せ終えたら、クリア画面へ移る(Editモードへ戻ったときは止める)

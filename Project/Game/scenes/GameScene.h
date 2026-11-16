@@ -300,8 +300,6 @@ private:
 	bool isStageCleared_ = false;
 	// スタート台に着地してからの経過時間(秒)
 	float stageClearTimer_ = 0.0f;
-	// プレイ会用の設定で、壁が壊れるのを見せ終えたらクリア画面へ移るのを待っている最中か
-	bool isPlaySessionClearPending_ = false;
 
 	// 最後に通ったチェックポイント(レールから落ちたら、ここからやり直す)
 	struct Checkpoint{
