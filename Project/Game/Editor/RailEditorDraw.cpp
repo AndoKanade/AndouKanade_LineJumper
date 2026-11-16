@@ -111,7 +111,7 @@ void RailEditor::Draw(){
 		}
 
 		// Catmull-Romは制御点4つ以上必要なので、それ未満のときは曲線・着地できる範囲を描画しない
-		if(rail.controlPoints.size() < 4 || (!rail.showCurve && !showLandingRange_)){
+		if(GetCurvePoints(rail).size() < 4 || (!rail.showCurve && !showLandingRange_)){
 			continue;
 		}
 
@@ -158,16 +158,18 @@ size_t RailEditor::GetCurveSampleCount(size_t pointCount) const{
 // Edit中の曲線と着地できる範囲の管を、レールの形に合わせて作る
 // 制御点のドラッグ中などレールの形が変わったフレームだけ作り直し、変わっていなければ前に作った管をそのまま使う
 void RailEditor::UpdateEditTubes(Rail& rail){
-	if(rail.curveModel && rail.editTubeBuiltControlPoints == rail.controlPoints && rail.editTubeBuiltLandingRangeRadius == landingRangeRadius_){
+	// ループするレールは、最後の制御点から最初の制御点へつながる分も含めた並びで曲線を作る(ループの設定を切り替えたときも並びが変わるため作り直される)
+	const std::vector<ControlPoint>& curvePoints = GetCurvePoints(rail);
+	if(rail.curveModel && rail.editTubeBuiltControlPoints == curvePoints && rail.editTubeBuiltLandingRangeRadius == landingRangeRadius_){
 		return;
 	}
 
 	// 曲線の上に輪の中心を並べる(着地できる範囲の管も、この点から左右へずらして作る)
-	const size_t ringCount = GetCurveSampleCount(rail.controlPoints.size());
+	const size_t ringCount = GetCurveSampleCount(curvePoints.size());
 	std::vector<Vector3> curveCenters(ringCount);
 	for(size_t i = 0; i < ringCount; ++i){
 		const float t = static_cast<float>(i) / static_cast<float>(ringCount - 1);
-		curveCenters[i] = ComputePositionOnRail(rail.controlPoints,t);
+		curveCenters[i] = ComputePositionOnRail(curvePoints,t);
 	}
 
 	Model::ModelData curveData;
@@ -200,7 +202,7 @@ void RailEditor::UpdateEditTubes(Rail& rail){
 	AppendTubeMesh(leftCenters,kLandingRangeTubeRadius,landingRangeData);
 	ApplyEditTubeModel(rail.landingRangeModel,rail.landingRangeObject,std::move(landingRangeData));
 
-	rail.editTubeBuiltControlPoints = rail.controlPoints;
+	rail.editTubeBuiltControlPoints = curvePoints;
 	rail.editTubeBuiltLandingRangeRadius = landingRangeRadius_;
 }
 
@@ -310,8 +312,11 @@ void RailEditor::BuildTubes(){
 	// ステージを選ぶスタート台の上から全ステージのレールが見えるよう、今のステージ以外のレールの管も作る
 	for(int stage = 0; stage < StageInfo::kStageCount; ++stage){
 		for(Rail& rail : GetStageRails(stage)){
+			// ループするレールは、最後の制御点から最初の制御点へつながる分も含めた並びで管を作る
+			const std::vector<ControlPoint>& curvePoints = GetCurvePoints(rail);
+
 			// Catmull-Romは制御点4つ以上必要なので、それ未満のときは管を作らない
-			if(rail.controlPoints.size() < 4){
+			if(curvePoints.size() < 4){
 				rail.tubeModel.reset();
 				rail.dashedTubeModel.reset();
 				rail.tubeSegmentCount = 0;
@@ -323,27 +328,30 @@ void RailEditor::BuildTubes(){
 			// レールの始点と終点に制御点の目印を置く
 			// Catmull-Romの曲線は2番目の制御点から最後の1つ前の制御点までを通るため、その2点がレールの始点と終点になる
 			// Play中は形が変わらないため、目印の行列も管と同じくここで1回だけ求める
-			for(size_t pointIndex : {kRailStartPointIndex, rail.controlPoints.size() - 1 - kRailStartPointIndex}){
-				Obj3D* marker = rail.pointObjects[pointIndex].get();
-				marker->SetTranslate(rail.controlPoints[pointIndex].position);
-				marker->SetScale({kControlPointScale, kControlPointScale, kControlPointScale});
-				marker->Update();
+			// ループするレールには始点も終点も無いため、目印を置かない
+			if(rail.loopCurvePoints.empty()){
+				for(size_t pointIndex : {kRailStartPointIndex, rail.controlPoints.size() - 1 - kRailStartPointIndex}){
+					Obj3D* marker = rail.pointObjects[pointIndex].get();
+					marker->SetTranslate(rail.controlPoints[pointIndex].position);
+					marker->SetScale({kControlPointScale, kControlPointScale, kControlPointScale});
+					marker->Update();
+				}
 			}
 
 			// 前回管を作ったときから形が変わっていなければ、作り直さずにそのまま使う
-			if(rail.tubeModel && rail.tubeBuiltControlPoints == rail.controlPoints){
+			if(rail.tubeModel && rail.tubeBuiltControlPoints == curvePoints){
 				continue;
 			}
 
 			// 区間数に比例した数に分け、レールを延長しても管が角ばらないようにする
-			const uint32_t segmentCount = static_cast<uint32_t>(rail.controlPoints.size() - kCatmullRomExtraPointCount) * static_cast<uint32_t>(kTubeSegmentsPerRailSegment);
+			const uint32_t segmentCount = static_cast<uint32_t>(curvePoints.size() - kCatmullRomExtraPointCount) * static_cast<uint32_t>(kTubeSegmentsPerRailSegment);
 			// 輪の継ぎ目でテクスチャ座標が1周して戻れるよう、輪の最初と最後に同じ位置の頂点を置く(頂点の数を見積もるのに使う)
 			const uint32_t ringVertexCount = kTubeSideCount + 1;
 
 			// 輪の中心(区間の境目)の座標を先に求めておき、輪の向きを求めるときに同じ座標を何度も計算しないようにする
 			std::vector<Vector3> ringCenters(segmentCount + 1);
 			for(uint32_t i = 0; i <= segmentCount; ++i){
-				ringCenters[i] = ComputePositionOnRail(rail.controlPoints,static_cast<float>(i) / static_cast<float>(segmentCount));
+				ringCenters[i] = ComputePositionOnRail(curvePoints,static_cast<float>(i) / static_cast<float>(segmentCount));
 			}
 
 			// 始点から各輪までの長さを、隣り合う輪の中心の間の距離を足していって求める
@@ -381,7 +389,7 @@ void RailEditor::BuildTubes(){
 			rail.dashedTubeModel = std::make_unique<Model>();
 			rail.dashedTubeModel->Initialize(modelCommon,std::move(dashedModelData));
 			rail.tubeSegmentCount = segmentCount;
-			rail.tubeBuiltControlPoints = rail.controlPoints;
+			rail.tubeBuiltControlPoints = curvePoints;
 
 			// 管を描くオブジェクトは初めて管を作るときだけ用意し、色もそのときに決める(以降は作り直した管のモデルを渡すだけ)
 			// 管の頂点はワールド座標で作っているため、オブジェクトの位置・向き・大きさは初期値のまま使う
@@ -443,7 +451,8 @@ void RailEditor::DrawTubes(){
 
 			// 管を作ったレールだけ、レールの始点と終点の制御点の目印を描画する(色はEdit中と同じく今乗っているレールかどうかで分ける)
 			// 出ていないレールは点線だけにして、まだ乗れないことが分かるようにする
-			if(rail.controlPoints.size() >= 4 && !rail.isLocked){
+			// ループするレールには始点も終点も無いため、目印を描かない
+			if(rail.controlPoints.size() >= 4 && !rail.isLocked && rail.loopCurvePoints.empty()){
 				const bool isRidingRail = stage == stageIndex_ && static_cast<int>(railIndex) == activeRailIndex_;
 				Vector4 markerColor = isRidingRail?kActiveRailColor:kInactiveRailColor;
 				for(size_t pointIndex : {kRailStartPointIndex, rail.controlPoints.size() - 1 - kRailStartPointIndex}){
@@ -468,12 +477,19 @@ void RailEditor::DrawTubes(){
 			const uint32_t segmentCount = rail.tubeSegmentCount;
 			uint32_t paintedBegin = 0;
 			uint32_t paintedEnd = 0;
+			// ループするレールで塗った範囲がつなぎ目をまたいだときの、始点側に回り込んだ塗った区間の終わり(またいでいなければ0)
+			uint32_t wrappedPaintedEnd = 0;
 			if(rail.isPainted){
 				const float segmentCountF = static_cast<float>(segmentCount);
 				const float firstSegment = std::ceil(rail.paintStartT * segmentCountF - kTubeSegmentMiddleRate);
 				const float lastSegment = std::floor(rail.paintEndT * segmentCountF - kTubeSegmentMiddleRate);
 				paintedBegin = static_cast<uint32_t>(std::clamp(firstSegment,0.0f,segmentCountF));
 				paintedEnd = (std::max)(paintedBegin,static_cast<uint32_t>(std::clamp(lastSegment + 1.0f,0.0f,segmentCountF)));
+				// 塗った範囲の終わりが1周分を越えていたら、越えた分を始点側から塗る(塗り始めの区間は越えない)
+				if(rail.paintEndT > kLoopLapT){
+					const float wrappedLastSegment = std::floor((rail.paintEndT - kLoopLapT) * segmentCountF - kTubeSegmentMiddleRate);
+					wrappedPaintedEnd = (std::min)(paintedBegin,static_cast<uint32_t>(std::clamp(wrappedLastSegment + 1.0f,0.0f,segmentCountF)));
+				}
 			}
 
 			// 管を伸ばし終えた区間の数(出ていないレールは0、伸ばし終えたレールは全区間)
@@ -484,7 +500,8 @@ void RailEditor::DrawTubes(){
 				grownEnd = static_cast<uint32_t>(std::lower_bound(segmentStarts,segmentStarts + segmentCount,rail.unlockGrownLength) - segmentStarts);
 			}
 
-			drawSegments(rail.tubeObject.get(),0,(std::min)(paintedBegin,grownEnd));
+			drawSegments(rail.paintedTubeObject.get(),0,(std::min)(wrappedPaintedEnd,grownEnd));
+			drawSegments(rail.tubeObject.get(),wrappedPaintedEnd,(std::min)(paintedBegin,grownEnd));
 			drawSegments(rail.paintedTubeObject.get(),paintedBegin,(std::min)(paintedEnd,grownEnd));
 			drawSegments(rail.tubeObject.get(),paintedEnd,grownEnd);
 
@@ -514,6 +531,42 @@ void RailEditor::PaintActiveRail(float t){
 		rail.isPainted = true;
 		rail.paintStartT = t;
 		rail.paintEndT = t;
+		return;
+	}
+
+	// ループするレールは進行度が1を越えると0へ回るため、塗った範囲を「塗り始めの進行度」と「そこから続いた終わりの進行度(1周分を越えうる)」で持つ
+	if(!rail.loopCurvePoints.empty()){
+		// 1周塗り終えていたら、それ以上は広げない
+		const float paintedLength = rail.paintEndT - rail.paintStartT;
+		if(paintedLength >= kLoopLapT){
+			return;
+		}
+
+		// 塗り始めから進む向きに測った、今の位置までの進行度(0〜1未満)
+		float fromStart = t - rail.paintStartT;
+		if(fromStart < 0.0f){
+			fromStart += kLoopLapT;
+		}
+		// すでに塗った範囲の中なら広げない
+		if(fromStart <= paintedLength){
+			return;
+		}
+
+		// 塗った範囲の外にいるときは、終わりを先へ伸ばすか、始まりを手前へ伸ばすかの近い方で広げる(ふだんは進んだ分だけ終わりが伸びる)
+		const float gapAhead = fromStart - paintedLength;
+		const float gapBehind = kLoopLapT - fromStart;
+		if(gapAhead <= gapBehind){
+			rail.paintEndT = rail.paintStartT + fromStart;
+		} else{
+			rail.paintStartT = t;
+			rail.paintEndT = t + gapBehind + paintedLength;
+		}
+
+		// 1周つながったら、レール全体を塗った状態にする
+		if(rail.paintEndT - rail.paintStartT >= kLoopLapT){
+			rail.paintStartT = 0.0f;
+			rail.paintEndT = kLoopLapT;
+		}
 		return;
 	}
 

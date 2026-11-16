@@ -70,7 +70,7 @@ public:
 	/// <param name="railEditor">進行するレール</param>
 	/// <param name="isGameplayActive">プレイ可能かどうか</param>
 	/// <param name="deltaTime">経過時間(秒)</param>
-	void UpdateRailProgress(const RailEditor* railEditor,bool isGameplayActive,float deltaTime);
+	void UpdateRailProgress(RailEditor* railEditor,bool isGameplayActive,float deltaTime);
 
 	// オンレール/オフレールの状態に応じて、カメラ・プレイヤーの基準位置と基準向きを求める
 	void UpdateBasePose(const RailEditor* railEditor);

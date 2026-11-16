@@ -125,8 +125,8 @@ void Player::StartRailBoost(float rate,float duration){
 
 // レールの進行
 // Edit中・開始演出中・オフレール中はその位置で静止させる
-// 終端に到達したらループさせず、その場で停止させる
-void Player::UpdateRailProgress(const RailEditor* railEditor,bool isGameplayActive,float deltaTime){
+// 終端に到達したらループさせず、その場で停止させる(ループするレールだけは、終端から始点へ回って進み続ける)
+void Player::UpdateRailProgress(RailEditor* railEditor,bool isGameplayActive,float deltaTime){
 	if(!railEditor || !isGameplayActive || !isOnRail_ || isRailFinished_){
 		return;
 	}
@@ -151,9 +151,34 @@ void Player::UpdateRailProgress(const RailEditor* railEditor,bool isGameplayActi
 
 	const float railMoveSpeed = pointSpeed * railSpeed;
 	railT_ = railEditor->AdvanceTByDistance(railT_,railMoveSpeed * deltaTime);
+
+	// ループするレールには終点が無いため、進行度が1周分を越えたら越えた分を残して始点側へ回し、そのまま進み続ける
+	// 進行度1と0は同じ位置・同じ向きのため、つなぎ目で位置もカメラも跳ばない
+	if(railEditor->IsLoopRail(railEditor->GetActiveRailIndex())){
+		if(railT_ >= kRailEndT){
+			railT_ -= kRailEndT;
+		}
+		return;
+	}
+
 	if(railT_ >= kRailEndT){
 		railT_ = kRailEndT; // 終端で固定する
 		isRailFinished_ = true;
+
+		// 終点で飛び移る先のレールが決めてあれば、並走レールへの飛び移りと同じ動きで、そのレールへ自動で飛び移って進み続ける
+		// 乗るレールを切り替えるのはすぐに行い、見た目の位置だけを終点から飛び移る先へ山なりに寄せていく
+		int transferRailIndex = -1;
+		float transferT = 0.0f;
+		if(railEditor->FindEndTransfer(railEditor->GetActiveRailIndex(),transferRailIndex,transferT)){
+			const Vector3 endPosition = railEditor->GetPositionOnRail(railT_);
+			railEditor->SwitchActiveRail(transferRailIndex);
+			railT_ = transferT;
+			isRailFinished_ = false;
+			railSwitchStartOffset_ = endPosition - railEditor->GetPositionOnRail(railT_);
+			railSwitchTimer_ = 0.0f;
+			isSwitchingRail_ = true;
+			return;
+		}
 
 		// ゴールのレール以外は、終点に着いたらレールから外れ、進んでいた勢いのまま前へジャンプさせる(どのレールにも乗れずに落ちたらリスタートになる)
 		// その場で真下に落としたり別の場所へ移したりすると不具合に見えるため、レールの続きのように前へ飛ばす
