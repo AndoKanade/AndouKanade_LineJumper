@@ -28,6 +28,9 @@ namespace GameSceneInternal{
 	inline constexpr DepartureStyle kDefaultDepartureStyle = DepartureStyle::CountdownFlip;
 	// レールを進む全体の速さの調整項目名(Playerが登録する。Rail Editorで走り切るまでの秒数を出すのに使う)
 	inline constexpr const char* kRailSpeedKey = "railSpeed";
+	// 雑魚敵の弾が当たったときに減らす体力の量の調整項目名と、初期値(プレイヤーの体力の最大値は100)
+	inline constexpr const char* kEnemyBulletDamageKey = "enemyBulletDamage";
+	inline constexpr float kDefaultEnemyBulletDamage = 30.0f;
 	// 復活したときの、透明な体が元に戻る見せ方を保存する調整項目名(Model::RevealStyle の番号で保存する)と、初期値
 	inline constexpr const char* kRespawnRevealKey = "respawnRevealStyle";
 	inline constexpr Model::RevealStyle kDefaultRespawnRevealStyle = Model::RevealStyle::Stripes;
