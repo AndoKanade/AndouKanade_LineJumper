@@ -73,13 +73,26 @@ public:
 	/// <returns>命中した弾の数</returns>
 	int CheckHitToPlayer(const Model::BoundingSphere& playerSphere);
 
-	// ボスのいるステージで、まだ倒されていないときに本体を描画し、撃った弾を描画する
+	/// <summary>
+	/// 倒されてから消えるまでの動きを進める(体を小刻みに震わせ、白く点滅させる)
+	/// 倒された後は Update() が何もしないため、GameScene が消すまで毎フレーム呼ぶ
+	/// </summary>
+	/// <param name="deltaTime">経過時間(秒)</param>
+	void UpdateDefeated(float deltaTime);
+	// 倒された体を消す(最後の大きな破片を出す瞬間に GameScene が呼ぶ)
+	void Vanish(){ isVanished_ = true; }
+
+	// ボスのいるステージで、まだ消えていないときに本体を描画し、撃った弾を描画する
 	void Draw();
 
 	// ボスのいるステージで、まだ倒されていないか(当たり判定・狙いの対象になるか)
 	bool IsActive() const{ return isBossStage_ && !isDefeated_; }
 	// 体力が0になって倒されたかどうか
 	bool IsDefeated() const{ return isDefeated_; }
+	// ボスのいるステージで、体がまだ消えていないか(倒されてから消えるまでの間も true)
+	bool IsShown() const{ return isBossStage_ && !isVanished_; }
+	// 体の球の半径を取得(倒したときの破片を体の表面から出すのに使う)
+	float GetBodyRadius() const{ return kModelBodyRadius * scale_; }
 	// 現在の座標(体の中心)を取得
 	const Vector3& GetPosition() const{ return position_; }
 	// 現在の体力と、体力の最大値を取得(体力の表示に使う)
@@ -150,6 +163,9 @@ private:
 	bool isBossStage_ = false;
 	// 体力が0になって倒されたかどうか
 	bool isDefeated_ = false;
+	// 倒された後、体が消えたかどうかと、倒されてからの経過時間(秒)
+	bool isVanished_ = false;
+	float defeatTimer_ = 0.0f;
 	// 上下の揺れに使う経過時間(秒)
 	float bobTimer_ = 0.0f;
 
@@ -242,6 +258,11 @@ private:
 	static constexpr float kPhaseChangeScalePulse = 0.25f;
 	// 2形態目の、体力が満タンのときの色(1形態目の黄色と見分けられるよう紫にする。残りわずかの色は1形態目と同じ赤)
 	static constexpr Vector4 kPhase2FullHpColor = {0.7f, 0.45f, 1.0f, 1.0f};
+	// 倒されてから消えるまでの、体を震わせる幅(体の半径に対する割合)と速さ(1秒あたりに進む角度、ラジアン。向きごとに変えて同じ動きの繰り返しに見えにくくする)
+	static constexpr float kDefeatShakeRate = 0.06f;
+	static constexpr Vector3 kDefeatShakeSpeed = {47.0f, 61.0f, 53.0f};
+	// 倒されてから消えるまでの、白く点滅させる速さ(1秒あたりに進む角度、ラジアン)
+	static constexpr float kDefeatBlinkSpeed = 30.0f;
 	// 円周率(2形態目へ変わる演出の、体のふくらみの計算に使う)
 	static constexpr float kPi = 3.14159265f;
 

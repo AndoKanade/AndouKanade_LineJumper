@@ -45,6 +45,8 @@ namespace{
 	const char* kRingDangerTimeKey = "ringDangerTime";
 	// 調整項目名(弾を撃つ前の予備動作の時間)
 	const char* kTelegraphTimeKey = "telegraphTime";
+	// 点滅の sin の結果(-1〜1)を 0〜1 にする係数
+	constexpr float kHalf = 0.5f;
 }
 
 Boss::Boss() = default;
@@ -110,6 +112,8 @@ void Boss::ResetToPhase(int phase){
 	maxHp_ = (std::max)(static_cast<int>(GlobalVariables::GetInstance()->GetIntValue(kBossGroup,hpKey)),kMinMaxHp);
 	hp_ = maxHp_;
 	isDefeated_ = false;
+	isVanished_ = false;
+	defeatTimer_ = 0.0f;
 	bobTimer_ = 0.0f;
 	// 形態が変わる演出の途中でも、演出を終えた状態から始める
 	phaseChangeTimer_ = 0.0f;
@@ -163,7 +167,7 @@ Vector4 Boss::GetRingAttackColor() const{
 float Boss::GetRingAttackTintRate() const{
 	switch(ringAttackState_){
 	case RingAttackState::Warning:
-		return 0.5f + 0.5f * std::sin(ringAttackTimer_ * kRingWarnBlinkSpeed);
+		return kHalf + kHalf * std::sin(ringAttackTimer_ * kRingWarnBlinkSpeed);
 	case RingAttackState::Danger:
 		return 1.0f;
 	case RingAttackState::None:
@@ -488,9 +492,41 @@ Model::BoundingSphere Boss::GetHitSphere() const{
 	return {position_, kModelBodyRadius * scale_};
 }
 
-// ボスのいるステージで、まだ倒されていないときに本体を描画し、撃った弾を描画する
+// 倒されてから消えるまでの動きを進める
+// 倒された位置を中心に体を小刻みに震わせ、今の色と白の間で点滅させて、壊れかけていることを見せる
+void Boss::UpdateDefeated(float deltaTime){
+	if(!isDefeated_ || isVanished_){
+		return;
+	}
+	defeatTimer_ += deltaTime;
+
+	const float shakeWidth = GetBodyRadius() * kDefeatShakeRate;
+	const Vector3 shakeOffset = {
+		std::sin(defeatTimer_ * kDefeatShakeSpeed.x) * shakeWidth,
+		std::sin(defeatTimer_ * kDefeatShakeSpeed.y) * shakeWidth,
+		std::sin(defeatTimer_ * kDefeatShakeSpeed.z) * shakeWidth
+	};
+	obj_->SetTranslate(position_ + shakeOffset);
+
+	if(Model::Material* mat = obj_->GetMaterial()){
+		const float blinkRate = kHalf + kHalf * std::sin(defeatTimer_ * kDefeatBlinkSpeed);
+		mat->color = {
+			Lerp(kLowHpColor.x,kTelegraphColor.x,blinkRate),
+			Lerp(kLowHpColor.y,kTelegraphColor.y,blinkRate),
+			Lerp(kLowHpColor.z,kTelegraphColor.z,blinkRate),
+			Lerp(kLowHpColor.w,kTelegraphColor.w,blinkRate),
+		};
+	}
+
+	if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
+		obj_->SetCamera(activeCamera);
+	}
+	obj_->Update();
+}
+
+// ボスのいるステージで、まだ消えていないときに本体を描画し、撃った弾を描画する
 void Boss::Draw(){
-	if(IsActive()){
+	if(IsShown()){
 		obj_->Draw();
 	}
 	if(isBossStage_){

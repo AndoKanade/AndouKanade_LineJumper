@@ -38,6 +38,7 @@
 #include "UI/Reticle.h"
 #include "UI/StageHUD.h"
 #include "UI/StageClearUI.h"
+#include "UI/BossHpGauge.h"
 #include "UI/StageLockedNotice.h"
 #include "UI/TutorialHints.h"
 #include "UI/RailSwitchPrompt.h"
@@ -313,6 +314,10 @@ void GameScene::UpdateGameplay(){
 
 	// 着地の演出を見せ終えたら、クリア画面へ移る(Editモードへ戻ったときは止める)
 	if(isPlayMode && isStageCleared_){
+		// ボスを倒したときは、体が弾けて消えるまでの演出も進める
+		if(boss_->IsDefeated()){
+			UpdateBossDefeat();
+		}
 		UpdateStageClear();
 	}
 
@@ -590,6 +595,8 @@ void GameScene::UpdateGameplay(){
 
 	// 画面表示の更新(左上のアイコンには残機を出す)
 	stageHUD_->Update(lives_,kMaxLives,targetManager_->GetDestroyedCount(),targetManager_->GetTotalCount(),*comboCounter_);
+	// ボスの体力ゲージは、プレイが始まっていて、ボスがまだ倒されていない間だけ出す
+	bossHpGauge_->Update(isPlayMode && startSequence_->IsPlayable() && boss_->IsActive(),boss_->GetHp(),boss_->GetMaxHp(),boss_->GetPhase(),kDeltaTime);
 	// 「STAGE CLEAR!」の表示の動きを進める(出していないときは何もしない)
 	stageClearUI_->Update(kDeltaTime);
 	goalBannerUI_->Update(kDeltaTime);

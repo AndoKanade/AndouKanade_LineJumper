@@ -45,6 +45,7 @@
 #include "UI/Reticle.h"
 #include "UI/StageHUD.h"
 #include "UI/StageClearUI.h"
+#include "UI/BossHpGauge.h"
 #include "UI/StageLockedNotice.h"
 #include "UI/TutorialHints.h"
 #include "UI/RailSwitchPrompt.h"
@@ -223,6 +224,8 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	bossPhaseBannerUI_->Initialize(spriteCommon_,kBossPhaseBannerTexturePath);
 	bossRingHintUI_ = std::make_unique<StageClearUI>();
 	bossRingHintUI_->Initialize(spriteCommon_,kBossRingHintTexturePath,kBossRingHintHeightRate);
+	bossHpGauge_ = std::make_unique<BossHpGauge>();
+	bossHpGauge_->Initialize(spriteCommon_);
 	stageLockedNotice_ = std::make_unique<StageLockedNotice>();
 	stageLockedNotice_->Initialize(spriteCommon_);
 	tutorialHints_ = std::make_unique<TutorialHints>();
@@ -539,6 +542,8 @@ void GameScene::Draw(){
 	// 体力・壊した的の数・連鎖数はPlay中だけ表示する(タイトル中・カメラの回り込み中は出さない)
 	if(EditorContext::GetInstance()->IsPlayMode() && !isTitleShowing){
 		stageHUD_->Draw();
+		// ボスの体力ゲージ(ボスと戦っている間だけ見える)
+		bossHpGauge_->Draw();
 		// 「STAGE CLEAR!」は画面表示より手前に出す
 		stageClearUI_->Draw();
 		goalBannerUI_->Draw();

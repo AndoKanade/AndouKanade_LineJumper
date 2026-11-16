@@ -34,6 +34,7 @@
 #include "Camera/CameraPose.h"
 // UI
 #include "UI/StageClearUI.h"
+#include "UI/BossHpGauge.h"
 #include "UI/StageLockedNotice.h"
 #include "UI/RailSwitchPrompt.h"
 #include "UI/KeyTargetMarker.h"
@@ -385,18 +386,47 @@ void GameScene::StartStageClear(const Vector3& landedPos){
 }
 
 // ボスを倒した瞬間に、倒した演出を出してクリア画面へ移るのを待ち始める
-// ゴールの的を壊したときと同じ作りの破片・しぶき・閃光を出し、一瞬動きを止めて画面を揺らし、ボスを中心に放射ブラーをかける
+// まず一瞬動きを止めて画面を小さく揺らし続け、体が弾けるまでの溜めにする(弾ける演出は UpdateBossDefeat() で出す)
 void GameScene::StartBossDefeat(){
 	StageInfo::clearedStages[StageInfo::kFinalStageIndex] = true;
 	isStageCleared_ = true;
 	stageClearTimer_ = 0.0f;
 	stageClearDuration_ = kBossDefeatClearDuration;
+	bossDefeatBurstTimer_ = 0.0f;
+	bossDefeatBurstCount_ = 0;
 
-	const Vector3 defeatPosition = boss_->GetPosition();
-	inkEffect_->EmitGoalBreak(defeatPosition);
-	screenImpact_->Trigger(kGoalBreakHitStopDuration,kGoalBreakShakeAmplitude,kGoalBreakShakeDuration);
-	if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
-		Application::GetInstance()->TriggerRadialBlur(CameraPoseMath::WorldToScreenUv(defeatPosition,activeCamera->GetViewProjectionMatrix()),kGoalBreakRadialBlurWidth,kGoalBreakRadialBlurDuration);
+	inkEffect_->EmitTargetBreak(boss_->GetPosition());
+	screenImpact_->Trigger(kBossDefeatHitStopDuration,kBossDefeatShakeAmplitude,kBossDefeatShakeDuration);
+}
+
+// ボスを倒してから体が消えるまでの演出を進める
+// 体を震わせながら、体の表面のあちこちから小さな破片を続けて出し、決めた時間がたったら大きく弾けさせて体を消し、「STAGE CLEAR!」を出す
+void GameScene::UpdateBossDefeat(){
+	if(!boss_->IsShown()){
+		return;
+	}
+	boss_->UpdateDefeated(kDeltaTime);
+	const Vector3 bossPosition = boss_->GetPosition();
+
+	// 小さな破片は、出すたびに体の周りを回しながら上下にも振った位置から出す
+	bossDefeatBurstTimer_ += kDeltaTime;
+	if(bossDefeatBurstTimer_ >= kBossDefeatBurstInterval){
+		bossDefeatBurstTimer_ -= kBossDefeatBurstInterval;
+		const float angle = static_cast<float>(bossDefeatBurstCount_) * kBossDefeatBurstAngleStep;
+		const Vector3 direction = Normalize(Vector3{std::cos(angle), std::sin(angle * kBossDefeatBurstHeightRate), std::sin(angle)});
+		inkEffect_->EmitTargetBreak(bossPosition + direction * boss_->GetBodyRadius());
+		++bossDefeatBurstCount_;
+	}
+
+	// 体が弾ける瞬間:ゴールの的を壊したときと同じ作りの大きな破片・しぶき・閃光を出し、一瞬動きを止めて画面を大きく揺らし、ボスを中心に放射ブラーをかける
+	if(stageClearTimer_ >= kBossDefeatVanishTime){
+		boss_->Vanish();
+		inkEffect_->EmitGoalBreak(bossPosition);
+		screenImpact_->Trigger(kGoalBreakHitStopDuration,kGoalBreakShakeAmplitude,kGoalBreakShakeDuration);
+		if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
+			Application::GetInstance()->TriggerRadialBlur(CameraPoseMath::WorldToScreenUv(bossPosition,activeCamera->GetViewProjectionMatrix()),kGoalBreakRadialBlurWidth,kGoalBreakRadialBlurDuration);
+		}
+		stageClearUI_->Begin();
 	}
 }
 

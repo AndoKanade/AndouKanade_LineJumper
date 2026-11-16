@@ -384,6 +384,9 @@
     <ClCompile Include="Game\UI\StageHUD.cpp">
       <Filter>ソース ファイル\Game\UI</Filter>
     </ClCompile>
+    <ClCompile Include="Game\UI\BossHpGauge.cpp">
+      <Filter>ソース ファイル\Game\UI</Filter>
+    </ClCompile>
     <ClCompile Include="Game\UI\StageClearUI.cpp">
       <Filter>ソース ファイル\Game\UI</Filter>
     </ClCompile>
@@ -714,6 +717,9 @@
       <Filter>ヘッダー ファイル\Game\objects</Filter>
     </ClInclude>
     <ClInclude Include="Game\UI\StageHUD.h">
+      <Filter>ヘッダー ファイル\Game\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\UI\BossHpGauge.h">
       <Filter>ヘッダー ファイル\Game\UI</Filter>
     </ClInclude>
     <ClInclude Include="Game\UI\StageClearUI.h">

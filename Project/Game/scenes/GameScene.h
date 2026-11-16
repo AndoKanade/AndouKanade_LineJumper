@@ -33,6 +33,7 @@ class InkEffectManager;
 class ComboCounter;
 class StageHUD;
 class StageClearUI;
+class BossHpGauge;
 class StageLockedNotice;
 class TutorialHints;
 class RailSwitchPrompt;
@@ -132,6 +133,8 @@ private:
 	void StartStageClear(const Vector3& landedPos);
 	// ボスを倒した瞬間に、倒した演出を出してクリア画面へ移るのを待ち始める
 	void StartBossDefeat();
+	// ボスを倒してから体が消えるまでの演出(体を震わせて小さな破片を続けて出し、最後に大きく弾けさせて「STAGE CLEAR!」を出す)を進める
+	void UpdateBossDefeat();
 	// ボスが2形態目に変わり始めた瞬間の演出(破片・ヒットストップ・揺れ・放射ブラー・スロー・「まだ終わらない!!」)を出す
 	void StartBossPhaseChange();
 	// ボスの輪を塗り返す攻撃を、輪の色・被弾・飛び移り方の案内に反映する
@@ -218,6 +221,11 @@ private:
 	bool wasOnBossLoop_ = false;
 	// ボスが2形態目に変わったときに出す「まだ終わらない!!」と、輪を塗り返す予告のときに出す飛び移り方の案内
 	std::unique_ptr<StageClearUI> bossPhaseBannerUI_;
+	// ボスの体力ゲージ(画面の上に出す)
+	std::unique_ptr<BossHpGauge> bossHpGauge_;
+	// ボスを倒してから体が消えるまでの、次の小さな破片を出すまでの経過時間(秒)と、出した回数(出す位置を回数でずらす)
+	float bossDefeatBurstTimer_ = 0.0f;
+	int bossDefeatBurstCount_ = 0;
 	std::unique_ptr<StageClearUI> bossRingHintUI_;
 	// ボスが2形態目に変わった直後の、ゲームをゆっくりにしておく残り時間(秒。実際の時間)
 	float bossPhaseSlowTimer_ = 0.0f;
@@ -416,8 +424,19 @@ private:
 	// 着地の揺れ(kReturnLandShakeDuration)が収まり、インクのしぶきが落ちきるのを見せてから移る
 	static constexpr float kStageClearDuration = 1.0f;
 	// ボスを倒してから、クリア画面への切り替えを始めるまでの時間(秒)
-	// 飛び散った破片がゆっくり広がっていくのを見せてから移る
-	static constexpr float kBossDefeatClearDuration = 2.0f;
+	// 体が弾けて「STAGE CLEAR!」が出て、飛び散った破片がゆっくり広がっていくのを見せてから移る
+	static constexpr float kBossDefeatClearDuration = 3.4f;
+	// ボスを倒してから、体が大きく弾けて消えるまでの時間(秒)と、その間に小さな破片を出す間隔(秒)
+	static constexpr float kBossDefeatVanishTime = 1.2f;
+	static constexpr float kBossDefeatBurstInterval = 0.15f;
+	// 小さな破片を出す位置を、出すたびに体の周りで回す角度(ラジアン。黄金角にして、同じ場所に続けて出ないようにする)
+	static constexpr float kBossDefeatBurstAngleStep = 2.39996f;
+	// 小さな破片を出す位置の高さを、出すたびに上下へ振る速さ(回す角度に対する割合)
+	static constexpr float kBossDefeatBurstHeightRate = 0.37f;
+	// ボスを倒した瞬間の衝撃(動きを止める時間、画面の揺れの幅・収まるまでの時間。体が弾ける瞬間より小さくする)
+	static constexpr float kBossDefeatHitStopDuration = 0.12f;
+	static constexpr float kBossDefeatShakeAmplitude = 0.15f;
+	static constexpr float kBossDefeatShakeDuration = 1.2f;
 	// 通路の壁が壊れた瞬間に、壁から高く飛び散らせて台に落とすインクのしぶきの数
 	static constexpr int kBarrierBurstCount = 20;
 	// 通路の壁が壊れた瞬間の衝撃(動きを止める時間、画面の揺れの幅・収まるまでの時間。出発ゲートが開く瞬間と同じくらいにする)
