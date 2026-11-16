@@ -100,6 +100,8 @@ void GameScene::ResetPlayState(){
 
 	// 雑魚敵も撃破前の初期状態(体力満タン)から始める
 	enemyManager_->Reset();
+	// ボスは減らした体力を残したまま、撃った弾だけを消して攻撃を最初からやり直させる
+	boss_->ResetAttack();
 
 	// やられ演出の最中にRキーなどでやり直したときも、自機を出して操作できる状態に戻す
 	isDefeated_ = false;

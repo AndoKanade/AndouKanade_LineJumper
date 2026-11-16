@@ -373,6 +373,8 @@ void GameScene::UpdateGameplay(){
 		// 命中した弾は無敵中でもここで消滅させ、すり抜けて後から当たらないようにする
 		// プレイヤーの行列はこのフレームの配置処理でUpdate()済み
 		int hitCount = enemyManager_->CheckHitToPlayer(player_->GetHitSphere());
+		// ボスの弾も同じように判定する
+		hitCount += boss_->CheckHitToPlayer(player_->GetHitSphere());
 
 		// 同時に複数当たっても体力の減少は1回分だけにする
 		if(hitCount > 0){
@@ -520,7 +522,8 @@ void GameScene::UpdateGameplay(){
 	}
 
 	// ボスの更新と弾との当たり判定(最後のステージでだけ出す。Edit中・開始演出中は弾を当てず、揺れも止める)
-	boss_->Update(railEditor_->GetStageIndex() == StageInfo::kFinalStageIndex,playerPos,*bulletManager_,isGameplayActive,isGameplayActive?worldDeltaTime:0.0f);
+	// プレイヤーが輪に乗っている間だけ攻撃させる。やられ演出の最中は、雑魚敵と同じくボスの弾もスローで動かす
+	boss_->Update(railEditor_->GetStageIndex() == StageInfo::kFinalStageIndex,playerPos,*bulletManager_,isGameplayActive,isOnBossLoop,enemyDeltaTime);
 
 	// ボスの体力を0にして倒したら、倒した演出を見せてからクリア画面へ移る
 	// クリア画面へ移るのを待っている間はプレイ可能でなくなるため、倒した処理が二重に起きることはない
