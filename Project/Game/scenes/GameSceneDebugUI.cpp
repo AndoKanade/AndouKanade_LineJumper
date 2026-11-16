@@ -80,11 +80,15 @@ namespace{
 	constexpr int kMaxToolPanelShortcutCount = 9;
 	// パネル名の後ろに未保存の印を付けたラベルを作るときの、文字列の長さの上限
 	constexpr size_t kToolPanelLabelSize = 64;
+	// 1秒をミリ秒に直す倍率(1フレームの時間の表示に使う)
+	constexpr float kMillisecondsPerSecond = 1000.0f;
 }
 
 // レール・プレイヤー・敵の状態確認用のデバッグウィンドウ
 void GameScene::ShowStatusWindow(){
 	ImGui::Begin("Rail Branch Debug");
+	// 重くなる場面を確かめるための、1秒あたりの描画回数と1フレームの時間(ImGuiが直近のフレームから求めた平均)
+	ImGui::Text("FPS: %.1f (%.2f ms)",ImGui::GetIO().Framerate,kMillisecondsPerSecond / ImGui::GetIO().Framerate);
 	ImGui::Text("Rail Count: %d",railEditor_->GetRailCount());
 	ImGui::Text("Active Rail Index: %d",railEditor_->GetActiveRailIndex());
 	ImGui::Text("Active Rail Point Count: %d",railEditor_->GetControlPointCount());

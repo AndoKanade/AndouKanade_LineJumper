@@ -39,7 +39,6 @@ void Boss::Initialize(Obj3dCommon* objCommon){
 	gv->AddItem(kBossGroup,kBobSpeedKey,kDefaultBobSpeed);
 
 	ModelManager::GetInstance()->LoadModel(kBossModelPath);
-	model_ = ModelManager::GetInstance()->FindModel(kBossModelPath);
 
 	obj_ = std::make_unique<Obj3D>();
 	obj_->Initialize(objCommon);
@@ -85,7 +84,7 @@ void Boss::Update(bool isBossStage,const Vector3& playerPosition,PlayerBulletMan
 			hp_ -= bullets.GetDamage();
 			// 火花は、体の中心からプレイヤーの方へ向いた体の表面に出す(中心に出すと体に隠れて見えない)
 			const Vector3 toPlayer = playerPosition - position_;
-			const Vector3 sparkPosition = (Length(toPlayer) >= kMinFaceDistance)?position_ + Normalize(toPlayer) * scale_:position_;
+			const Vector3 sparkPosition = (Length(toPlayer) >= kMinFaceDistance)?position_ + Normalize(toPlayer) * hitSphere.radius:position_;
 			ParticleManager::GetInstance()->EmitSpark(sparkPosition);
 		}
 		if(hp_ <= 0){
@@ -147,12 +146,11 @@ bool Boss::FindAimed(const Vector3& cameraPosition,const Vector3& cameraForward,
 	return true;
 }
 
-// 当たり判定に使う、モデルから求めたワールド座標系の境界球を取得
+// 当たり判定に使う、体の球をワールド座標系に置いた球を取得
+// モデルの頂点から求めた境界球はとげの先まで含むため、体より大きくなり、体の外を通った弾まで当たってしまう
+// そこで、モデルの体の球(中心は原点、半径はkModelBodyRadius)をそのまま使い、見た目の体に当たった弾だけを当てる(とげには当たらない)
 Model::BoundingSphere Boss::GetHitSphere() const{
-	if(!model_){
-		return {position_, 0.0f};
-	}
-	return model_->GetBoundingSphere(position_,scale_);
+	return {position_, kModelBodyRadius * scale_};
 }
 
 // ボスのいるステージで、まだ倒されていないときに描画する

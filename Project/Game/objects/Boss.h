@@ -64,13 +64,11 @@ public:
 	int GetMaxHp() const{ return maxHp_; }
 
 private:
-	// 当たり判定に使う、モデルから求めたワールド座標系の境界球を取得
+	// 当たり判定に使う、体の球をワールド座標系に置いた球を取得
 	Model::BoundingSphere GetHitSphere() const;
 
 	// 描画用の3Dオブジェクト
 	std::unique_ptr<Obj3D> obj_;
-	// ボスのモデル(当たり判定で境界球を求めるのに使う)
-	Model* model_ = nullptr;
 
 	// 現在の座標(体の中心)
 	Vector3 position_ = {0.0f, 0.0f, 0.0f};
@@ -97,6 +95,8 @@ private:
 	static constexpr float kDefaultBobAmplitude = 0.4f;
 	static constexpr float kDefaultBobSpeed = 1.2f;
 
+	// モデルの体の球の半径(tools/generate_boss_assets.py の BODY_RADIUS と合わせる。当たり判定に使う)
+	static constexpr float kModelBodyRadius = 1.0f;
 	// 体力の最大値として設定できる下限(0以下にすると戦う前に倒れてしまうため)
 	static constexpr int kMinMaxHp = 1;
 	// 表示スケールとして設定できる下限(0以下にすると見えず、当たらなくなるため)
