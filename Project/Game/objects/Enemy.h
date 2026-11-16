@@ -1,6 +1,7 @@
 #pragma once
 #include "MyMath.h"
 #include "Model.h"
+#include "EnemyBulletPool.h"
 #include <memory>
 #include <vector>
 
@@ -89,36 +90,17 @@ private:
 		Homing,  // 追尾弾: 発射後もプレイヤー方向へ少しずつ向きを変え続ける
 	};
 
-	// 敵弾
-	// 発射のたびに生成・破棄すると無駄が多いため、初期化時に必要数だけ作っておき使い回す
-	struct Bullet{
-		std::unique_ptr<Obj3D> obj;            // 描画用の3Dオブジェクト(初期化時に一度だけ生成する)
-		Vector3 position = {0.0f, 0.0f, 0.0f}; // 現在のワールド座標
-		Vector3 velocity = {0.0f, 0.0f, 0.0f}; // 1秒あたりの移動量
-		float lifeTime = 0.0f;                 // 発射してからの経過時間(秒)
-		bool isAlive = false;                  // 使用中かどうか(falseなら未使用=再利用できる)
-		float speed = 0.0f;                    // 移動速度(向きを変えても速さを保つために保持する)
-		bool isHoming = false;                 // 追尾するかどうか(trueなら毎フレーム向きを補正する)
-	};
-
-	// 弾の更新処理(移動・追尾の向き補正・寿命切れの判定・描画用トランスフォームの更新)
-	void UpdateBullets(const Vector3& playerPosition,float deltaTime);
 	// 現在の攻撃の種類に応じた発射処理を行う
 	void FireCurrentAttack(const Vector3& playerPosition);
 	// 現在の攻撃の種類に応じた発射間隔(秒)を取得する
 	float GetCurrentShotInterval() const;
 	// 弾の発射位置(敵の胸の高さ)を取得する
 	Vector3 GetBulletSpawnPosition() const;
-	// 指定した方向へ弾を1発発射する(未使用の弾が無いときは何もしない)
-	void FireBullet(const Vector3& spawnPosition,const Vector3& direction,float speed,bool isHoming);
 
 	std::unique_ptr<Obj3D> obj_; // 描画用の3Dオブジェクト
 
-	// 敵弾のモデル(当たり判定で弾の境界球を求めるのに使う)
-	Model* bulletModel_ = nullptr;
-
 	// 敵弾の管理用
-	std::vector<Bullet> bullets_;  // 使い回す弾の実体(サイズはkMaxBulletCountで固定)
+	EnemyBulletPool bulletPool_;   // 使い回す弾(移動・追尾・寿命・当たり判定・描画を任せる。ボスと共用のクラス)
 	float shotTimer_ = 0.0f;       // 次の発射までの残り時間(秒)
 
 	// 現在使用している攻撃の種類(kAttackOrderの何番目かを指す)

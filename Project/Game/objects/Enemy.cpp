@@ -11,9 +11,6 @@ namespace{
 	// 雑魚敵の表示に使用するモデル(プレイヤーと区別できるよう、4本脚で一つ目のロボットにする)
 	const std::string kEnemyModelPath = "EnemyBot/enemyBot.obj";
 
-	// 敵弾の表示に使用するモデル
-	const std::string kEnemyBulletModelPath = "Sphere/sphere.obj";
-
 	// 敵弾の色(自機の弾が青なので、区別できるよう赤にする)
 	constexpr Vector4 kEnemyBulletColor = {1.0f, 0.2f, 0.2f, 1.0f};
 
@@ -45,20 +42,13 @@ void Enemy::Initialize(Obj3dCommon* objCommon,const Vector3& basePosition,const 
 
 	// 敵弾の生成
 	// 発射のたびに生成すると無駄な処理が毎フレーム発生するため、ここで最大数ぶんまとめて作り、以降は使い回す
-	ModelManager::GetInstance()->LoadModel(kEnemyBulletModelPath);
-	bulletModel_ = ModelManager::GetInstance()->FindModel(kEnemyBulletModelPath);
-	bullets_.resize(kMaxBulletCount);
-	for(auto& bullet : bullets_){
-		bullet.obj = std::make_unique<Obj3D>();
-		bullet.obj->Initialize(objCommon);
-		bullet.obj->SetModel(kEnemyBulletModelPath);
-		bullet.obj->SetScale({kBulletScale, kBulletScale, kBulletScale});
-
-		// 弾の色は生成時に一度設定するだけでよいため、ここで赤にしておく
-		if(Model::Material* material = bullet.obj->GetMaterial()){
-			material->color = kEnemyBulletColor;
-		}
-	}
+	EnemyBulletPool::Settings bulletSettings;
+	bulletSettings.count = kMaxBulletCount;
+	bulletSettings.scale = kBulletScale;
+	bulletSettings.lifeTime = kBulletLifeTime;
+	bulletSettings.homingTurnRate = kHomingTurnRate;
+	bulletSettings.color = kEnemyBulletColor;
+	bulletPool_.Initialize(objCommon,bulletSettings);
 
 	Reset();
 }
@@ -76,14 +66,7 @@ void Enemy::Reset(){
 	hp_ = maxHp_;
 
 	// 発射済みの弾をすべて未使用に戻し、発射間隔も初期化する
-	for(auto& bullet : bullets_){
-		bullet.isAlive = false;
-		bullet.lifeTime = 0.0f;
-
-		// 追尾情報も消して、再利用した弾が前回の設定を引きずらないようにする
-		bullet.isHoming = false;
-		bullet.speed = 0.0f;
-	}
+	bulletPool_.Clear();
 
 	// 攻撃の種類も先頭(単発)に戻してから、その種類の発射間隔で待ち時間を初期化する
 	attackIndex_ = 0;
@@ -132,7 +115,7 @@ void Enemy::SetMaxHp(int maxHp){
 void Enemy::Update(const Vector3& playerPosition,float deltaTime){
 	// 撃破済みでも発射済みの弾は飛び続けさせるため、弾の更新は本体より先に行う
 	// 追尾弾の向き補正にプレイヤー座標が必要なため、そのまま渡す
-	UpdateBullets(playerPosition,deltaTime);
+	bulletPool_.Update(playerPosition,deltaTime);
 
 	// 撃破済みのときは移動も向きの更新も行わない
 	if(!isAlive_){
@@ -203,63 +186,7 @@ void Enemy::Draw(){
 	}
 
 	// 発射中の弾を描画する
-	for(auto& bullet : bullets_){
-		if(bullet.isAlive && bullet.obj){
-			bullet.obj->Draw();
-		}
-	}
-}
-
-// 弾の更新処理(移動・追尾の向き補正・寿命切れの判定・描画用トランスフォームの更新)
-void Enemy::UpdateBullets(const Vector3& playerPosition,float deltaTime){
-	// アクティブカメラは全弾で共通なので、ループの外で一度だけ取得する
-	Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera();
-
-	for(auto& bullet : bullets_){
-		// 未使用の弾は移動も描画更新も不要
-		if(!bullet.isAlive){
-			continue;
-		}
-
-		// 追尾弾の向き補正
-		// 現在の進行方向をプレイヤー方向へ少しずつ寄せることで、急に折れ曲がらない緩やかな追尾にする
-		if(bullet.isHoming){
-			Vector3 toPlayer = playerPosition - bullet.position;
-			if(Length(toPlayer) > 1e-5f){
-				Vector3 currentDirection = Normalize(bullet.velocity);
-				Vector3 targetDirection = Normalize(toPlayer);
-
-				// 1フレームで補正する割合(1.0を超えると一気に向き切り替わってしまうため上限で制限する)
-				float turnRatio = kHomingTurnRate * deltaTime;
-				if(turnRatio > 1.0f){
-					turnRatio = 1.0f;
-				}
-
-				// 速さは保ったまま向きだけを変える
-				Vector3 newDirection = Normalize(currentDirection + (targetDirection - currentDirection) * turnRatio);
-				bullet.velocity = newDirection * bullet.speed;
-			}
-		}
-
-		// 等速直線運動で前進させる(プレイヤーが避けやすいよう重力は掛けない)
-		bullet.position += bullet.velocity * deltaTime;
-
-		// 何にも当たらなかった弾は一定時間で未使用に戻し、再利用できるようにする
-		bullet.lifeTime += deltaTime;
-		if(bullet.lifeTime >= kBulletLifeTime){
-			bullet.isAlive = false;
-			continue;
-		}
-
-		// 描画用オブジェクトへ反映する
-		if(bullet.obj){
-			bullet.obj->SetTranslate(bullet.position);
-			if(activeCamera){
-				bullet.obj->SetCamera(activeCamera);
-			}
-			bullet.obj->Update();
-		}
-	}
+	bulletPool_.Draw();
 }
 
 // 現在の攻撃の種類に応じた発射処理を行う
@@ -291,19 +218,19 @@ void Enemy::FireCurrentAttack(const Vector3& playerPosition){
 				-baseDirection.x * sinAngle + baseDirection.z * cosAngle
 			};
 
-			FireBullet(spawnPosition,direction,kBulletSpeed,false);
+			bulletPool_.Fire(spawnPosition,direction,kBulletSpeed,false);
 		}
 		break;
 	}
 	case AttackType::Homing:
 		// 発射後もプレイヤーを追い続ける弾を1発だけ撃つ
-		FireBullet(spawnPosition,baseDirection,kHomingBulletSpeed,true);
+		bulletPool_.Fire(spawnPosition,baseDirection,kHomingBulletSpeed,true);
 		break;
 
 	case AttackType::Single:
 	default:
 		// 発射した瞬間のプレイヤー位置へ向かって直進する弾を1発撃つ
-		FireBullet(spawnPosition,baseDirection,kBulletSpeed,false);
+		bulletPool_.Fire(spawnPosition,baseDirection,kBulletSpeed,false);
 		break;
 	}
 }
@@ -328,50 +255,9 @@ Vector3 Enemy::GetBulletSpawnPosition() const{
 	return spawnPosition;
 }
 
-// 指定した方向へ弾を1発発射する
-void Enemy::FireBullet(const Vector3& spawnPosition,const Vector3& direction,float speed,bool isHoming){
-	// 未使用の弾を探して使い回す(全弾使用中のときは発射しない)
-	for(auto& bullet : bullets_){
-		if(bullet.isAlive){
-			continue;
-		}
-
-		bullet.position = spawnPosition;
-		bullet.velocity = Normalize(direction) * speed;
-		bullet.speed = speed;
-		bullet.isHoming = isHoming;
-		bullet.lifeTime = 0.0f;
-		bullet.isAlive = true;
-		return;
-	}
-}
-
 // 発射済みの弾とプレイヤーの当たり判定
 int Enemy::CheckHitToPlayer(const Model::BoundingSphere& playerSphere){
-	int hitCount = 0;
-
-	// 弾のモデルが無いときは境界球を求められないため判定しない
-	if(!bulletModel_){
-		return hitCount;
-	}
-
-	for(auto& bullet : bullets_){
-		if(!bullet.isAlive){
-			continue;
-		}
-
-		// 発射したばかりの弾は描画用オブジェクトの行列がまだ更新されていないため、
-		// 弾の現在座標と表示スケールから境界球を求める(弾は球なので回転は考慮しなくてよい)
-		Model::BoundingSphere bulletSphere = bulletModel_->GetBoundingSphere(bullet.position,kBulletScale);
-
-		// 弾とプレイヤーの境界球が重なっていれば命中とみなし、その弾を未使用に戻す
-		if(bulletSphere.IsHit(playerSphere)){
-			bullet.isAlive = false;
-			++hitCount;
-		}
-	}
-
-	return hitCount;
+	return bulletPool_.CheckHitToPlayer(playerSphere);
 }
 
 // 当たり判定用に、モデルから求めたワールド座標系の境界球を取得
@@ -385,11 +271,5 @@ Model::BoundingSphere Enemy::GetHitSphere() const{
 
 // 発射済みで生存している弾の数を取得(デバッグ表示用)
 int Enemy::GetActiveBulletCount() const{
-	int count = 0;
-	for(const auto& bullet : bullets_){
-		if(bullet.isAlive){
-			++count;
-		}
-	}
-	return count;
+	return bulletPool_.GetActiveCount();
 }

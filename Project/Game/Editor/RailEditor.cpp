@@ -270,8 +270,8 @@ void RailEditor::Update(){
 	ImGui::Text("Active Rail: %s",rails_[activeRailIndex_].name.c_str());
 	for(size_t i = 0; i < rails_.size(); ++i){
 		ImGui::PushID(static_cast<int>(i) + 10000); // 制御点側のPushIDと衝突しないようオフセット
-		// ゴールのレールは一覧に (Goal) と出す
-		const std::string railLabel = rails_[i].isGoalRail?rails_[i].name + " (Goal)":rails_[i].name;
+		// ゴールのレールは一覧に (Goal)、ループするレールは (Loop) と出す
+		const std::string railLabel = rails_[i].name + (rails_[i].isGoalRail?" (Goal)":"") + (rails_[i].isLoop?" (Loop)":"");
 		if(ImGui::Selectable(railLabel.c_str(),static_cast<int>(i) == activeRailIndex_)){
 			SwitchActiveRail(static_cast<int>(i));
 		}
@@ -288,6 +288,17 @@ void RailEditor::Update(){
 
 	// ゴールのレールにするか(終点で止まり、乗るとゴールの的が現れる。ステージに1本だけ置く想定)
 	ImGui::Checkbox("Goal Rail",&activeRail.isGoalRail);
+
+	// ループするレールにするか(最後の制御点から最初の制御点へつながり、何周でも回れる。すべての制御点を曲線が通る)
+	ImGui::Checkbox("Loop Rail",&activeRail.isLoop);
+	if(activeRail.isLoop && activeRail.controlPoints.size() < kMinLoopPointCount){
+		ImGui::TextDisabled("(制御点が%zu個以上で輪になる)",kMinLoopPointCount);
+	}
+
+	// 終点に着いたら自動で飛び移る先のレール(-1で飛び移らない。ループするレールには終点が無いため使わない)
+	ImGui::InputInt("End Transfer Rail",&activeRail.endTransferRailIndex);
+	activeRail.endTransferRailIndex = std::clamp(activeRail.endTransferRailIndex,kNoEndTransferRail,static_cast<int>(rails_.size()) - 1);
+	ImGui::TextDisabled("(-1で飛び移らない。終点でそのレールへ自動で飛び移る)");
 
 	// 制御点の追加ボタン(レールを延長しやすいよう、原点ではなく末尾2点の向きにそのまま伸ばした位置へ追加する)
 	if(ImGui::Button("Add Control Point")){
@@ -479,6 +490,9 @@ void RailEditor::Update(){
 
 	// パネルの外(Sceneビュー上)でのマウスドラッグによる制御点の移動
 	UpdateMouseDrag();
+
+	// このフレームの編集(制御点の移動・追加・削除、ループの設定)を、ループするレールの曲線の計算に使う制御点の並びへ反映する
+	RefreshAllLoopCurvePoints();
 
 	// ImGuiの操作中・ドラッグ中は値が動いている途中のため、操作を終えてから1回の編集として履歴に積む
 	// Inspectorなど他の場所からの編集もまとめて拾えるよう、変更があったかは状態を比べて判定する

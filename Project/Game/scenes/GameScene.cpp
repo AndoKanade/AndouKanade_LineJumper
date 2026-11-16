@@ -31,6 +31,7 @@
 #include "objects/PlayerBulletManager.h"
 #include "objects/TargetManager.h"
 #include "objects/GoalTarget.h"
+#include "objects/Boss.h"
 #include "objects/EnemyManager.h"
 #include "objects/InkEffectManager.h"
 #include "objects/ComboCounter.h"
@@ -44,6 +45,7 @@
 #include "UI/Reticle.h"
 #include "UI/StageHUD.h"
 #include "UI/StageClearUI.h"
+#include "UI/BossHpGauge.h"
 #include "UI/StageLockedNotice.h"
 #include "UI/TutorialHints.h"
 #include "UI/RailSwitchPrompt.h"
@@ -141,6 +143,7 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kDepartureStyleKey,static_cast<int32_t>(kDefaultDepartureStyle));
 	// プレイ会用の設定(Global Variables の Save で保存し、プレイ会では保存した JSON をそのまま使う)
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kPlaySessionModeKey,kDefaultPlaySessionMode);
+	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kEnemyBulletDamageKey,kDefaultEnemyBulletDamage);
 	// 遠くの物を空の色に溶け込ませる距離(Play中だけ使う)
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kObjectFadeStartKey,kDefaultObjectFadeStart);
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kObjectFadeEndKey,kDefaultObjectFadeEnd);
@@ -174,6 +177,10 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// ゴールの的の生成(ゴールのレールに乗るまでは出さない)
 	goalTarget_ = std::make_unique<GoalTarget>();
 	goalTarget_->Initialize(object3dCommon_,kGameSceneGroup);
+
+	// ボスの生成(最後のステージでだけ出す。調整項目はグループ「Boss」に登録する)
+	boss_ = std::make_unique<Boss>();
+	boss_->Initialize(object3dCommon_);
 
 	// 雑魚敵の生成(保存済みの配置が無い初回起動時はレールの中間地点に自動配置する)
 	enemyManager_ = std::make_unique<EnemyManager>();
@@ -213,6 +220,13 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// ゴールの的はプレイヤーの先(画面の真ん中あたり)を並走するため、「撃ちまくれ!!!」は的に重ならないよう画面の上の方に出す
 	goalBannerUI_ = std::make_unique<StageClearUI>();
 	goalBannerUI_->Initialize(spriteCommon_,kGoalBannerTexturePath,kGoalBannerHeightRate);
+	// ボスが2形態目に変わったときの「まだ終わらない!!」は「STAGE CLEAR!」と同じ高さに、飛び移り方の案内は画面の上の方に出す
+	bossPhaseBannerUI_ = std::make_unique<StageClearUI>();
+	bossPhaseBannerUI_->Initialize(spriteCommon_,kBossPhaseBannerTexturePath);
+	bossRingHintUI_ = std::make_unique<StageClearUI>();
+	bossRingHintUI_->Initialize(spriteCommon_,kBossRingHintTexturePath,kBossRingHintHeightRate);
+	bossHpGauge_ = std::make_unique<BossHpGauge>();
+	bossHpGauge_->Initialize(spriteCommon_);
 	stageLockedNotice_ = std::make_unique<StageLockedNotice>();
 	stageLockedNotice_->Initialize(spriteCommon_);
 	tutorialHints_ = std::make_unique<TutorialHints>();
@@ -489,6 +503,9 @@ void GameScene::Draw(){
 	// ゴールの的を描画(現れていて、まだ壊れていないときだけ)
 	goalTarget_->Draw();
 
+	// ボスを描画(最後のステージで、まだ倒されていないときだけ)
+	boss_->Draw();
+
 	// 発射中の弾を描画
 	bulletManager_->Draw();
 
@@ -526,9 +543,13 @@ void GameScene::Draw(){
 	// 体力・壊した的の数・連鎖数はPlay中だけ表示する(タイトル中・カメラの回り込み中は出さない)
 	if(EditorContext::GetInstance()->IsPlayMode() && !isTitleShowing){
 		stageHUD_->Draw();
+		// ボスの体力ゲージ(ボスと戦っている間だけ見える)
+		bossHpGauge_->Draw();
 		// 「STAGE CLEAR!」は画面表示より手前に出す
 		stageClearUI_->Draw();
 		goalBannerUI_->Draw();
+		bossPhaseBannerUI_->Draw();
+		bossRingHintUI_->Draw();
 		stageLockedNotice_->Draw();
 		keyTargetMarker_->Draw();
 		tutorialHints_->Draw();

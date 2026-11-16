@@ -13,11 +13,10 @@ public:
 	/// <summary>
 	/// 体力からインクの広がり・色づきを求め、ポストプロセスに渡す
 	/// </summary>
-	/// <param name="hp">プレイヤーの今の体力</param>
-	/// <param name="maxHp">プレイヤーの体力の最大値</param>
+	/// <param name="hpRate">プレイヤーの体力の残りの割合(0: 尽きた 〜 1: 満タン)</param>
 	/// <param name="isVisible">体力の表現を出すか(Play中だけtrue)</param>
 	/// <param name="deltaTime">経過時間(秒)</param>
-	void Update(int hp,int maxHp,bool isVisible,float deltaTime);
+	void Update(float hpRate,bool isVisible,float deltaTime);
 
 private:
 	// 今表示しているインクの広がり(体力から求めた広がりへ少しずつ寄せ、インクがじわっと迫って見えるようにする)
@@ -26,15 +25,20 @@ private:
 	float flash_ = 0.0f;
 	// 体力が残り少ない間の、脈打つ動きの経過時間(秒)
 	float pulseTimer_ = 0.0f;
-	// 前のフレームの体力(減った瞬間を被弾として検出する。-1: まだ受け取っていない)
-	int previousHp_ = -1;
+	// 前のフレームの体力の残りの割合(大きく減った瞬間を被弾として検出する。負: まだ受け取っていない)
+	float previousHpRate_ = kNoPreviousHpRate;
 
 	// インクの広がりを体力から求めた広がりへ寄せる速さ(1秒あたりに残りの差を詰める割合)
 	static constexpr float kFollowSpeed = 6.0f;
 	// 被弾した瞬間の色づきが消えるまでの時間(秒)
 	static constexpr float kFlashDuration = 0.4f;
-	// この体力以下になったら、インクを脈打たせる
-	static constexpr int kDangerHp = 1;
+	// 体力の残りの割合がこれ以下になったら、インクを脈打たせる
+	static constexpr float kDangerHpRate = 0.35f;
+	// 1フレームで体力の残りの割合がこれ以上減ったら、被弾した瞬間として画面を色づける
+	// (敵のインクに浸かっている間の、少しずつ減るダメージでは色づけない)
+	static constexpr float kFlashMinDropRate = 0.05f;
+	// 前のフレームの体力の残りの割合をまだ受け取っていないことを表す値
+	static constexpr float kNoPreviousHpRate = -1.0f;
 	// 脈打つときにインクを広げる最大の量と、1秒あたりの脈打つ回数
 	static constexpr float kPulseAmplitude = 0.08f;
 	static constexpr float kPulseFrequency = 1.2f;
