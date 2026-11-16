@@ -1,6 +1,6 @@
 # Game フォルダ クラス仕様書
 
-最終更新: 2026-11-11
+最終更新: 2026-11-16
 
 `Game/` 以下の各クラスについて、「何ができるか」「外から何を呼べるか」「中でどう動いているか」をまとめる。
 エンジン側（`Engine/`）のクラスは対象外（Game のために追加したものだけ、使う側の項目で触れる）。
@@ -31,9 +31,9 @@ Game/
 ├── scenes/    GameScene（本編）、ClearScene、GameOverScene
 ├── Title/     GameScene 内で動くステージ開始演出（タイトル → 回り込み → スタート台で準備 → 出発ゲート → レールへ乗り込む）と、クリア後にスタート台へ戻る大ジャンプ（ReturnJump）
 │   └── Departure/  スタート台からレールへ移るときの出発の演出（1 種類 1 クラス）
-├── objects/   Player / PlayerBulletManager / TargetManager / GoalTarget / Enemy / EnemyManager / Ground / Sun / StartPlatform / InkEffectManager / ComboCounter / StageResult / StageInfo
+├── objects/   Player / PlayerBulletManager / TargetManager / GoalTarget / Boss / Enemy / EnemyManager / EnemyBulletPool / Ground / Sun / StartPlatform / InkEffectManager / ComboCounter / StageResult / StageInfo
 ├── Camera/    RailCamera（プレイ用カメラ）/ DebugTopCamera（俯瞰デバッグカメラ）/ ScreenImpact（ヒットストップ・画面の揺れ）/ CameraPose（演出のカメラの補間）
-├── UI/        Reticle（画面中央のレティクル）/ StageHUD（残機・的の数・連鎖数）/ StageClearUI（「STAGE CLEAR!」）/ SpeedLines（スピード線）/ DamageInkEffect（体力を画面の縁のインクで表現）/ HelpOverlay（H キーで開く操作説明）
+├── UI/        Reticle（画面中央のレティクル）/ StageHUD（残機・的の数・連鎖数）/ StageClearUI（「STAGE CLEAR!」）/ BossHpGauge（ボスの体力ゲージ）/ SpeedLines（スピード線）/ DamageInkEffect（体力を画面の縁のインクで表現）/ HelpOverlay（H キーで開く操作説明）
 └── Editor/    RailEditor / TargetEditor / EnemyEditor（Editモード中の配置ツール）/ EditHistory・EditorDocumentManager（Undo/Redo と保存の管理）/ EditorPicking（Scene ビューでのマウス選択）
 ```
 
@@ -42,13 +42,13 @@ Game/
 ### シーンの流れ
 
 ```
-起動 ─→ GAME ─(ボスを倒す。未実装)─→ CLEAR ─(SPACE)─→ GAME
+起動 ─→ GAME ─(最後のステージのボスを倒す)─→ CLEAR ─(SPACE)─→ GAME
           │
           └─(落下・体力0で残機が0)─→ GAMEOVER ─(コンティニュー / タイトルへ を選んで SPACE)─→ GAME
 ```
 
-- ステージ 1 のゴールの的を壊したときは、シーンを切り替えず、大ジャンプでスタート台へ戻って GAME の中で始め直す（`ReturnJump`）。
-- CLEAR はボス戦を倒したときに移る画面として残している。今は GAME から CLEAR へ移る処理は無い。
+- ステージ 1〜3 のゴールの的を壊したときは、シーンを切り替えず、大ジャンプでスタート台へ戻って GAME の中で始め直す（`ReturnJump`）。
+- CLEAR へ移るのは、最後のステージ（ステージ4）のボスを倒したときだけ（`GameScene::StartBossDefeat()` → `UpdateStageClear()`）。
 
 - タイトルは独立したシーンではなく、GameScene の中の開始演出（`StartSequence`）として表示する。
 - GAME へ切り替わるたびに GameScene が作り直され、Play モードならタイトルから始まる。ゲームオーバー画面でコンティニューを選んだときだけ、タイトル・スタート台を飛ばして最後に通ったチェックポイントから始まる（`ContinuePoint`）。
@@ -146,7 +146,7 @@ Game/
 | `CloudRise` | ゲーム → クリア（案） | 1.0 / 0.7 秒 | 7 段 × 9 個の雲のかたまり（白と薄い水色の円）が、下の段から順にふくらみながら湧き上がって画面を包む。戻すときは画面の中央から左右に割れる |
 
 - 演出の画像（インクのしみ・白い円・「GOAL!」）は `tools/generate_transition_assets.py` で生成する（`resource/UI/transition/`）。しみの位置・大きさ・傾きは `InkBurstTransition.cpp` の `kInkSplatLayouts` / `GoalStampTransition.cpp` の `kStampSplashLayouts` で決めている。
-- クリアへ切り替える演出は、Edit モードの「GameScene Debug」パネルの「Clear Transition」で選び、「Preview Clear Transition」でその場で見た目を確認できる（落下リスタートの「Fall Transition」と同じ使い方）。今は CLEAR へ移る処理が無いため、ボス戦を作るときに使う。
+- クリアへ切り替える演出は、Edit モードの「GameScene Debug」パネルの「Clear Transition」で選び、「Preview Clear Transition」でその場で見た目を確認できる（落下リスタートの「Fall Transition」と同じ使い方）。ボスを倒してクリア画面へ移るときに使う。
 - 進め方（SceneTransition）と見た目（`ITransitionEffect` を継承した演出ごとのクラス）を分けているため、後から見た目だけを別の演出に差し替えられる。
 - 画面全体を覆うスプライトは SceneTransition が 1 枚だけ持ち、各演出の `Initialize()` に渡す（`Fade` は黒の濃さを変え、`RetryCutIn` / `InkBurst` / `InkDrip` / `GoalStamp` / `CloudRise` は色を掛けて画面を暗くする・隙間を塗るのに使う）。
 - 演出を足すときは、`ITransitionEffect` を継承したクラスを `systems/transition/` に作り、`SceneTransition::Style` と SceneTransition のコンストラクタの一覧に足す（`Style` の最後の種類が変わったら `kStyleCount` も直す）。
@@ -164,7 +164,7 @@ Game/
 | --- | --- |
 | `GameScene.cpp` | シーンの骨組み。`Initialize()` / `Finalize()` / `Update()`（更新の入口）/ `UpdateCursorVisibility()` / `UpdateSceneDistanceFade()` / `Draw()` |
 | `GameSceneGameplay.cpp` | プレイ中の毎フレームのゲーム処理。`UpdateGameplay()` / `UpdateRailSwitchSlow()` |
-| `GameSceneFlow.cpp` | ゲームの流れ。始め直し（`ResetPlayState()` / `StartPlaySequence()` / `StartFromContinuePoint()` / `BoardAtPlayStartPoint()`）・チェックポイント（`UpdateCheckpoint()` / `RespawnAtCheckpoint()`）・ミスと残機（`RestartAfterMiss()` / `LoseLife()` / `StartDefeat()` / `UpdateDefeat()`）・鍵のレールとステージの切り替え（`ApplyRailLocks()` / `SwitchStage()` / `ResetOtherStageRailLocks()`）・出発と帰還（`MakeDepartureContext()` / `PlayBoardedEffects()` / `RestartFromReturnJump()` / `PlayReturnLandEffects()` / `PlayBarrierBreakEffects()`）・クリア（`StartStageClear()` / `UpdateStageClear()` / `WriteStageResult()`） |
+| `GameSceneFlow.cpp` | ゲームの流れ。始め直し（`ResetPlayState()` / `StartPlaySequence()` / `StartFromContinuePoint()` / `BoardAtPlayStartPoint()`）・チェックポイント（`UpdateCheckpoint()` / `RespawnAtCheckpoint()`）・ミスと残機（`RestartAfterMiss()` / `LoseLife()` / `StartDefeat()` / `UpdateDefeat()`）・鍵のレールとステージの切り替え（`ApplyRailLocks()` / `SwitchStage()` / `ResetOtherStageRailLocks()`）・出発と帰還（`MakeDepartureContext()` / `PlayBoardedEffects()` / `RestartFromReturnJump()` / `PlayReturnLandEffects()` / `PlayBarrierBreakEffects()`）・クリア（`StartStageClear()` / `UpdateStageClear()` / `WriteStageResult()`）・ボス戦（`StartBossDefeat()` / `UpdateBossDefeat()` / `StartBossPhaseChange()` / `UpdateBossRingAttack()`） |
 | `GameSceneDebugUI.cpp` | ImGui のデバッグ用の画面。`ShowStatusWindow()` / `ShowEditorPanels()` / `ShowEditorSelector()` / `ShowDebugPanelContents()` |
 | `GameSceneInternal.h` | 上の 4 つのファイルで共通して使う定数（調整項目のグループ名・項目名など）と、調整項目から演出の種類を取得する関数（`GameSceneInternal` 名前空間） |
 
@@ -183,6 +183,9 @@ Game/
 | `bulletManager_` | プレイヤーの弾（PlayerBulletManager） |
 | `targetManager_` | 的（TargetManager） |
 | `goalTarget_` | ゴールの的（GoalTarget）。ゴールのレールに乗ると現れて先を並走し、壊すとステージクリア |
+| `boss_` | 最後のステージのボス（Boss）。輪の中心に浮かび、倒すとクリア画面へ移る |
+| `bossHpGauge_` | ボスの体力ゲージ（BossHpGauge） |
+| `bossPhaseBannerUI_` / `bossRingHintUI_` | ボスが2形態目に変わったときの「まだ終わらない!!」/ 輪を塗り返す予告のときの「W / S + SPACE で となりの輪へ!」（どちらも StageClearUI を画像と高さを変えて使う） |
 | `enemyManager_` | 雑魚敵（EnemyManager） |
 | `startSequence_` | ステージ開始演出（StartSequence）。タイトルロゴもこの中で表示する |
 | `reticle_` | 画面中央のレティクル（Reticle） |
@@ -236,11 +239,13 @@ Game/
 | 試し撃ち | スタート台の上（`isPlayerMovable` の間）でも撃てる。この弾は的・敵に当たらず、台に着いたところにインクを塗る |
 | 出発の演出 | ImGui の「Departure」で選んだ演出で、スタート台からレールへ移る（Title の Departure を参照） |
 | 落下リスタート | どのレールにも乗れずに地面の高さまで落ちたら暗転（`SceneManager::StartTransition()`）を始め、画面を覆っている間に `ResetPlayState()` を呼ぶ（`RestartAfterMiss()`）。開始演出は挟まない。チェックポイントを通っていれば、続けて `RespawnAtCheckpoint()` でそこから始め直す。プレイ中に落ちたときは残機を 1 つ減らす（出発前にスタート台から落ちたときは減らさない） |
-| 残機 | 最大 3（`kMaxLives`）。落下・体力 0 で 1 つ減り（`LoseLife()`）、残っていれば落下リスタートと同じ暗転でやり直す（体力は満タンに戻る）。0 になったら、やられ演出のあと GAMEOVER へ移る。`ResetPlayState()` では戻さず、Play に入ったとき（コンティニューを含む）と R キーのやり直しで満タンに戻す |
+| 残機 | 最大 3（`kMaxLives`）。落下・体力 0 で 1 つ減り（`LoseLife()`）、残っていれば落下リスタートと同じ暗転でやり直す（体力は満タンに戻る）。0 になったら、そのときのボスの形態を `ContinuePoint::bossPhase` に書き込み、やられ演出のあと GAMEOVER へ移る。`ResetPlayState()` では戻さず、Play に入ったとき（コンティニューを含む）と R キーのやり直しで満タンに戻す |
 | チェックポイント | レールを進んでいる間に、チェックポイントにした制御点（`isCheckpoint`）を通ったら、レールと制御点・その時点の的ごとの生存状態を覚える（`UpdateCheckpoint()`）。落ちたらその制御点の位置からレールに乗せ、的を覚えた状態に戻す（チェックポイントより前に壊した的は壊れたまま、後の的は復活する）。体力・敵・連鎖数・レールの塗りは最初の状態に戻る。Play に入り直したときと R キーのやり直しでは忘れる。「Start From Selected Point」で始めたときは、始めた制御点より手前のチェックポイントは通ったものとしない |
 | ステージ選択 | スタート台の真ん中から始まり、行きたいステージのゲートの前の目印で SPACE を押すと、そのゲートが開き、`SwitchStage()` でそのステージのレール・的・敵に切り替わる（ゲートの番号とステージの番号は同じ）。最後のステージのゲートは、ステージ1〜3をすべてクリアするまで開けられない。クリアしたステージは `StageInfo::clearedStages` に残り、Play に入ったとき（コンティニューを除く）と R キーのやり直しで忘れる |
 | ゴールの的 | ゴールのレール（Rail Editor の「Goal Rail」を ON にしたレール。ステージ1は Rail 5）に乗ると、ゴールの的（GoalTarget）が現れてプレイヤーの先を並走する。ゴールのレールは終点でレールから外れず止まるため、壊すまで撃ち続けられる（ほかのレールの終点ではレールから外れて落ちる） |
-| クリア | ゴールの的の体力を 0 にして壊したらステージクリア。普通の的より派手な破片（`InkEffectManager::EmitGoalBreak()`）を出し、0.2 秒のヒットストップ・画面の揺れ・的を中心にした放射ブラーをかける。そのまま `ReturnJump` を始め、1.2 秒待つ間は破片・しぶきを 0.3 倍のスローにする。跳び上がった瞬間に「STAGE CLEAR!」を出す。スタート台に着地したら、ステージ1〜3なら `RestartFromReturnJump()` でスタート台の上から始め直し（次のステージのゲートを選べる）、最後のステージなら着地の演出を見せてからクリア画面へ移る（的を全部壊すことはクリアの条件にしない） |
+| ボス戦 | 最後のステージ（ステージ4）では、ゲートからのレールの終点で輪（ループするレール）へ自動で飛び移り、輪の中心のボス（Boss）の周りを回りながら撃つ。輪に乗った瞬間に照準がボスへ向く（`RailCamera::TurnAimToward()`）。輪に乗っている間だけボスが攻撃する。輪に乗っている間は、ゲートからのレールを出ていない状態（点線）にする。ボスを倒すと、体が震えて小さな破片を出し続け、1.2 秒後に大きく弾けて消えて「STAGE CLEAR!」を出し、倒してから 3.4 秒後に結果を書き込んでクリア画面へ移る。残機を減らしてやり直すときはボスの体力を残し（弾は消す）、Play に入り直したとき・R キー・Edit へ戻ったときに1形態目の満タンへ戻す |
+| プレイヤーの体力 | 最大 100 の連続した値。雑魚敵の弾は `enemyBulletDamage`、ボスの弾は種類ごとのダメージを受ける（同時に複数当たっても一番大きい 1 回分だけ）。最後にダメージを受けてから `hpRegenStartDelay` 秒たつと、1 秒あたり `hpRegenSpeed` ずつ戻る（プレイ可能な間だけ進む）。0 で残機が 1 つ減る |
+| クリア | ゴールの的の体力を 0 にして壊したらステージクリア。普通の的より派手な破片（`InkEffectManager::EmitGoalBreak()`）を出し、0.2 秒のヒットストップ・画面の揺れ・的を中心にした放射ブラーをかける。そのまま `ReturnJump` を始め、1.2 秒待つ間は破片・しぶきを 0.3 倍のスローにする。跳び上がった瞬間に「STAGE CLEAR!」を出す。スタート台に着地したら、ステージ1〜3なら `RestartFromReturnJump()` でスタート台の上から始め直し（次のステージのゲートを選べる）、最後のステージはゴールの的を置かず、ボスを倒すとクリア画面へ移る（的を全部壊すことはクリアの条件にしない） |
 | 復活の見せ方 | 落下リスタート・残機を減らしたやり直し・コンティニューで始めるときは、透明な体がだんだん元に戻る見せ方にする（`Player::StartReveal()`、0.8 秒）。暗転が明けてから進める。見せ方は Edit モードの「GameScene Debug」パネルの「Respawn Reveal」で、Stripes（細い横じまだけ見えている状態から、しまが太くなってすき間が埋まる）と Sweep（光る境界線が下から上へ通り、線より下だけ見える）から選ぶ。「Preview Respawn Reveal」でその場で確認できる。選んだものは調整項目 `respawnRevealStyle` に入り、Global Variables の Save で保存する（初期値は Stripes） |
 | やられ演出 | 残機が 0 になったら、すぐには切り替えず `StartDefeat()` を呼ぶ。自機が敵のインク（ピンク）になって弾け（`InkEffectManager::EmitDefeatBurst()`）、一瞬動きを止めて（0.15 秒）画面を揺らし、自機を中心に放射ブラーをかける。自機は描かず、操作・判定は止め、敵とインクの演出は 0.35 倍のスローで動かす。カメラはその場に止まる |
 | ゲームオーバー | やられ演出が始まってから 1.4 秒たったら（`UpdateDefeat()`）、暗いインクが垂れる演出（`InkDrip`）で GAMEOVER へ移る |
@@ -254,10 +259,13 @@ Game/
 | --- | --- |
 | `ResetPlayState()` | Player・RailCamera・TargetManager・GoalTarget・EnemyManager を初期状態に戻し、弾を消し、アクティブレールを 0 番にする。演出・画面の揺れ・出発の演出・大ジャンプ・「STAGE CLEAR!」も止める |
 | `UpdateCheckpoint()` / `RespawnAtCheckpoint()` | 通ったチェックポイントを覚える / 覚えたチェックポイントからレールに乗せ、的の生存状態を戻す |
-| `ApplyRailLocks(isInstant)` | 鍵の的が残っているレールを TargetManager から求め、RailEditor に渡す。毎フレームは的の判定の後に演出つきで、`ResetPlayState()` と `RespawnAtCheckpoint()` ではすぐに反映する。出ているかは的の状態から毎回求めるため、チェックポイントで的を戻すとレールも戻る |
+| `ApplyRailLocks(isInstant)` | 鍵の的が残っているレールを TargetManager から求め、RailEditor に渡す。最後のステージでは、2形態目で現れる輪（`Boss::GetPhase2RailIndex()`）を2形態目に変わるまで出さず、輪に乗っている間はループしないレール（ゲートからのレール）を出ていない状態にする。毎フレームは的の判定の後に演出つきで、`ResetPlayState()` と `RespawnAtCheckpoint()` ではすぐに反映する。出ているかは的の状態から毎回求めるため、チェックポイントで的を戻すとレールも戻る |
 | `MakeDepartureContext()` | 出発の演出が動かす・参照するもの（DepartureContext）をまとめる |
 | `PlayBoardedEffects(position)` | レールに乗って「GO!」を出す瞬間の演出（輪・しぶき・インクの跡）。大ジャンプでスタート台に着地したときにも使う |
 | `SwitchStage(stageIndex)` | 編集・プレイするステージを切り替える。`StageInfo::currentStageIndex` に書き込み、レール・的・敵のエディターを同じステージに切り替え、通ったチェックポイントを忘れ、レールの出方を戻す。Edit 中は Rail Editor の Stage の一覧、Play 中は出発ゲートを開け始めた瞬間に呼ぶ |
+| `StartBossDefeat()` / `UpdateBossDefeat()` | ボスを倒した瞬間に、最後のステージをクリアしたことにしてクリア画面へ移るのを待ち始める / 体が消えるまで、体を震わせて小さな破片を出し続け、`kBossDefeatVanishTime` で大きく弾けさせて「STAGE CLEAR!」を出す |
+| `StartBossPhaseChange()` | ボスが2形態目に変わり始めた瞬間の演出（破片・ヒットストップ・揺れ・放射ブラー・1 秒のスロー・「まだ終わらない!!」）。内側の輪は `ApplyRailLocks()` がボスの形態を見て出す |
+| `UpdateBossRingAttack(isOnBossLoop, deltaTime)` | ボスの輪を塗り返す攻撃を、輪の色（`RailEditor::SetRailTint()`）・塗られた輪に乗っている間のダメージ（`Player::TakeContinuousDamage()`）・飛び移り方の案内に反映する。案内は、今回のプレイで輪から輪へ飛び移ったことが無い間だけ、予告が始まるたびに出す |
 | `RestartFromReturnJump(landedPos)` | 最後のステージ以外で、大ジャンプでスタート台に着地したときに、チェックポイントを忘れ、残機を満タンにし、`ResetPlayState()` で全部を戻してから `StartSequence::StartFromStandby()` でスタート台の上を動ける段階から始める。最後に着地の演出（輪・しぶき・インクの跡・ヒットストップ・揺れ・放射ブラー）を出す |
 | `UpdateGameplay()` | レール進行・カメラ・プレイヤー・敵・弾・的・勝敗判定を、決まった順番で呼び出す |
 | `UpdateCursorVisibility(isPlayMode)` | Edit 中はカーソルを常に表示し、Play 中は TAB で表示を切り替える |
@@ -272,6 +280,9 @@ Game/
 | キー | 初期値 | 登録するクラス | 内容 |
 | --- | --- | --- | --- |
 | `railSpeed` | 6.0 | Player | レール全体の進行速度 |
+| `playerMaxHp` | 100 | Player | プレイヤーの体力の最大値（次にやり直したときから反映される） |
+| `hpRegenStartDelay` / `hpRegenSpeed` | 3.0 / 12.0 | Player | 最後にダメージを受けてから体力が戻り始めるまでの秒数 / 1 秒あたりに戻る体力 |
+| `enemyBulletDamage` | 30 | GameScene | 雑魚敵の弾が当たったときに減る体力 |
 | `cameraHeightOffset` | 0.8 | RailCamera | カメラの回転の中心をレールより上に置く量 |
 | `cameraDistance` | 3.0 | RailCamera | カメラをプレイヤーの後ろへ離す距離 |
 | `cameraFollowSharpness` | 8.0 | RailCamera | レールの向きへカメラが追従する速さ（大きいほど遅れが小さい） |
@@ -285,14 +296,14 @@ Game/
 | `sunElevationDegree` / `sunAzimuthDegree` | 25 / 50 | Sun | 太陽の高さ・方角（度。方角はレール開始地点の進行方向から右回り） |
 | `sunIntensity` / `sunColor` | 1.5 / (1, 0.92, 0.8) | Sun | 光の明るさ・色 |
 | `sunShadowBrightness` | 0.2 | Sun | 光が当たらない面の明るさの下限（光が真正面から当たる面を 1 としたときの割合。0 で今までどおり真っ暗）。シェーダー（`Object3d.PS.hlsl`）で、平行光源の当たり具合がこの値より暗い面だけを、この値まで持ち上げる（日が当たっている面は変えない） |
-| `fallTransitionStyle` / `clearTransitionStyle` | RailStripes / InkBurst | GameScene | 落下リスタート・クリアへの切り替えの演出（ImGui で選ぶ。クリアの方はボス戦を作るときに使う） |
+| `fallTransitionStyle` / `clearTransitionStyle` | RailStripes / InkBurst | GameScene | 落下リスタート・クリアへの切り替えの演出（ImGui で選ぶ。クリアの方はボスを倒したときに使う） |
 | `departureStyle` | CountdownFlip | GameScene | 出発の演出（ImGui の「Departure」で選ぶ。DepartureStyle の番号） |
 
 #### ImGui 表示
 
 | ウィンドウ | 表示するモード | 内容 |
 | --- | --- | --- |
-| Rail Branch Debug | 常時 | レールの本数、アクティブレール、進行度、オンレール状態、敵の体力（EnemyManager が表示）、プレイヤーの体力・残機など |
+| Rail Branch Debug | 常時 | FPS と 1 フレームの時間、レールの本数、アクティブレール、進行度、オンレール状態、敵の体力（EnemyManager が表示）、ボスの形態・体力・弾の数（最後のステージだけ）、プレイヤーの体力・残機など |
 | Editors | Edit のみ | 下段の左半分。右の列に出すエディター（GameScene Debug / Target Editor / Enemy Editor / PostProcess Settings）を選ぶ。Ctrl+1〜4 でも切り替えられ、Scene ビューで的・敵をクリックするとそのエディターに切り替わる。保存していない変更があるエディターは名前の後ろに * を付ける。レール・的・敵の編集の Undo / Redo / Save All と、未保存のエディター名（Unsaved:）もここに出す。選んだエディターは imgui.ini に書き出し、次に起動したときも同じものを開く |
 | GameScene Debug | Edit のみ（Editors で選んだとき） | タイトルを飛ばす設定、選んだ制御点から始める設定（Start From Selected Point）、落下リスタート・クリアへの切り替えの演出の選択と Preview、復活の見せ方（Respawn Reveal）の選択と Preview、出発の演出の選択（Departure。次にゲートを開けたときから使われる）、カメラ座標・回転の編集、ライティング |
 
@@ -301,7 +312,7 @@ Game/
 
 ### ClearScene（`scenes/ClearScene.h/.cpp`）
 
-ボス戦を倒したときに移る画面（ボス戦が未実装のため、今は GameScene から移る処理は無い）。
+最後のステージのボスを倒したときに移る画面。
 
 - 背景に `resource/circle.png` を緑系の色で表示する。
 - 画面の中央に「GAME CLEAR!」と「SPACE でタイトルへ」を描いた画像（`resource/UI/clearTitle.png`、仮素材）を表示する。ImGui を使わないため Release 構成でも表示される。
@@ -326,6 +337,7 @@ Game/
 | --- | --- | --- |
 | `railIndex` / `pointIndex` / `targetAliveStates` | GameScene（残機が 0 になった瞬間に、最後に通ったチェックポイントを書き込む。通っていなければ railIndex は -1） | GameScene（コンティニューで始めるとき） |
 | `isRequested` | GameOverScene（コンティニューを選んだら true、タイトルへなら false） | GameScene（Play に入るときに見て、使ったら false に戻す） |
+| `bossPhase` | GameScene（残機が 0 になった瞬間のボスの形態） | GameScene（コンティニューで始めるときに、その形態の最初の状態にする。`Boss::ResetToPhase()`） |
 
 - コンティニューで始めるときは、残機を満タンにし、`ResetPlayState()` で全部を戻した後、タイトル・スタート台を飛ばし、チェックポイントの位置からレールに乗せて、的をチェックポイントを通った時点の状態に戻す（落下リスタートと同じ戻し方）。体力・敵・連鎖数・レールの塗りは最初の状態に戻る。
 - チェックポイントを通る前に残機が尽きていたときは、レールの始点から始める。
@@ -588,7 +600,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | 3 方向拡散（Spread3） | プレイヤー方向を中心に、左右へ約 12° ずつ開いた 3 発を同時に撃つ | 18.0 | 2.0 秒 |
 | 追尾弾（Homing） | 発射後も毎フレーム、プレイヤー方向へ少しずつ向きを変える | 12.0 | 2.5 秒 |
 
-- 弾（赤色）は初期化時に 16 発まとめて生成し、使い回す。寿命は 4 秒。
+- 弾（赤色）は初期化時に 16 発まとめて生成し、使い回す。寿命は 4 秒。弾の移動・追尾・寿命・当たり判定・描画は EnemyBulletPool に任せている（ボスと共用）。
 - 弾は敵の中心より 0.5 上から発射する。
 
 #### 関数
@@ -615,14 +627,14 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | 項目 | 内容 |
 | --- | --- |
 | 見た目 | `Player/player.obj`（インクタンクを背負いブラスターを構えたキャラクター、黄色）、スケール 0.3 |
-| レール移動 | `railT_`（0〜1）を「制御点ごとの Speed × `railSpeed` × 経過時間」で進める。終端（1.0）で止まる。跳ねている間・飛び移っている間は 0.3 倍の速さで進む |
+| レール移動 | `railT_`（0〜1）を「制御点ごとの Speed × `railSpeed` × 経過時間」で進める。終端（1.0）で止まる。跳ねている間・飛び移っている間は 0.3 倍の速さで進む。ループするレールでは、進行度が 1 を越えたら越えた分を残して 0 へ回り、進み続ける。終点で飛び移る先のレール（`RailEditor::FindEndTransfer()`）が決めてあるレールでは、終点で並走レールへの飛び移りと同じ動きでそのレールへ移る。外から倍率を掛けられる（`SetRailSpeedRate()`。ボスの2形態目で使う） |
 | 表示位置 | 基準位置（オンレール中はレール上の点、オフレール中は自由移動の座標）にそのまま立たせる |
 | 体の向き | カメラの左右の向き（照準の方向）。レールが傾いていても体は直立させる |
 | 弾を撃ち出す位置 | 表示位置から 0.35 上（胸の高さ）。`GetMuzzlePosition()` で取得する |
-| レール上のジャンプ | SPACE でレールに沿って進みながらその場で跳ねる（初速 6.0、重力 9.8）。A / D を押しながら SPACE で、押した方向の並走レール（水平 8.0・高さ 3.0 以内）へ 0.4 秒かけて山なりに飛び移る |
+| レール上のジャンプ | SPACE でレールに沿って進みながらその場で跳ねる（初速 6.0、重力 9.8）。A / D を押しながら SPACE で、押した方向の並走レール（水平 8.0・高さ 3.0 以内）へ 0.4 秒かけて山なりに飛び移る。ループするレールの上では、W / S（カメラの前・後ろ）でも飛び移れる（輪の中心を見ていると、隣の輪が前後に来るため） |
 | スタート台の上の移動 | WASD で、カメラ基準の水平方向へ 5.0 で動く。SPACE でジャンプ |
 | レールに乗る | 台と重なったレールの始点へ歩く（高さの差 0.5 以内）か、落下中に「水平距離が `kOnRailHorizontalThreshold`（1.0）以内」かつ「前フレームより下へレールの高さを跨いだ」ら乗る |
-| 体力 | 最大 3。敵弾が当たると 1 減り、1 秒間は無敵になる。被弾位置に火花パーティクルを出す |
+| 体力 | 最大 100（`playerMaxHp`）の連続した値。敵弾が当たると弾のダメージの分だけ減り、1 秒間は無敵になる。被弾位置に火花パーティクルを出す。最後にダメージを受けてから `hpRegenStartDelay` 秒たつと、1 秒あたり `hpRegenSpeed` ずつ戻る |
 
 #### 関数
 
@@ -634,7 +646,10 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `UpdateBasePose(railEditor)` | オンレール / オフレールに応じて、カメラ・プレイヤーの共通の基準位置と基準向きを求める |
 | `UpdateTransform(cameraRotation, hopHeight)` | 表示位置と体の向きを求め、モデルの行列を更新する。タイトル中の跳ね（`hopHeight`）は見た目だけに反映する |
 | `UpdateInvincible(deltaTime)` | 無敵時間を進める |
-| `TakeDamage()` | 無敵中でなければ体力を 1 減らし、無敵時間を始める |
+| `TakeDamage(damage)` | 無敵中でなければ体力を `damage` 減らし、無敵時間を始める |
+| `TakeContinuousDamage(damagePerSecond, deltaTime)` | 時間に応じて減り続けるダメージを受ける（無敵中でも減り、無敵時間は始めない。ボスが塗った輪に乗っている間に使う） |
+| `UpdateRegeneration(deltaTime)` | 体力の自然回復を進める |
+| `SetRailSpeedRate(rate)` | レールを進む速さに掛ける倍率を設定する |
 | `StartOnPlatform(startPosition, startRotation)` | スタート台の上にオフレールの状態で立たせる（`Reset()` の後に呼ぶ） |
 | `BoardRailStart(startT)` | レールの進行度 startT（省略時は 0 = 始点）にオンレールの状態で乗せる（出発の演出・途中からの Play 用。体力は残す） |
 | `SetDirectedPose(position, rotate, scaleRate)` | 出発の演出中に、表示を演出が決めた位置・向き・大きさにする |
@@ -645,6 +660,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `GetMuzzlePosition()` | 弾を撃ち出す位置の取得 |
 | `HasReachedGoal` / `IsDead` | ゴールのレール（`RailEditor::IsGoalRail()`）の終点で止まったか（ゴール以外のレールは終点で `UpdateRailProgress` がレールから外すため、ゴールのレールでだけ true になる。止まっている間はレールを塗らない）/ ゲームオーバーの判定用 |
 | `IsGroundedOnRail()` | オンレールで足がレールに着いているか（跳ねている・飛び移っている途中は false。足元のしぶきに使う） |
+| `GetHpRate()` | 体力の残りの割合（体力の表現に使う） |
 | `GetRailT` / `IsOnRail` / `GetFreeVelocityY` / `GetHp` / `GetMaxHp` / `GetInvincibleTimer` | デバッグ表示用の取得 |
 
 ### PlayerBulletManager（`objects/PlayerBulletManager.h/.cpp`）
@@ -722,6 +738,76 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `FindAimed(cameraPosition, cameraForward, minDistance, outDistance)` | レティクルの方向が当たり判定の球を通っているか |
 | `Draw()` | 現れていて壊れていないときに描画する |
 | `IsDestroyed()` / `GetPosition()` | 壊れたか / 今の座標 |
+
+### Boss（`objects/Boss.h/.cpp`）
+
+最後のステージ（ステージ4）のボス。ループするレールの輪の中心に浮かび、プレイヤーはその周りを回りながら撃つ。最後のステージ以外では何もせず、描画もしない。
+
+| 項目 | 内容 |
+| --- | --- |
+| 見た目 | `Boss/boss.obj`（球の体にとげと一つ目を付けた仮のモデル。`tools/generate_boss_assets.py` で生成）。体の半径は表示スケール（`scale`）と同じ。一つ目をプレイヤーへ向け、上下にゆっくり揺れる |
+| 当たり判定 | 体の球だけ（とげには当たらない）。レティクルの方向が球を通ればレティクルを赤くし、弾を体の手前の面の奥行きへ向けて撃つ |
+| 体力 | 形態ごとに持つ（1形態目 `phase1Hp`、2形態目 `phase2Hp`）。色は体力が満タンのとき 1形態目が黄色・2形態目が紫で、減った割合に合わせて赤へ近づく |
+| 形態の切り替わり | 1形態目の体力が尽きると、倒れずに2形態目へ変わる。体力を2形態目の最大値に戻し、撃った弾を消し、`phaseChangeDuration` 秒かけて `phase2Rise` だけ上へ浮き上がる。この間は弾が当たらず、攻撃もしない |
+| 攻撃 | プレイヤーが輪に乗っている間だけ、1 回の攻撃のあと `attackInterval`（2形態目は `phase2AttackInterval`）秒待って次を撃つ。1形態目は 連射 → 扇 → 追尾弾、2形態目は 連射 → 輪の塗り返し → 扇 → 追尾弾 → 輪の塗り返し |
+| 予備動作 | 弾を撃つ前の `telegraphTime` 秒、体をふくらませて白く光らせ、撃った瞬間に戻す（連射の2発目以降と輪の塗り返しでは行わない。当たり判定の大きさは変えない） |
+| 先読み | 前のフレームからの移動量でプレイヤーの水平方向の速さを求め、弾が届くころの位置を狙う（`leadRate` で強さを変える）。レールの上で跳ねると進みが遅くなるので避けられる |
+| 2形態目のレール | 内側の輪（`phase2RailIndex` のレール）が現れ、輪を回る速さが `phase2RailSpeedRate` 倍になる（どちらも GameScene がボスの状態を読んで反映する） |
+
+| 攻撃 | 内容 |
+| --- | --- |
+| 先読みの連射（Burst） | 先読みした位置へ、`burstInterval` 秒おきに `burstCount` 発（1 発ごとに狙い直す）。速さ `bulletSpeed`、ダメージ `bulletDamage` |
+| 扇状の弾（Fan） | 先読みした向きを中心に、`fanAngle` ずつ開いた `fanCount` 発を同時に撃つ |
+| 追尾弾（Homing） | 速さ `homingSpeed` の遅い弾が、`homingTurnRate` で向きを変えながら追う。ダメージ `homingDamage`。寿命 4 秒 |
+| 輪の塗り返し（RingInk。2形態目だけ） | プレイヤーが乗っている輪を、`ringWarnTime` 秒の予告（白く点滅）のあと `ringDangerTime` 秒のあいだ赤く塗る。塗られた輪に乗っている間、1 秒あたり `ringDamagePerSecond` のダメージを受ける。弾の攻撃とは別に時間を進める |
+
+| 関数 | 内容 |
+| --- | --- |
+| `Initialize(Obj3dCommon*)` | モデルと弾（32 発）の生成、調整項目の登録 |
+| `Reset()` / `ResetToPhase(phase)` | 1形態目の最初の状態に戻す / 指定した形態の最初の状態にする（コンティニュー用） |
+| `ResetAttack()` | 体力は残したまま、撃った弾と輪の塗り返しを消し、攻撃を最初の待ち時間からやり直す |
+| `Update(isBossStage, playerPosition, bullets, canBeHit, canAttack, playerRailIndex, deltaTime)` | 位置・向き・攻撃の更新と、プレイヤーの弾との当たり判定 |
+| `FindAimed(cameraPosition, cameraForward, minDistance, outDistance)` | レティクルの方向が体の球を通っているか（距離は手前の面まで） |
+| `CheckHitToPlayer(playerSphere)` | ボスの弾とプレイヤーの当たり判定。命中した弾のダメージ（複数なら一番大きいもの）を返す |
+| `UpdateDefeated(deltaTime)` / `Vanish()` | 倒されてから消えるまで、体を震わせて白く点滅させる / 体を消す |
+| `IsActive()` / `IsDefeated()` / `IsShown()` | まだ倒されていないか / 倒されたか / 体がまだ消えていないか |
+| `GetPhase()` / `IsSecondPhase()` / `ConsumePhaseChanged()` | 今の形態 / 2形態目か / このフレームで2形態目に変わり始めたか（1 回読むと消える） |
+| `GetPhase2RailIndex()` / `GetRailSpeedRate()` | 2形態目で現れる輪のレールの番号 / 今の形態で輪を回る速さに掛ける倍率 |
+| `GetRingAttackState()` / `GetRingAttackRailIndex()` / `GetRingAttackColor()` / `GetRingAttackTintRate()` / `GetRingDamagePerSecond()` | 輪の塗り返しの段階（None / Warning / Danger）・対象のレール・輪の色を寄せる先の色と割合・1 秒あたりのダメージ |
+| `GetHp()` / `GetMaxHp()` / `GetPosition()` / `GetBodyRadius()` / `GetActiveBulletCount()` | 今の形態の体力と最大値 / 体の中心 / 体の半径 / 飛んでいる弾の数 |
+
+#### GlobalVariables の調整項目（グループ `Boss`）
+
+`resource/GlobalVariables/Boss.json` に保存される（Global Variables パネルで Save するとできる）。
+
+| キー | 初期値 | 内容 |
+| --- | --- | --- |
+| `phase1Hp` / `phase2Hp` | 120 / 160 | 形態ごとの体力（次に戦い直したときから反映される） |
+| `position` | (-60, 6.5, 0) | 体の中心を置く位置 |
+| `scale` | 3.0 | 表示スケール（体の半径） |
+| `bobAmplitude` / `bobSpeed` | 0.4 / 1.2 | 上下の揺れの幅・速さ |
+| `attackInterval` / `phase2AttackInterval` | 1.6 / 1.1 | 攻撃の間隔（秒） |
+| `telegraphTime` | 0.7 | 弾を撃つ前の予備動作の時間（秒。0 で予備動作なし） |
+| `bulletSpeed` / `bulletDamage` | 16.0 / 30 | 連射・扇の弾の速さ・ダメージ |
+| `burstCount` / `burstInterval` | 3 / 0.25 | 連射の弾数・間隔（秒） |
+| `fanCount` / `fanAngle` | 5 / 0.12 | 扇の弾数・隣の弾との角度（ラジアン） |
+| `homingSpeed` / `homingTurnRate` / `homingDamage` | 9.0 / 1.2 / 40 | 追尾弾の速さ・曲がりやすさ・ダメージ |
+| `leadRate` | 1.0 | 先読みの強さ（0 で撃った瞬間の位置を狙う） |
+| `phaseChangeDuration` / `phase2Rise` | 2.0 / 1.0 | 2形態目へ変わる演出の時間（秒）/ 上へ上げる量 |
+| `phase2RailSpeedRate` / `phase2RailIndex` | 1.25 / 2 | 2形態目で輪を回る速さに掛ける倍率 / 現れる輪のレールの番号 |
+| `ringWarnTime` / `ringDangerTime` / `ringDamagePerSecond` | 1.5 / 2.5 / 35 | 輪の塗り返しの予告の時間・攻撃中の時間（秒）・1 秒あたりのダメージ |
+
+### EnemyBulletPool（`objects/EnemyBulletPool.h/.cpp`）
+
+敵の弾の使い回し。Enemy と Boss で共用する。初期化時に決めた数だけ弾を作り、未使用の弾を使い回す。弾は等速でまっすぐ飛び、追尾弾は毎フレーム少しずつプレイヤーの方へ向きを変える。決めた時間がたつと未使用に戻る。
+
+| 関数 | 内容 |
+| --- | --- |
+| `Initialize(Obj3dCommon*, settings)` | 弾のモデル（`Sphere/sphere.obj`）の読み込みと、使い回す弾の生成。`Settings` で数・大きさ・寿命・追尾の曲がりやすさ・色を決める |
+| `Fire(spawnPosition, direction, speed, isHoming, damage)` | 未使用の弾を 1 発撃つ（未使用の弾が無いときは何もしない）。`damage` は省略できる |
+| `Update(playerPosition, deltaTime)` | 移動・追尾の向き補正・寿命切れの判定・行列の更新。`deltaTime` が 0 なら表示だけ更新する |
+| `CheckHitToPlayer(playerSphere, outMaxDamage)` | 弾とプレイヤーの当たり判定。当たった弾を未使用に戻し、その数を返す。`outMaxDamage` を渡すと、当たった弾のうち一番大きいダメージを入れる |
+| `Clear()` / `Draw()` / `GetActiveCount()` / `SetHomingTurnRate(rate)` | すべて未使用に戻す / 描画 / 飛んでいる弾の数 / 追尾の曲がりやすさを変える |
 
 ### EnemyManager（`objects/EnemyManager.h/.cpp`）
 
@@ -858,7 +944,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 
 ### StageResult（`objects/StageResult.h`）
 
-クリア画面へ渡すプレイの結果（壊した的の数・的の総数・最大連鎖数）。シーンは切り替えのたびに作り直されるため、GameScene がクリア直前に書き込み、ClearScene が読み出す。今は CLEAR へ移る処理が無いため書き込んでいない（ボス戦を作るときに、CLEAR へ移る直前に書き込む）。
+クリア画面へ渡すプレイの結果（壊した的の数・的の総数・最大連鎖数）。シーンは切り替えのたびに作り直されるため、GameScene がクリア直前（ボスを倒して CLEAR へ移る直前）に書き込み、ClearScene が読み出す。最後のステージには的を置いていないため、今は的の数は 0 になる。
 
 ---
 
@@ -879,6 +965,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | --- | --- |
 | `Initialize(paramGroup)` | 調整項目（`cameraHeightOffset` / `cameraDistance` / `cameraFollowSharpness` / `mouseSensitivity` / `aimPitchLimit`）の登録 |
 | `Reset()` | 照準オフセットを 0 に戻し、次の更新で追従の遅れなしにレールの向きへ合わせる |
+| `TurnAimToward(basePosition, baseRotation, target)` | 照準を指定した点へ向ける（上下は可動範囲に収める）。照準オフセットを変えた分を追従中の向きから引くため、見えている向きはその瞬間には変わらず、その後の更新でなめらかに回る。ボスの輪に乗った瞬間に、ボスを画面の中央へ入れるのに使う |
 | `RebaseFollowRotation(newBaseRotation)` | 追従する基準の向きを付け替え、見えている向きが変わらないよう左右の照準オフセットに差を足す。出発ゲートを開け始めた瞬間に、選んだステージのレールの始点の向きへ付け替える（付け替えないと、台の上で振り向いた分だけレールに乗った後もレールの正面からずれる） |
 | `Update(basePosition, baseRotation, isInputEnabled, input, deltaTime, groundHeight, startPlatform)` | 位置・向き・前方ベクトル・右方向ベクトルを計算し、カメラに反映する。`groundHeight` と `startPlatform`（nullptr なら調べない）はめり込み防止に使う |
 | `GetPosition` / `GetRotation` / `GetForward` / `GetRight` | 計算結果の取得 |
@@ -1027,6 +1114,22 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Reset()` / `Begin()` | 何も表示していない状態に戻す / 出す |
 | `Update(float)` / `Draw()` | 表示の動きを進める / 描画（表示していないときは何もしない） |
 
+### BossHpGauge（`UI/BossHpGauge.h/.cpp`）
+
+ボスの体力ゲージ。画面の上（高さ 4.5%）の中央に、幅 720 の横長のゲージを出す。白一色の画像（`resource/RailTube/white.png`）に色を付けて描くため、専用の画像は無い。スプライトで描くため、Release 構成でも表示される。
+
+- 今の形態の体力を表す。色は形態ごとに変える（1形態目は黄色、2形態目は紫）。
+- 減った分は、白い帯が少し遅れて縮んで追いつく。
+- ゲージの下に形態の数だけ小さな印を並べ、今とこれからの形態をその形態の色で、使い切った形態を暗い色で出す。
+- 形態が変わると、空の状態から満タンまで伸ばす。
+- GameScene は、Play 中でプレイが始まっていて、ボスがまだ倒されていない間だけ出す。出すとき・消すときは濃さを少しずつ変える。
+
+| 関数 | 内容 |
+| --- | --- |
+| `Initialize(SpriteCommon*)` / `Reset()` | テクスチャの読み込みとスプライトの生成 / 消した状態に戻す |
+| `Update(isShown, hp, maxHp, phase, deltaTime)` | 出すかどうかと体力・形態から、帯の長さ・色・濃さを決める |
+| `Draw()` | 描画（見えていないときは何もしない） |
+
 ### SpeedLines（`UI/SpeedLines.h/.cpp`）
 
 画面の中心から外側へ流れる白いスピード線（`UI/speedLine.png`、28 本）。レールを進んでいる間だけ濃くなり、乗っていないときはゆっくり消える。画面の中心付近（半径 280 ピクセル）は自機と照準が見えるよう空けておく。
@@ -1039,14 +1142,16 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 
 ### DamageInkEffect（`UI/DamageInkEffect.h/.cpp`）
 
-プレイヤーの体力を、画面の縁から迫る敵のインクで表現する。描くのはポストプロセスの `DamageInk`（`Engine/Graphics/Shaders/PostProcess/DamageInk.PS.hlsl`）で、このクラスは体力から強さを求めて `Application::SetDamageEffect(amount, flash)` に渡す。HUD のアイコンは残機に使うため、体力は数字やアイコンでは出さない。
+プレイヤーの体力を、画面の縁から迫る敵のインクで表現する。描くのはポストプロセスの `DamageInk`（`Engine/Graphics/Shaders/PostProcess/DamageInk.PS.hlsl`）で、このクラスは体力の残りの割合から強さを求めて `Application::SetDamageEffect(amount, flash)` に渡す。HUD のアイコンは残機に使うため、体力は数字やアイコンでは出さない。
 
-| 体力 | 見た目 |
+| 体力の残り | 見た目 |
 | --- | --- |
-| 3（満タン） | 何もかけない |
-| 2 | 画面の四隅にピンクのインクがにじむ |
-| 1 | インクが画面の縁全体を囲み、鼓動のように脈打つ（1 秒に 1.2 回）。景色の色も抜けていく |
-| 被弾の瞬間 | 画面全体を一瞬ピンクに寄せ、0.4 秒で戻す |
+| 満タン | 何もかけない |
+| 減るほど | 画面の四隅からピンクのインクがにじみ、縁全体を囲んで内側へ迫る。景色の色も抜けていく |
+| 35% 以下 | 鼓動のように脈打つ（1 秒に 1.2 回） |
+| 被弾の瞬間（1 フレームで 5% 以上減ったとき） | 画面全体を一瞬ピンクに寄せ、0.4 秒で戻す。塗られた輪に乗っている間の、少しずつ減るダメージでは寄せない |
+
+- 体力は自然回復で少しずつ戻るため、インクも時間とともに少しずつ引いていく。
 
 - インクの広がりは体力の減り具合（0: 満タン 〜 1: 尽きた）へ少しずつ寄せ、じわっと迫って見えるようにする。やり直しで体力が満タンに戻ると、インクが引いていく。
 - インクの縁は 2 つの波で波打たせ、時間とともに動かす。縁のすぐ外側は暗いピンクにして、インクの盛り上がりに見せる。
@@ -1056,13 +1161,14 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | 関数 | 内容 |
 | --- | --- |
 | `Reset()` | 表示を消し、ポストプロセスからも外す |
-| `Update(hp, maxHp, isVisible, deltaTime)` | 体力からインクの広がり・色づきを求め、ポストプロセスに渡す |
+| `Update(hpRate, isVisible, deltaTime)` | 体力の残りの割合からインクの広がり・色づきを求め、ポストプロセスに渡す |
 
 | 定数 | 値 | 内容 |
 | --- | --- | --- |
 | `DamageInkEffect.h::kFollowSpeed` | 6.0 | インクの広がりを体力から求めた広がりへ寄せる速さ（1 秒あたりに残りの差を詰める割合） |
 | `DamageInkEffect.h::kFlashDuration` | 0.4 | 被弾した瞬間の色づきが消えるまでの時間（秒） |
-| `DamageInkEffect.h::kDangerHp` | 1 | この体力以下で脈打たせる |
+| `DamageInkEffect.h::kDangerHpRate` | 0.35 | 体力の残りの割合がこれ以下で脈打たせる |
+| `DamageInkEffect.h::kFlashMinDropRate` | 0.05 | 1 フレームでこれ以上減ったら、被弾した瞬間として画面を色づける |
 | `DamageInkEffect.h::kPulseAmplitude` / `kPulseFrequency` | 0.08 / 1.2 | 脈打つときに広げる最大の量 / 1 秒あたりの回数 |
 | `DamageInk.PS.hlsl::kInkStartRadius` / `kInkFullRadius` | 1.45 / 0.75 | 体力満タン / 尽きたときのインクの縁の位置（画面の中心から縁までを 1 とした距離。角は約 1.41） |
 | `DamageInk.PS.hlsl::kMaxDesaturation` | 0.6 | 体力が尽きたときに景色の色をどこまで抜くか |
@@ -1117,6 +1223,10 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
   - `speed`：その区間の速度倍率
   - 分岐設定：保存はされるが、今の実行時には読まれない
   - `isCheckpoint`：チェックポイントにするか（通った後に落ちたら、この制御点の位置からやり直す）。延長・螺旋で作った制御点には引き継がない
+- レールごとに、ゴールのレールか（`isGoalRail`）・ループするレールか（`isLoop`）・終点で自動で飛び移る先のレール（`endTransferRailIndex`。-1 は飛び移らない）を持つ。
+- ループするレール（制御点 3 つ以上）は、最後の制御点から最初の制御点へつながり、すべての制御点を曲線が通る。曲線の計算には、「最後の制御点・すべての制御点・最初の制御点・2番目の制御点」の順に並べた別の配列（`loopCurvePoints`）を使う。こうすると、ループしないレールと同じ計算のまま 1 周する曲線になり、位置・向き・ロール・速さがつなぎ目で途切れない。この配列は読み込み・Undo・Edit 中の毎フレームの最後に作り直す（`RefreshLoopCurvePoints()`）。
+  - 進行度 0 と 1 は同じ位置になる。プレイヤーの進行度は 1 を越えたら 0 へ回す。制御点 i を通る位置の進行度は i / 制御点数。
+  - 始点・終点の目印は出さない。塗った区間は「塗り始めの進行度」と「そこから続いた終わりの進行度（1 を越えうる）」で持ち、つなぎ目をまたいで塗れる。1 周したら全体を塗った状態にする。
 - 位置は Catmull-Rom スプラインで補間する。
 - 向き（ピッチ・ヨー）は進行方向から逆算し、ロールは制御点間を線形補間する。ロールと速度は位置と同じ区間分けで補間し、制御点に設定した値がその制御点を通る位置で効く。
 - Edit モードの描画では、アクティブなレールを黄色、それ以外を黒で表示する。
@@ -1136,6 +1246,8 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | Stage | 編集・プレイするステージを選ぶ（的・敵のエディターも同じステージに切り替わる）。以下の操作は選んだステージのレールに対して行う |
 | レール一覧 | クリックでアクティブなレールを切り替える。ゴールのレールには (Goal) と出す |
 | Goal Rail | アクティブなレールをゴールのレールにする（終点で止まり、乗るとゴールの的が現れる。`rail*.json` の `isGoalRail`）|
+| Loop Rail | アクティブなレールをループするレールにする（`rail*.json` の `isLoop`）。一覧に (Loop) と出す |
+| End Transfer Rail | 終点に着いたら自動で飛び移る先のレールの番号（-1 で飛び移らない。`rail*.json` の `endTransferRailIndex`）。飛び移る先のレールの、終点に一番近い位置へ乗る |
 | New Rail | レールを 1 本追加し、アクティブにする |
 | Add Control Point | アクティブなレールの末尾に、末尾 2 点と同じ向き・間隔で伸ばした位置へ制御点を追加し、選択する |
 | Save / Load | 全ステージの全レールを JSON に保存する / JSON から読み込む |
@@ -1158,6 +1270,9 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 | `FindNearestRail(worldPos)` | 全レールから最も近いレール・進行度・距離・最近傍点を求める。粗いサンプリング 200 点のあと、三分探索で 20 回絞り込む |
 | `SwitchActiveRail(index)` | アクティブなレールを切り替える |
 | `IsGoalRail(railIndex)` | 今のステージのそのレールがゴールのレールか |
+| `IsLoopRail(railIndex)` | 今のステージのそのレールがループするレールか（制御点が足りず輪にならないレールは false） |
+| `FindEndTransfer(railIndex, outRailIndex, outT)` | そのレールに終点で飛び移る先が決めてあれば、そのレールと乗る位置の進行度を返す（決めていない・出ていないレール・曲線を作れないレールなら false） |
+| `SetRailTint(railIndex, color, rate)` / `ClearRailTints()` | 今のステージのレールの管の色を、指定した色へ `rate` だけ寄せて描く（ボスの輪の塗り返し用）/ 全レールの色を元に戻す |
 | `SetStageIndex(stageIndex)` / `GetStageIndex()` / `ConsumeStageChangeRequest(outStageIndex)` | ステージを切り替える（0 番のレールをアクティブにする）/ 今のステージ / Stage の一覧で選び直されたステージを返す（1 回読むと消える） |
 | `GetControlPointsCenter()` / `GetControlPointsRadius()` | 俯瞰カメラを自動で合わせるための、制御点全体の中心と半径 |
 | `SetLandingRangeRadius(radius)` | 着地範囲の表示に使う許容距離を受け取る |
@@ -1247,10 +1362,11 @@ Scene ビュー上のマウス位置から画面奥へ伸びるレイを求め�
 
 | ファイル | 保存するクラス | 内容 | 反映のしかた |
 | --- | --- | --- | --- |
-| `resource/stage/stageN/rail/rail0.json`、`rail1.json` … | RailEditor | ステージごと・レールごとの制御点（N はステージの番号 1〜4） | 起動時に全ステージを自動で読み込む。以降は Save / Load ボタン（全ステージまとめて） |
+| `resource/stage/stageN/rail/rail0.json`、`rail1.json` … | RailEditor | ステージごと・レールごとの制御点と、ゴールのレールか・ループするか・終点で飛び移る先のレール（N はステージの番号 1〜4） | 起動時に全ステージを自動で読み込む。以降は Save / Load ボタン（全ステージまとめて） |
 | `resource/stage/stageN/target.json` | TargetEditor | ステージごとの的の座標・壊すと出るレール | 同上 |
 | `resource/stage/stageN/enemy.json` | EnemyEditor | ステージごとの敵の座標・往復方向・最大 HP | 同上 |
 | `resource/GlobalVariables/GameScene.json` | GlobalVariables（エンジン） | GameScene の調整項目（ゴールの的の体力・並走する距離・高さを含む） | 実行中の変更が自動で反映される |
+| `resource/GlobalVariables/Boss.json` | GlobalVariables（エンジン） | ボスの調整項目（体力・攻撃・形態の変化。Save するまでファイルは無く、初期値で動く） | 同上 |
 | `resource/GlobalVariables/Title.json` | GlobalVariables（エンジン） | タイトルロゴの位置・大きさ・消え方、BGM・効果音の音量、ゲートを映す画の位置 | 同上 |
 
 ---
@@ -1281,6 +1397,7 @@ Scene ビュー上のマウス位置から画面奥へ伸びるレイを求め�
 | 左クリック（押しっぱなしで連射） | 射撃 |
 | SPACE | レールに沿って進みながらその場で跳ねる |
 | A / D ＋ SPACE | 押した方向の並走レールへ飛び移る |
+| W / S ＋ SPACE | ループするレール（ボスの輪）の上で、カメラの前・後ろにある輪へ飛び移る |
 | TAB | マウスカーソルの表示切り替え |
 
 ### デバッグ（モード問わず）
@@ -1299,4 +1416,4 @@ Scene ビュー上のマウス位置から画面奥へ伸びるレイを求め�
 
 | キー | 内容 |
 | --- | --- |
-| SPACE | GAME へ戻る（タイトルから始まる。クリア画面は今は出ない） |
+| SPACE | GAME へ戻る（タイトルから始まる） |
