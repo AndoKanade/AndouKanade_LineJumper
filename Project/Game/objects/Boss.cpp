@@ -7,6 +7,7 @@
 #include "Camera.h"
 #include "GlobalVariables.h"
 #include "ParticleManager.h"
+#include "Easing.h"
 #include <algorithm>
 #include <cmath>
 
@@ -32,6 +33,16 @@ namespace{
 	const char* kHomingSpeedKey = "homingSpeed";
 	const char* kHomingTurnRateKey = "homingTurnRate";
 	const char* kLeadRateKey = "leadRate";
+	// 調整項目名(2形態目の体力・変わる演出の時間・上へ上げる量・攻撃の間隔・輪を回る速さの倍率・現れる輪のレールの番号)
+	const char* kPhase2HpKey = "phase2Hp";
+	const char* kPhaseChangeDurationKey = "phaseChangeDuration";
+	const char* kPhase2RiseKey = "phase2Rise";
+	const char* kPhase2AttackIntervalKey = "phase2AttackInterval";
+	const char* kPhase2RailSpeedRateKey = "phase2RailSpeedRate";
+	const char* kPhase2RailIndexKey = "phase2RailIndex";
+	// 調整項目名(輪を塗り返す攻撃の、予告の時間と攻撃中の時間)
+	const char* kRingWarnTimeKey = "ringWarnTime";
+	const char* kRingDangerTimeKey = "ringDangerTime";
 }
 
 Boss::Boss() = default;
@@ -56,6 +67,14 @@ void Boss::Initialize(Obj3dCommon* objCommon){
 	gv->AddItem(kBossGroup,kHomingSpeedKey,kDefaultHomingSpeed);
 	gv->AddItem(kBossGroup,kHomingTurnRateKey,kDefaultHomingTurnRate);
 	gv->AddItem(kBossGroup,kLeadRateKey,kDefaultLeadRate);
+	gv->AddItem(kBossGroup,kPhase2HpKey,static_cast<int32_t>(kDefaultPhase2Hp));
+	gv->AddItem(kBossGroup,kPhaseChangeDurationKey,kDefaultPhaseChangeDuration);
+	gv->AddItem(kBossGroup,kPhase2RiseKey,kDefaultPhase2Rise);
+	gv->AddItem(kBossGroup,kPhase2AttackIntervalKey,kDefaultPhase2AttackInterval);
+	gv->AddItem(kBossGroup,kPhase2RailSpeedRateKey,kDefaultPhase2RailSpeedRate);
+	gv->AddItem(kBossGroup,kPhase2RailIndexKey,static_cast<int32_t>(kDefaultPhase2RailIndex));
+	gv->AddItem(kBossGroup,kRingWarnTimeKey,kDefaultRingWarnTime);
+	gv->AddItem(kBossGroup,kRingDangerTimeKey,kDefaultRingDangerTime);
 
 	ModelManager::GetInstance()->LoadModel(kBossModelPath);
 
@@ -75,17 +94,79 @@ void Boss::Initialize(Obj3dCommon* objCommon){
 	Reset();
 }
 
-// 戦う前の状態(体力満タン・弾なし)に戻す
-// 体力の最大値は、ImGuiで変えた値がやり直すたびに反映されるよう、ここで調整項目から読み直す
+// 戦う前の状態(1形態目・体力満タン・弾なし)に戻す
 void Boss::Reset(){
-	maxHp_ = (std::max)(static_cast<int>(GlobalVariables::GetInstance()->GetIntValue(kBossGroup,kPhase1HpKey)),kMinMaxHp);
+	ResetToPhase(kFirstPhase);
+}
+
+// 指定した形態の最初の状態(体力満タン・弾なし)にする
+// 体力の最大値は、ImGuiで変えた値がやり直すたびに反映されるよう、ここで調整項目から読み直す
+void Boss::ResetToPhase(int phase){
+	phase_ = (phase >= kSecondPhase)?kSecondPhase:kFirstPhase;
+	const char* hpKey = (phase_ == kSecondPhase)?kPhase2HpKey:kPhase1HpKey;
+	maxHp_ = (std::max)(static_cast<int>(GlobalVariables::GetInstance()->GetIntValue(kBossGroup,hpKey)),kMinMaxHp);
 	hp_ = maxHp_;
 	isDefeated_ = false;
 	bobTimer_ = 0.0f;
+	// 形態が変わる演出の途中でも、演出を終えた状態から始める
+	phaseChangeTimer_ = 0.0f;
+	hasPhaseChanged_ = false;
 	if(Model::Material* mat = obj_->GetMaterial()){
-		mat->color = kFullHpColor;
+		mat->color = (phase_ == kSecondPhase)?kPhase2FullHpColor:kFullHpColor;
 	}
 	ResetAttack();
+}
+
+// 1形態目の体力が尽きたときに、2形態目へ変わり始める
+// 体力を2形態目の最大値まで戻し、撃った弾を消し、変わる演出の間は弾が当たらず攻撃もしないようにする
+void Boss::BeginPhaseChange(){
+	GlobalVariables* gv = GlobalVariables::GetInstance();
+	phase_ = kSecondPhase;
+	maxHp_ = (std::max)(static_cast<int>(gv->GetIntValue(kBossGroup,kPhase2HpKey)),kMinMaxHp);
+	hp_ = maxHp_;
+	phaseChangeDuration_ = gv->GetFloatValue(kBossGroup,kPhaseChangeDurationKey);
+	phaseChangeTimer_ = phaseChangeDuration_;
+	hasPhaseChanged_ = true;
+	ResetAttack();
+}
+
+// このフレームで2形態目に変わり始めたかを受け取る(1回読むと消える)
+bool Boss::ConsumePhaseChanged(){
+	const bool hasChanged = hasPhaseChanged_;
+	hasPhaseChanged_ = false;
+	return hasChanged;
+}
+
+// 2形態目で現れる輪のレールの番号(調整項目)を取得
+int Boss::GetPhase2RailIndex() const{
+	return static_cast<int>(GlobalVariables::GetInstance()->GetIntValue(kBossGroup,kPhase2RailIndexKey));
+}
+
+// 今の形態でプレイヤーが輪を回る速さに掛ける倍率を取得
+float Boss::GetRailSpeedRate() const{
+	if(phase_ < kSecondPhase){
+		return 1.0f;
+	}
+	return GlobalVariables::GetInstance()->GetFloatValue(kBossGroup,kPhase2RailSpeedRateKey);
+}
+
+// 輪を塗り返す攻撃で、対象の輪の色を寄せる先の色を取得
+Vector4 Boss::GetRingAttackColor() const{
+	return (ringAttackState_ == RingAttackState::Danger)?kRingDangerColor:kRingWarnColor;
+}
+
+// 輪を塗り返す攻撃で、対象の輪の色を寄せる割合を取得
+// 予告の間は0〜1を行き来させて点滅させ、攻撃中は寄せきった色にする
+float Boss::GetRingAttackTintRate() const{
+	switch(ringAttackState_){
+	case RingAttackState::Warning:
+		return 0.5f + 0.5f * std::sin(ringAttackTimer_ * kRingWarnBlinkSpeed);
+	case RingAttackState::Danger:
+		return 1.0f;
+	case RingAttackState::None:
+	default:
+		return 0.0f;
+	}
 }
 
 // 体力は残したまま、撃った弾を消して攻撃を最初の待ち時間からやり直す
@@ -94,13 +175,17 @@ void Boss::ResetAttack(){
 	attackIndex_ = 0;
 	attackTimer_ = GlobalVariables::GetInstance()->GetFloatValue(kBossGroup,kAttackIntervalKey);
 	burstShotsLeft_ = 0;
+	// 輪を塗り返す攻撃も、予告・攻撃中の途中なら止める
+	ringAttackState_ = RingAttackState::None;
+	ringAttackRailIndex_ = kNoRingAttackRail;
+	ringAttackTimer_ = 0.0f;
 	// やり直しでプレイヤーの位置が飛ぶため、速さは次のフレームから求め直す
 	playerVelocity_ = {0.0f, 0.0f, 0.0f};
 	hasPreviousPlayerPosition_ = false;
 }
 
 // 位置・向き・攻撃の更新と、プレイヤーの弾との当たり判定
-void Boss::Update(bool isBossStage,const Vector3& playerPosition,PlayerBulletManager& bullets,bool canBeHit,bool canAttack,float deltaTime){
+void Boss::Update(bool isBossStage,const Vector3& playerPosition,PlayerBulletManager& bullets,bool canBeHit,bool canAttack,int playerRailIndex,float deltaTime){
 	isBossStage_ = isBossStage;
 	if(!isBossStage_ || isDefeated_){
 		return;
@@ -118,14 +203,28 @@ void Boss::Update(bool isBossStage,const Vector3& playerPosition,PlayerBulletMan
 	// 先読みに使うプレイヤーの速さを求める
 	UpdatePlayerVelocity(playerPosition,deltaTime);
 
+	// 2形態目へ変わる演出を進める(0〜1の進み具合。演出をしていないときは1)
+	const bool isChangingPhase = phaseChangeTimer_ > 0.0f;
+	phaseChangeTimer_ = (std::max)(phaseChangeTimer_ - deltaTime,0.0f);
+	const float phaseChangeProgress = (phaseChangeDuration_ > 0.0f)?1.0f - phaseChangeTimer_ / phaseChangeDuration_:1.0f;
+
 	// 決めた位置を中心に、上下へゆっくり揺らして浮かんでいるように見せる
 	bobTimer_ += deltaTime;
 	position_ = basePosition;
 	position_.y += std::sin(bobTimer_ * gv->GetFloatValue(kBossGroup,kBobSpeedKey)) * gv->GetFloatValue(kBossGroup,kBobAmplitudeKey);
+	// 2形態目は、変わる演出の間に上へ浮き上がり、そのまま1形態目より高い位置に留まる(体も一瞬ふくらませる)
+	if(phase_ == kSecondPhase){
+		position_.y += gv->GetFloatValue(kBossGroup,kPhase2RiseKey) * Easing::EaseOutCubic(phaseChangeProgress);
+		scale_ *= 1.0f + kPhaseChangeScalePulse * std::sin(phaseChangeProgress * kPi);
+	}
+
+	// 輪を塗り返す攻撃の予告・攻撃中の時間を進める
+	UpdateRingAttack(deltaTime);
 
 	// 弾が当たったら体力を減らし、当たった位置に火花を出して効いていることを見せる
 	// 同じフレームに何発当たっても1発ずつ判定し、当たった弾はすべて消す
-	if(canBeHit){
+	// 2形態目へ変わる演出の間は当たらない(変わった直後の体力を、演出の間に減らされないようにする)
+	if(canBeHit && !isChangingPhase){
 		const Model::BoundingSphere hitSphere = GetHitSphere();
 		while(hp_ > 0 && bullets.CheckHit(hitSphere)){
 			hp_ -= bullets.GetDamage();
@@ -134,26 +233,30 @@ void Boss::Update(bool isBossStage,const Vector3& playerPosition,PlayerBulletMan
 			const Vector3 sparkPosition = (Length(toPlayer) >= kMinFaceDistance)?position_ + Normalize(toPlayer) * hitSphere.radius:position_;
 			ParticleManager::GetInstance()->EmitSpark(sparkPosition);
 		}
-		if(hp_ <= 0){
+		if(hp_ <= 0 && phase_ == kFirstPhase){
+			// 1形態目の体力が尽きたら、倒れずに2形態目へ変わる
+			BeginPhaseChange();
+		} else if(hp_ <= 0){
 			hp_ = 0;
 			isDefeated_ = true;
-			// 倒した後に残った弾でやられないよう、撃った弾を消す
-			bulletPool_.Clear();
+			// 倒した後に残った弾・輪の塗り返しでやられないよう、撃った弾を消して攻撃を止める
+			ResetAttack();
 			return;
 		}
 	}
 
-	// プレイヤーが輪に乗っている間、決まった順番で攻撃する
-	UpdateAttack(playerPosition,canAttack,deltaTime);
+	// プレイヤーが輪に乗っている間、決まった順番で攻撃する(2形態目へ変わる演出の間は攻撃しない)
+	UpdateAttack(playerPosition,canAttack && phaseChangeTimer_ <= 0.0f,playerRailIndex,deltaTime);
 
-	// 減った体力の割合に合わせて、満タンの色から残りわずかの色へ近づける
+	// 減った体力の割合に合わせて、満タンの色から残りわずかの色へ近づける(満タンの色は形態ごとに変える)
 	if(Model::Material* mat = obj_->GetMaterial()){
+		const Vector4& fullHpColor = (phase_ == kSecondPhase)?kPhase2FullHpColor:kFullHpColor;
 		const float damageRate = 1.0f - static_cast<float>(hp_) / static_cast<float>(maxHp_);
 		mat->color = {
-			Lerp(kFullHpColor.x,kLowHpColor.x,damageRate),
-			Lerp(kFullHpColor.y,kLowHpColor.y,damageRate),
-			Lerp(kFullHpColor.z,kLowHpColor.z,damageRate),
-			Lerp(kFullHpColor.w,kLowHpColor.w,damageRate),
+			Lerp(fullHpColor.x,kLowHpColor.x,damageRate),
+			Lerp(fullHpColor.y,kLowHpColor.y,damageRate),
+			Lerp(fullHpColor.z,kLowHpColor.z,damageRate),
+			Lerp(fullHpColor.w,kLowHpColor.w,damageRate),
 		};
 	}
 
@@ -190,9 +293,10 @@ void Boss::UpdatePlayerVelocity(const Vector3& playerPosition,float deltaTime){
 
 // 攻撃の待ち時間を進め、時間が来たら今の種類の攻撃を撃つ
 // 1回の攻撃を終えるたびに次の種類へ進め、先読みの連射・扇状の弾・追尾弾を順番に使う
-void Boss::UpdateAttack(const Vector3& playerPosition,bool canAttack,float deltaTime){
+void Boss::UpdateAttack(const Vector3& playerPosition,bool canAttack,int playerRailIndex,float deltaTime){
 	GlobalVariables* gv = GlobalVariables::GetInstance();
-	const float attackInterval = gv->GetFloatValue(kBossGroup,kAttackIntervalKey);
+	// 2形態目は、攻撃の間隔を短くする
+	const float attackInterval = gv->GetFloatValue(kBossGroup,(phase_ == kSecondPhase)?kPhase2AttackIntervalKey:kAttackIntervalKey);
 
 	// プレイヤーが輪に乗っていない間は撃たない。乗った直後にすぐ撃たれないよう、待ち時間を戻し、連射の途中も打ち切る
 	if(!canAttack){
@@ -208,7 +312,17 @@ void Boss::UpdateAttack(const Vector3& playerPosition,bool canAttack,float delta
 
 	const float bulletSpeed = (std::max)(gv->GetFloatValue(kBossGroup,kBulletSpeedKey),kMinBulletSpeed);
 
-	switch(kAttackOrder[attackIndex_]){
+	switch(GetAttackType(attackIndex_)){
+	case AttackType::RingInk:
+		// プレイヤーが乗っている輪を、予告のあと敵のインクで塗り返す(前の塗り返しが続いている間・輪に乗っていない間は始めない)
+		// 予告と攻撃中の時間は弾の攻撃と別に進めるため、すぐ次の攻撃の待ち時間に入る
+		if(ringAttackState_ == RingAttackState::None && playerRailIndex >= 0){
+			ringAttackState_ = RingAttackState::Warning;
+			ringAttackRailIndex_ = playerRailIndex;
+			ringAttackTimer_ = 0.0f;
+		}
+		break;
+
 	case AttackType::Fan:
 	{
 		// プレイヤーが進む先を中心に、左右へ角度をつけた弾を同時に撃つ
@@ -246,8 +360,40 @@ void Boss::UpdateAttack(const Vector3& playerPosition,bool canAttack,float delta
 	}
 
 	// 次の攻撃へ切り替え、攻撃の間隔だけ待つ
-	attackIndex_ = (attackIndex_ + 1) % kAttackOrderCount;
+	attackIndex_ = (attackIndex_ + 1) % GetAttackOrderCount();
 	attackTimer_ = attackInterval;
+}
+
+// 輪を塗り返す攻撃の予告・攻撃中の時間を進める
+// 予告の時間がたったら攻撃中に、攻撃中の時間がたったら終わりにする
+void Boss::UpdateRingAttack(float deltaTime){
+	if(ringAttackState_ == RingAttackState::None){
+		return;
+	}
+
+	GlobalVariables* gv = GlobalVariables::GetInstance();
+	ringAttackTimer_ += deltaTime;
+	if(ringAttackState_ == RingAttackState::Warning && ringAttackTimer_ >= gv->GetFloatValue(kBossGroup,kRingWarnTimeKey)){
+		ringAttackState_ = RingAttackState::Danger;
+		ringAttackTimer_ = 0.0f;
+	} else if(ringAttackState_ == RingAttackState::Danger && ringAttackTimer_ >= gv->GetFloatValue(kBossGroup,kRingDangerTimeKey)){
+		ringAttackState_ = RingAttackState::None;
+		ringAttackRailIndex_ = kNoRingAttackRail;
+		ringAttackTimer_ = 0.0f;
+	}
+}
+
+// 今の形態の攻撃の順番の、index番目の種類を取得
+Boss::AttackType Boss::GetAttackType(size_t index) const{
+	if(phase_ == kSecondPhase){
+		return kPhase2AttackOrder[index % kPhase2AttackOrderCount];
+	}
+	return kPhase1AttackOrder[index % kPhase1AttackOrderCount];
+}
+
+// 今の形態の攻撃の順番の要素数を取得
+size_t Boss::GetAttackOrderCount() const{
+	return (phase_ == kSecondPhase)?kPhase2AttackOrderCount:kPhase1AttackOrderCount;
 }
 
 // 速さbulletSpeedの弾が届くころにプレイヤーがいる位置を求める

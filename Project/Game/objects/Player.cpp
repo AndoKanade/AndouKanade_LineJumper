@@ -39,6 +39,8 @@ void Player::Initialize(Obj3dCommon* objCommon,const std::string& paramGroup){
 
 	// 調整項目の登録(第3引数はデフォルト値。保存済みJSONがあればそちらが優先される)
 	GlobalVariables::GetInstance()->AddItem(paramGroup_,"railSpeed",kDefaultRailSpeed);
+	GlobalVariables::GetInstance()->AddItem(paramGroup_,"hpRegenDelay",kDefaultHpRegenDelay);
+	GlobalVariables::GetInstance()->AddItem(paramGroup_,"hpRegenInterval",kDefaultHpRegenInterval);
 }
 
 // レール先頭・オンレール・体力満タンの初期状態に戻す
@@ -64,6 +66,7 @@ void Player::Reset(){
 	// 体力・無敵時間も初期状態に戻す
 	hp_ = kMaxHp;
 	invincibleTimer_ = 0.0f;
+	regenTimer_ = 0.0f;
 
 	// 現れる演出の途中なら止め、ふつうに見える状態にする
 	revealStyle_ = Model::RevealStyle::None;
@@ -137,6 +140,9 @@ void Player::UpdateRailProgress(RailEditor* railEditor,bool isGameplayActive,flo
 	// 現在位置に対応する制御点のSpeed値を取得し、全体速度(railSpeed)に掛けて今フレームに進む距離を求める
 	// 進行度に直接足すと制御点間の距離で速さが変わるため、距離として進めて一定の速さにする
 	float pointSpeed = railEditor->GetSpeedOnRail(railT_);
+
+	// ボスの2形態目などで、外から指定された倍率を掛ける
+	railSpeed *= railSpeedRate_;
 
 	// レール上で跳ねている間・並走レールへ飛び移っている間は、空中で前へ流されすぎないよう進む速さを落とす
 	if(!IsGroundedOnRail()){
@@ -291,6 +297,25 @@ void Player::UpdateInvincible(float deltaTime){
 	}
 }
 
+// 体力の自然回復を進める
+// 被弾してから hpRegenDelay 秒たつと体力が1戻り、その後は hpRegenInterval 秒ごとに1ずつ戻る(被弾すると数え直す)
+void Player::UpdateRegeneration(float deltaTime){
+	// 体力が尽きているとき・減っていないときは回復しない
+	if(hp_ <= 0 || hp_ >= kMaxHp){
+		regenTimer_ = 0.0f;
+		return;
+	}
+
+	GlobalVariables* gv = GlobalVariables::GetInstance();
+	const float regenDelay = gv->GetFloatValue(paramGroup_,"hpRegenDelay");
+	regenTimer_ += deltaTime;
+	if(regenTimer_ >= regenDelay){
+		++hp_;
+		// 次は間隔の分だけ待てば戻るよう、戻り始めるまでの時間から間隔を引いた所へ戻す
+		regenTimer_ = regenDelay - gv->GetFloatValue(paramGroup_,"hpRegenInterval");
+	}
+}
+
 // 敵弾が当たったときの処理
 // 連続被弾で一瞬に体力が尽きないよう、被弾後は一定時間無敵にする
 void Player::TakeDamage(){
@@ -300,6 +325,8 @@ void Player::TakeDamage(){
 
 	--hp_;
 	invincibleTimer_ = kInvincibleTime;
+	// 被弾したら、自然回復までの時間を最初から数え直す
+	regenTimer_ = 0.0f;
 
 	// 被弾位置に火花パーティクルを発生させ、当たったことを見た目で分かるようにする
 	ParticleManager::GetInstance()->EmitSpark(position_);
@@ -328,8 +355,15 @@ bool Player::UpdateMovement(Input* input,RailEditor* railEditor,const StartPlatf
 			if(input->PushKey(DIK_D)) sideDir += rightXZ;
 			if(input->PushKey(DIK_A)) sideDir += -rightXZ;
 
+			// ループするレールの上では、輪の中心(ボス)を見ていると隣の輪が左右ではなく前後に来るため、W/Sでも飛び移れるようにする
+			if(railEditor->IsLoopRail(railEditor->GetActiveRailIndex())){
+				Vector3 forwardXZ = Normalize(Vector3{cameraForward.x, 0.0f, cameraForward.z});
+				if(input->PushKey(DIK_W)) sideDir += forwardXZ;
+				if(input->PushKey(DIK_S)) sideDir += -forwardXZ;
+			}
+
 			// A/D同時押しで打ち消し合ったときや、押した方向にレールがないときは、その場で跳ねるジャンプにする
-			if(Length(sideDir) > 0.0f && TrySwitchToSideRail(railEditor,sideDir)){
+			if(Length(sideDir) > 0.0f && TrySwitchToSideRail(railEditor,Normalize(sideDir))){
 				return false;
 			}
 

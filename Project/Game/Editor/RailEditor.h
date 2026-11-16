@@ -132,6 +132,15 @@ public:
 	void PaintActiveRail(float t);
 	// 全ステージの全レールの塗った区間を消す(リスタート時に呼ぶ)
 	void ClearPaint();
+	/// <summary>
+	/// 今のステージの指定したレールの管の色を、指定した色へ寄せて描く(ボスが輪を塗り返す予告・攻撃の見た目に使う)
+	/// </summary>
+	/// <param name="railIndex">色を変えるレール</param>
+	/// <param name="color">寄せる先の色</param>
+	/// <param name="rate">寄せる割合(0で元の色、1で指定した色)</param>
+	void SetRailTint(int railIndex,const Vector4& color,float rate);
+	// 全ステージの全レールの管の色を元に戻す
+	void ClearRailTints();
 
 	/// <summary>
 	/// 鍵の的が残っていて出ていないレールを反映する(Play中に毎フレーム呼ぶ)
@@ -230,6 +239,9 @@ private:
 		bool isPainted = false;
 		float paintStartT = 0.0f;
 		float paintEndT = 0.0f;
+		// 管の色を一時的に寄せる先の色と、寄せる割合(SetRailTint()で受け取る。0なら元の色)
+		Vector4 tintColor = {1.0f, 1.0f, 1.0f, 1.0f};
+		float tintRate = 0.0f;
 
 		// 出ていないレールとして描く点線(管と同じ頂点のうち、点線の区間の三角形だけを持つモデルと、それを描くオブジェクト)
 		std::unique_ptr<Model> dashedTubeModel;

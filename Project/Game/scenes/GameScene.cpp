@@ -218,6 +218,11 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// ゴールの的はプレイヤーの先(画面の真ん中あたり)を並走するため、「撃ちまくれ!!!」は的に重ならないよう画面の上の方に出す
 	goalBannerUI_ = std::make_unique<StageClearUI>();
 	goalBannerUI_->Initialize(spriteCommon_,kGoalBannerTexturePath,kGoalBannerHeightRate);
+	// ボスが2形態目に変わったときの「まだ終わらない!!」は「STAGE CLEAR!」と同じ高さに、飛び移り方の案内は画面の上の方に出す
+	bossPhaseBannerUI_ = std::make_unique<StageClearUI>();
+	bossPhaseBannerUI_->Initialize(spriteCommon_,kBossPhaseBannerTexturePath);
+	bossRingHintUI_ = std::make_unique<StageClearUI>();
+	bossRingHintUI_->Initialize(spriteCommon_,kBossRingHintTexturePath,kBossRingHintHeightRate);
 	stageLockedNotice_ = std::make_unique<StageLockedNotice>();
 	stageLockedNotice_->Initialize(spriteCommon_);
 	tutorialHints_ = std::make_unique<TutorialHints>();
@@ -537,6 +542,8 @@ void GameScene::Draw(){
 		// 「STAGE CLEAR!」は画面表示より手前に出す
 		stageClearUI_->Draw();
 		goalBannerUI_->Draw();
+		bossPhaseBannerUI_->Draw();
+		bossRingHintUI_->Draw();
 		stageLockedNotice_->Draw();
 		keyTargetMarker_->Draw();
 		tutorialHints_->Draw();

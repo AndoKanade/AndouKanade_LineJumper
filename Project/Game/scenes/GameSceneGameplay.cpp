@@ -91,11 +91,17 @@ void GameScene::UpdateGameplay(){
 		checkpoint_ = Checkpoint{};
 		lives_ = kMaxLives;
 		// ボスも体力満タンから始める(残機を減らしてやり直すときは戻さず、減らした体力を残す)
-		boss_->Reset();
+		// コンティニューで戻ってきたときは、残機が尽きたときの形態の最初から始める
+		if(ContinuePoint::isRequested){
+			boss_->ResetToPhase(ContinuePoint::bossPhase);
+		} else{
+			boss_->Reset();
+		}
 		// タイトルから新しく始めるときは、クリアしたステージも忘れ、操作の案内も最初から出す(コンティニューのときは残す)
 		if(!ContinuePoint::isRequested){
 			StageInfo::ResetProgress();
 			tutorialHints_->Reset();
+			hasSwitchedBossRing_ = false;
 			hasPlayedRailSwitchSlow_ = false;
 			hasDestroyedFirstKeyTarget_ = false;
 		}
@@ -128,6 +134,7 @@ void GameScene::UpdateGameplay(){
 		boss_->Reset();
 		StageInfo::ResetProgress();
 		tutorialHints_->Reset();
+		hasSwitchedBossRing_ = false;
 		hasPlayedRailSwitchSlow_ = false;
 		hasDestroyedFirstKeyTarget_ = false;
 		ResetPlayState();
@@ -179,7 +186,13 @@ void GameScene::UpdateGameplay(){
 	// 最初に飛び移り方の案内を出したときだけ、レールを進む・敵・弾・的・しぶきをゆっくりにする
 	// カメラ(照準)とキーの入力は通常の速さのままにして、落ち着いて案内のキーを押せるようにする
 	UpdateRailSwitchSlow(isGameplayActive);
-	const float worldDeltaTime = kDeltaTime * railSwitchTimeScale_;
+	// ボスが2形態目に変わった直後も、しばらくゆっくりにして、形態が変わったことを見せる
+	float bossPhaseTimeScale = 1.0f;
+	if(bossPhaseSlowTimer_ > 0.0f){
+		bossPhaseSlowTimer_ -= kDeltaTime;
+		bossPhaseTimeScale = kBossPhaseChangeTimeScale;
+	}
+	const float worldDeltaTime = kDeltaTime * railSwitchTimeScale_ * bossPhaseTimeScale;
 
 	// 出発の演出を使うときは、ゲートが開いてから演出を始めるまでの間だけ、ゲートの先に出発台の目印を出す
 	startPlatform_->SetDeparturePadVisible(startSequence_->IsBoarding() && departureDirector_->UsesDeparturePad());
@@ -209,6 +222,8 @@ void GameScene::UpdateGameplay(){
 		railCamera_->TurnAimToward(player_->GetBasePosition(),player_->GetBaseRotation(),boss_->GetPosition());
 	}
 	wasOnBossLoop_ = isOnBossLoop;
+	// ボスの2形態目では、輪を回る速さを上げる(輪に乗っていない間は元の速さ)
+	player_->SetRailSpeedRate(isOnBossLoop?boss_->GetRailSpeedRate():1.0f);
 
 	// カメラを基準位置の後ろ上に置き、照準の入力を反映する
 	// スタート台の上を動ける間も照準(カメラの向き)を動かせるようにして、周りを見回せるようにする
@@ -369,6 +384,8 @@ void GameScene::UpdateGameplay(){
 	if(isGameplayActive){
 		// 無敵時間の経過を進める
 		player_->UpdateInvincible(kDeltaTime);
+		// 被弾してからしばらくたったら、体力を少しずつ戻す
+		player_->UpdateRegeneration(kDeltaTime);
 
 		// 命中した弾は無敵中でもここで消滅させ、すり抜けて後から当たらないようにする
 		// プレイヤーの行列はこのフレームの配置処理でUpdate()済み
@@ -523,7 +540,14 @@ void GameScene::UpdateGameplay(){
 
 	// ボスの更新と弾との当たり判定(最後のステージでだけ出す。Edit中・開始演出中は弾を当てず、揺れも止める)
 	// プレイヤーが輪に乗っている間だけ攻撃させる。やられ演出の最中は、雑魚敵と同じくボスの弾もスローで動かす
-	boss_->Update(railEditor_->GetStageIndex() == StageInfo::kFinalStageIndex,playerPos,*bulletManager_,isGameplayActive,isOnBossLoop,enemyDeltaTime);
+	boss_->Update(railEditor_->GetStageIndex() == StageInfo::kFinalStageIndex,playerPos,*bulletManager_,isGameplayActive,isOnBossLoop,isOnBossLoop?railEditor_->GetActiveRailIndex():-1,enemyDeltaTime);
+
+	// ボスが2形態目に変わり始めたら、変わったことを見せる演出を出す
+	if(boss_->ConsumePhaseChanged()){
+		StartBossPhaseChange();
+	}
+	// ボスの輪を塗り返す攻撃を、輪の色・被弾・飛び移り方の案内に反映する
+	UpdateBossRingAttack(isOnBossLoop);
 
 	// ボスの体力を0にして倒したら、倒した演出を見せてからクリア画面へ移る
 	// クリア画面へ移るのを待っている間はプレイ可能でなくなるため、倒した処理が二重に起きることはない
@@ -569,6 +593,8 @@ void GameScene::UpdateGameplay(){
 	// 「STAGE CLEAR!」の表示の動きを進める(出していないときは何もしない)
 	stageClearUI_->Update(kDeltaTime);
 	goalBannerUI_->Update(kDeltaTime);
+	bossPhaseBannerUI_->Update(kDeltaTime);
+	bossRingHintUI_->Update(kDeltaTime);
 	// プレイ会用の設定で閉じているゲートの前に、台の上を歩いて来たら「いまは遊べないよ!!」を出す
 	stageLockedNotice_->Update(isPlayerMovable && startPlatform_->IsInFrontOfPlaySessionClosedGate(player_->GetPosition()),kDeltaTime);
 	// レールを進んでいる間に、生きている鍵の的が近くにあるかを調べる(鍵の的の目印と案内に使う)

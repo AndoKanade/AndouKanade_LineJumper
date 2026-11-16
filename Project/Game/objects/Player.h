@@ -84,6 +84,10 @@ public:
 
 	// 被弾後の無敵時間を進める
 	void UpdateInvincible(float deltaTime);
+	// 体力の自然回復を進める(被弾してから決めた時間がたつと、体力が1ずつ戻る)
+	void UpdateRegeneration(float deltaTime);
+	// レールを進む速さに掛ける倍率を設定する(ボスの2形態目で輪を回る速さを上げるのに使う。1で元の速さ)
+	void SetRailSpeedRate(float rate){ railSpeedRate_ = rate; }
 
 	/// <summary>
 	/// 透明な体がだんだん元に戻る、現れる演出を始める(復活したとき用。Reset() で止まる)
@@ -237,6 +241,10 @@ private:
 	int hp_ = kMaxHp;
 	// 被弾後の無敵時間の残り(秒)。0より大きい間は敵弾が当たっても体力が減らない
 	float invincibleTimer_ = 0.0f;
+	// 最後に被弾してから(回復した後は、次に回復するまで)の経過時間(秒)
+	float regenTimer_ = 0.0f;
+	// レールを進む速さに掛ける倍率(SetRailSpeedRate()で受け取る)
+	float railSpeedRate_ = 1.0f;
 
 	// 現れる演出の見せ方(None のときは演出をしていない)・経過時間・元に戻りきるまでの時間(秒)
 	Model::RevealStyle revealStyle_ = Model::RevealStyle::None;
@@ -260,6 +268,9 @@ private:
 	static constexpr int kMaxHp = 3;
 	// 被弾してから次に被弾できるようになるまでの無敵時間(秒)
 	static constexpr float kInvincibleTime = 1.0f;
+	// 被弾してから体力が戻り始めるまでの時間と、その後1ずつ戻る間隔の初期値(秒。保存済みJSONがあればそちらが優先される)
+	static constexpr float kDefaultHpRegenDelay = 5.0f;
+	static constexpr float kDefaultHpRegenInterval = 3.0f;
 	// ジャンプ初速(上方向、1秒あたりの速度)
 	static constexpr float kJumpSpeed = 6.0f;
 	// 重力加速度(1秒あたりの下方向への速度変化量)

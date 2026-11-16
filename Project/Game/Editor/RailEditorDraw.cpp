@@ -52,6 +52,11 @@ namespace{
 	constexpr float kLandingRangeTubeRadius = 0.06f;
 	// 1本の管に必要な輪の数(始点と終点の2つ)
 	constexpr size_t kMinTubeRingCount = 2;
+
+	// 色fromを色toへrate(0〜1)だけ寄せた色を求める
+	Vector4 LerpColor(const Vector4& from,const Vector4& to,float rate){
+		return {Lerp(from.x,to.x,rate), Lerp(from.y,to.y,rate), Lerp(from.z,to.z,rate), Lerp(from.w,to.w,rate)};
+	}
 }
 
 // デバッグ用の描画処理
@@ -472,6 +477,14 @@ void RailEditor::DrawTubes(){
 				continue;
 			}
 
+			// 管の色を決める(ふだんは塗った区間が黄色、それ以外がピンク。色を寄せる指定があれば、どちらもその色へ寄せる)
+			if(Model::Material* mat = rail.tubeObject->GetMaterial()){
+				mat->color = LerpColor(kUnpaintedRailColor,rail.tintColor,rail.tintRate);
+			}
+			if(Model::Material* mat = rail.paintedTubeObject->GetMaterial()){
+				mat->color = LerpColor(kPaintedRailColor,rail.tintColor,rail.tintRate);
+			}
+
 			// 区間の中央の進行度が塗った範囲に入っている区間を、インクの色で描く区間にする
 			// 区間iの中央の進行度は (i + 0.5) / 区間数 のため、塗った範囲の両端の進行度から区間番号の範囲を逆算する
 			const uint32_t segmentCount = rail.tubeSegmentCount;
@@ -585,6 +598,24 @@ void RailEditor::ClearPaint(){
 			rail.isPainted = false;
 			rail.paintStartT = 0.0f;
 			rail.paintEndT = 0.0f;
+		}
+	}
+}
+
+// 今のステージの指定したレールの管の色を、指定した色へ寄せて描く
+void RailEditor::SetRailTint(int railIndex,const Vector4& color,float rate){
+	if(railIndex < 0 || railIndex >= static_cast<int>(rails_.size())){
+		return;
+	}
+	rails_[railIndex].tintColor = color;
+	rails_[railIndex].tintRate = std::clamp(rate,0.0f,1.0f);
+}
+
+// 全ステージの全レールの管の色を元に戻す
+void RailEditor::ClearRailTints(){
+	for(int stage = 0; stage < StageInfo::kStageCount; ++stage){
+		for(Rail& rail : GetStageRails(stage)){
+			rail.tintRate = 0.0f;
 		}
 	}
 }

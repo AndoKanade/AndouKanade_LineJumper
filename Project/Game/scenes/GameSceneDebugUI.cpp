@@ -112,6 +112,7 @@ void GameScene::ShowStatusWindow(){
 
 	// ボスのデバッグ表示(最後のステージでだけ出す)
 	if(boss_->IsActive() || boss_->IsDefeated()){
+		ImGui::Text("Boss Phase: %d",boss_->GetPhase());
 		ImGui::Text("Boss HP: %d / %d",boss_->GetHp(),boss_->GetMaxHp());
 		ImGui::Text("Boss Bullets: %d",boss_->GetActiveBulletCount());
 	}
