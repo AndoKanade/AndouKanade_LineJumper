@@ -67,6 +67,33 @@ void RailCamera::RecenterAim(){
 	aimPitchOffset_ = 0.0f;
 }
 
+// 照準を指定した点へ向ける
+// 「追従中の向き + 照準オフセット」が変わらないよう、照準オフセットを変えた分を追従中の向きから引く
+// 追従中の向きは毎フレーム基準の向きへ寄っていくため、カメラは今の向きから指定した点の方へなめらかに回る
+void RailCamera::TurnAimToward(const Vector3& basePosition,const Vector3& baseRotation,const Vector3& target){
+	GlobalVariables* gv = GlobalVariables::GetInstance();
+	const float heightOffset = gv->GetFloatValue(paramGroup_,"cameraHeightOffset");
+	const float aimPitchLimit = gv->GetFloatValue(paramGroup_,"aimPitchLimit");
+
+	// カメラの回転の中心(基準位置より少し上)から、指定した点への向き
+	const Vector3 toTarget = {target.x - basePosition.x, target.y - (basePosition.y + heightOffset), target.z - basePosition.z};
+	const float distance = Length(toTarget);
+	if(distance < kMinAimTargetDistance){
+		return;
+	}
+	const float targetYaw = std::atan2(toTarget.x,toTarget.z);
+	const float targetPitch = -std::asin(std::clamp(toTarget.y / distance,-1.0f,1.0f));
+
+	// 基準の向きから見た、指定した点への照準オフセット
+	const float newYawOffset = WrapAngle(targetYaw - baseRotation.y,kPi);
+	const float newPitchOffset = std::clamp(WrapAngle(targetPitch - baseRotation.x,kPi),-aimPitchLimit,aimPitchLimit);
+
+	followRotation_.y = WrapAngle(followRotation_.y - WrapAngle(newYawOffset - aimYawOffset_,kPi),kPi);
+	followRotation_.x -= newPitchOffset - aimPitchOffset_;
+	aimYawOffset_ = newYawOffset;
+	aimPitchOffset_ = newPitchOffset;
+}
+
 // 更新処理
 // プレイヤーの基準位置を回転の中心にし、カメラの向きの後ろ側へ離して置くことで、照準を動かすとプレイヤーの周りを回り込む
 void RailCamera::Update(const Vector3& basePosition,const Vector3& baseRotation,bool isInputEnabled,Input* input,float deltaTime,float groundHeight,const StartPlatform* startPlatform){

@@ -31,6 +31,7 @@
 #include "objects/PlayerBulletManager.h"
 #include "objects/TargetManager.h"
 #include "objects/GoalTarget.h"
+#include "objects/Boss.h"
 #include "objects/EnemyManager.h"
 #include "objects/InkEffectManager.h"
 #include "objects/ComboCounter.h"
@@ -174,6 +175,10 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// ゴールの的の生成(ゴールのレールに乗るまでは出さない)
 	goalTarget_ = std::make_unique<GoalTarget>();
 	goalTarget_->Initialize(object3dCommon_,kGameSceneGroup);
+
+	// ボスの生成(最後のステージでだけ出す。調整項目はグループ「Boss」に登録する)
+	boss_ = std::make_unique<Boss>();
+	boss_->Initialize(object3dCommon_);
 
 	// 雑魚敵の生成(保存済みの配置が無い初回起動時はレールの中間地点に自動配置する)
 	enemyManager_ = std::make_unique<EnemyManager>();
@@ -488,6 +493,9 @@ void GameScene::Draw(){
 
 	// ゴールの的を描画(現れていて、まだ壊れていないときだけ)
 	goalTarget_->Draw();
+
+	// ボスを描画(最後のステージで、まだ倒されていないときだけ)
+	boss_->Draw();
 
 	// 発射中の弾を描画
 	bulletManager_->Draw();

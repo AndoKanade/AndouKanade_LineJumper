@@ -23,6 +23,7 @@
 #include "objects/PlayerBulletManager.h"
 #include "objects/TargetManager.h"
 #include "objects/GoalTarget.h"
+#include "objects/Boss.h"
 #include "objects/EnemyManager.h"
 #include "objects/InkEffectManager.h"
 #include "objects/ComboCounter.h"
@@ -89,6 +90,8 @@ void GameScene::UpdateGameplay(){
 		// 残機も満タンから始める(コンティニューで戻ってきたときも満タンにする)
 		checkpoint_ = Checkpoint{};
 		lives_ = kMaxLives;
+		// ボスも体力満タンから始める(残機を減らしてやり直すときは戻さず、減らした体力を残す)
+		boss_->Reset();
 		// タイトルから新しく始めるときは、クリアしたステージも忘れ、操作の案内も最初から出す(コンティニューのときは残す)
 		if(!ContinuePoint::isRequested){
 			StageInfo::ResetProgress();
@@ -111,6 +114,8 @@ void GameScene::UpdateGameplay(){
 		startPlatform_->ReleaseBarrierHold();
 		// Play中に現れたゴールの的が、Editモードで出たままにならないよう消す
 		goalTarget_->Reset();
+		// Play中に減らした・倒したボスも、Editモードでは体力満タンで出す
+		boss_->Reset();
 		// Editモードに戻ったら、Play前に見ていた位置のまま俯瞰デバッグカメラに戻す
 		debugTopCamera_->Enable();
 		// Play前に編集していたレールと制御点を選び直し、続けて編集できるようにする
@@ -120,6 +125,7 @@ void GameScene::UpdateGameplay(){
 		// 最初からやり直すため、通ったチェックポイントも忘れ、残機も満タンに戻す
 		checkpoint_ = Checkpoint{};
 		lives_ = kMaxLives;
+		boss_->Reset();
 		StageInfo::ResetProgress();
 		tutorialHints_->Reset();
 		hasPlayedRailSwitchSlow_ = false;
@@ -195,6 +201,14 @@ void GameScene::UpdateGameplay(){
 		// チェックポイントの制御点を通ったら、落ちたときにやり直す位置として覚えておく
 		UpdateCheckpoint();
 	}
+
+	// ボスの周りを回るループするレールに乗った瞬間に、照準を輪の中心にいるボスへ向ける
+	// レールの向きは輪の接線のため、そのままだとボスが画面の横に外れる。乗った後はレールの向きに追従するため、ボスは画面のほぼ同じ位置に残る
+	const bool isOnBossLoop = isGameplayActive && boss_->IsActive() && player_->IsOnRail() && railEditor_->IsLoopRail(railEditor_->GetActiveRailIndex());
+	if(isOnBossLoop && !wasOnBossLoop_){
+		railCamera_->TurnAimToward(player_->GetBasePosition(),player_->GetBaseRotation(),boss_->GetPosition());
+	}
+	wasOnBossLoop_ = isOnBossLoop;
 
 	// カメラを基準位置の後ろ上に置き、照準の入力を反映する
 	// スタート台の上を動ける間も照準(カメラの向き)を動かせるようにして、周りを見回せるようにする
@@ -448,6 +462,12 @@ void GameScene::UpdateGameplay(){
 		float aimedGoalDistance = 0.0f;
 		if(goalTarget_->FindAimed(cameraPos,cameraForward,minAimDistance,aimedGoalDistance) && (!isAimingAny || aimedGoalDistance < aimDistance)){
 			aimDistance = aimedGoalDistance;
+			isAimingAny = true;
+		}
+		// ボスを狙えているときは、レティクルの線が体に入る手前の面の奥行きを狙う
+		float aimedBossDistance = 0.0f;
+		if(boss_->FindAimed(cameraPos,cameraForward,minAimDistance,aimedBossDistance) && (!isAimingAny || aimedBossDistance < aimDistance)){
+			aimDistance = aimedBossDistance;
 		}
 		Vector3 aimPoint = cameraPos + cameraForward * aimDistance;
 		Vector3 shootDirection = Normalize(aimPoint - muzzlePos);
@@ -499,6 +519,15 @@ void GameScene::UpdateGameplay(){
 		returnJump_->Begin(MakeDepartureContext());
 	}
 
+	// ボスの更新と弾との当たり判定(最後のステージでだけ出す。Edit中・開始演出中は弾を当てず、揺れも止める)
+	boss_->Update(railEditor_->GetStageIndex() == StageInfo::kFinalStageIndex,playerPos,*bulletManager_,isGameplayActive,isGameplayActive?worldDeltaTime:0.0f);
+
+	// ボスの体力を0にして倒したら、倒した演出を見せてからクリア画面へ移る
+	// クリア画面へ移るのを待っている間はプレイ可能でなくなるため、倒した処理が二重に起きることはない
+	if(isGameplayActive && boss_->IsDefeated()){
+		StartBossDefeat();
+	}
+
 	// 鍵の的を壊したら、そのレールを出す(始点から終点へ管を伸ばす)
 	ApplyRailLocks(false);
 
@@ -510,7 +539,8 @@ void GameScene::UpdateGameplay(){
 
 	// 狙えているときはレティクル中心を赤くする(ゴールの的は、レティクルの方向が当たり判定の球を通っていれば狙えているとする)
 	float goalAimDistance = 0.0f;
-	reticle_->SetAiming(isAimingAtAnyTarget || goalTarget_->FindAimed(cameraPos,cameraForward,kReticleAimMinDistance,goalAimDistance));
+	float bossAimDistance = 0.0f;
+	reticle_->SetAiming(isAimingAtAnyTarget || goalTarget_->FindAimed(cameraPos,cameraForward,kReticleAimMinDistance,goalAimDistance) || boss_->FindAimed(cameraPos,cameraForward,kReticleAimMinDistance,bossAimDistance));
 
 	// 演出の更新(このフレームで出した分も含めて行列を求めるため、出す処理がすべて終わってから行う)
 	// ヒットストップ中は、飛び散ったインクも空中で止める
@@ -519,7 +549,8 @@ void GameScene::UpdateGameplay(){
 	float inkTimeScale = 1.0f;
 	if(isDefeated_){
 		inkTimeScale = kDefeatTimeScale;
-	} else if(returnJump_->IsWaiting()){
+	} else if(returnJump_->IsWaiting() || boss_->IsDefeated()){
+		// ボスを倒してクリア画面へ移るまでの間も、同じようにゆっくり飛び散らせる
 		inkTimeScale = kGoalBreakTimeScale;
 	}
 	inkEffect_->Update(screenImpact_->IsHitStopping()?0.0f:worldDeltaTime * inkTimeScale);

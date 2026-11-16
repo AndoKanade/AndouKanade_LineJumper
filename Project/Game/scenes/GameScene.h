@@ -26,6 +26,7 @@ class DebugTopCamera;
 class PlayerBulletManager;
 class TargetManager;
 class GoalTarget;
+class Boss;
 class EnemyManager;
 class Reticle;
 class InkEffectManager;
@@ -129,6 +130,8 @@ private:
 	/// </summary>
 	/// <param name="landedPos">着地した位置</param>
 	void StartStageClear(const Vector3& landedPos);
+	// ボスを倒した瞬間に、倒した演出を出してクリア画面へ移るのを待ち始める
+	void StartBossDefeat();
 	// 着地の演出を見せ終えたら、結果を書き込んでクリア画面へ移る
 	void UpdateStageClear();
 	// クリア画面で出す結果(壊した的の数・最大連鎖数)を書き込む(シーンが作り直される前、的・連鎖数を初期状態に戻す前に呼ぶ)
@@ -205,6 +208,10 @@ private:
 
 	// ゴールの的(ゴールのレールに乗ると現れて先を並走し、壊すとステージクリア)
 	std::unique_ptr<GoalTarget> goalTarget_;
+	// 最後のステージのボス(ループするレールの輪の中心に浮かび、倒すとクリア画面へ移る)
+	std::unique_ptr<Boss> boss_;
+	// 前のフレームで、ボスのいるステージのループするレールに乗っていたか(乗った瞬間に照準をボスへ向ける)
+	bool wasOnBossLoop_ = false;
 
 	// 雑魚敵
 	std::unique_ptr<EnemyManager> enemyManager_;
@@ -296,8 +303,10 @@ private:
 	bool isDefeated_ = false;
 	// やられ演出が始まってからの経過時間(秒)
 	float defeatTimer_ = 0.0f;
-	// 大ジャンプでスタート台に着地し、クリア画面へ移るのを待っている最中か(操作・判定を止める)
+	// 大ジャンプでスタート台に着地したか、ボスを倒して、クリア画面へ移るのを待っている最中か(操作・判定を止める)
 	bool isStageCleared_ = false;
+	// クリア画面への切り替えを始めるまでの時間(秒。着地したときとボスを倒したときで変える)
+	float stageClearDuration_ = kStageClearDuration;
 	// スタート台に着地してからの経過時間(秒)
 	float stageClearTimer_ = 0.0f;
 
@@ -384,6 +393,9 @@ private:
 	// 大ジャンプでスタート台に着地してから、クリア画面への切り替えを始めるまでの時間(秒)
 	// 着地の揺れ(kReturnLandShakeDuration)が収まり、インクのしぶきが落ちきるのを見せてから移る
 	static constexpr float kStageClearDuration = 1.0f;
+	// ボスを倒してから、クリア画面への切り替えを始めるまでの時間(秒)
+	// 飛び散った破片がゆっくり広がっていくのを見せてから移る
+	static constexpr float kBossDefeatClearDuration = 2.0f;
 	// 通路の壁が壊れた瞬間に、壁から高く飛び散らせて台に落とすインクのしぶきの数
 	static constexpr int kBarrierBurstCount = 20;
 	// 通路の壁が壊れた瞬間の衝撃(動きを止める時間、画面の揺れの幅・収まるまでの時間。出発ゲートが開く瞬間と同じくらいにする)

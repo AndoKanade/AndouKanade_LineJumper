@@ -21,6 +21,7 @@
 #include "objects/PlayerBulletManager.h"
 #include "objects/TargetManager.h"
 #include "objects/GoalTarget.h"
+#include "objects/Boss.h"
 #include "objects/EnemyManager.h"
 #include "objects/InkEffectManager.h"
 #include "objects/ComboCounter.h"
@@ -91,6 +92,8 @@ void GameScene::ResetPlayState(){
 	stageClearUI_->Reset();
 	goalBannerUI_->Reset();
 	wasGoalTargetAppeared_ = false;
+	// やり直してループするレールに乗り直したときも、照準をボスへ向け直す(ボスの体力はここでは戻さない)
+	wasOnBossLoop_ = false;
 	stageLockedNotice_->Reset();
 	railSwitchPrompt_->Reset();
 	keyTargetMarker_->Reset();
@@ -318,6 +321,7 @@ void GameScene::RestartFromReturnJump(const Vector3& landedPos){
 	// 新しく始め直すため、通ったチェックポイントも忘れ、残機も満タンに戻す
 	checkpoint_ = Checkpoint{};
 	lives_ = kMaxLives;
+	boss_->Reset();
 	// 的・敵・レールの塗り・ゴールの的などを初期状態に戻し、プレイヤーをスタート台の上に立たせる
 	// (演出・画面の揺れもここで消えるため、着地の演出はこの後に出す)
 	ResetPlayState();
@@ -341,15 +345,32 @@ void GameScene::PlayReturnLandEffects(const Vector3& landedPos){
 void GameScene::StartStageClear(const Vector3& landedPos){
 	isStageCleared_ = true;
 	stageClearTimer_ = 0.0f;
+	stageClearDuration_ = kStageClearDuration;
 	PlayReturnLandEffects(landedPos);
+}
+
+// ボスを倒した瞬間に、倒した演出を出してクリア画面へ移るのを待ち始める
+// ゴールの的を壊したときと同じ作りの破片・しぶき・閃光を出し、一瞬動きを止めて画面を揺らし、ボスを中心に放射ブラーをかける
+void GameScene::StartBossDefeat(){
+	StageInfo::clearedStages[StageInfo::kFinalStageIndex] = true;
+	isStageCleared_ = true;
+	stageClearTimer_ = 0.0f;
+	stageClearDuration_ = kBossDefeatClearDuration;
+
+	const Vector3 defeatPosition = boss_->GetPosition();
+	inkEffect_->EmitGoalBreak(defeatPosition);
+	screenImpact_->Trigger(kGoalBreakHitStopDuration,kGoalBreakShakeAmplitude,kGoalBreakShakeDuration);
+	if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
+		Application::GetInstance()->TriggerRadialBlur(CameraPoseMath::WorldToScreenUv(defeatPosition,activeCamera->GetViewProjectionMatrix()),kGoalBreakRadialBlurWidth,kGoalBreakRadialBlurDuration);
+	}
 }
 
 // 着地の演出を見せ終えたら、結果を書き込んでクリア画面へ移る
 // シーンが作り直される前に、クリア画面で出す結果を書き込んでおく
 void GameScene::UpdateStageClear(){
-	const bool wasWaiting = stageClearTimer_ < kStageClearDuration;
+	const bool wasWaiting = stageClearTimer_ < stageClearDuration_;
 	stageClearTimer_ += kDeltaTime;
-	if(wasWaiting && stageClearTimer_ >= kStageClearDuration){
+	if(wasWaiting && stageClearTimer_ >= stageClearDuration_){
 		WriteStageResult();
 		sceneManager_->ChangeScene("CLEAR",GetTransitionStyle(kClearTransitionKey));
 	}

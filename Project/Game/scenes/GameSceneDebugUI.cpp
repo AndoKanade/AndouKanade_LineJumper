@@ -23,6 +23,7 @@
 #include "objects/Player.h"
 #include "objects/PlayerBulletManager.h"
 #include "objects/EnemyManager.h"
+#include "objects/Boss.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -104,6 +105,11 @@ void GameScene::ShowStatusWindow(){
 
 	// 雑魚敵のデバッグ表示
 	enemyManager_->ShowDebugInfo();
+
+	// ボスのデバッグ表示(最後のステージでだけ出す)
+	if(boss_->IsActive() || boss_->IsDefeated()){
+		ImGui::Text("Boss HP: %d / %d",boss_->GetHp(),boss_->GetMaxHp());
+	}
 
 	// プレイヤーの体力・無敵時間のデバッグ表示
 	ImGui::Text("Player HP: %d / %d",player_->GetHp(),player_->GetMaxHp());

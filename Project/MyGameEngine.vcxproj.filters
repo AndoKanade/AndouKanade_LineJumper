@@ -354,6 +354,9 @@
     <ClCompile Include="Game\objects\GoalTarget.cpp">
       <Filter>ソース ファイル\Game\objects</Filter>
     </ClCompile>
+    <ClCompile Include="Game\objects\Boss.cpp">
+      <Filter>ソース ファイル\Game\objects</Filter>
+    </ClCompile>
     <ClCompile Include="Game\objects\EnemyManager.cpp">
       <Filter>ソース ファイル\Game\objects</Filter>
     </ClCompile>
@@ -669,6 +672,9 @@
       <Filter>ヘッダー ファイル\Game\objects</Filter>
     </ClInclude>
     <ClInclude Include="Game\objects\GoalTarget.h">
+      <Filter>ヘッダー ファイル\Game\objects</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\objects\Boss.h">
       <Filter>ヘッダー ファイル\Game\objects</Filter>
     </ClInclude>
     <ClInclude Include="Game\objects\EnemyManager.h">
