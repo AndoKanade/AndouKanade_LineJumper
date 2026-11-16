@@ -21,7 +21,8 @@ void DamageInkEffect::Reset(){
 }
 
 // 体力からインクの広がり・色づきを求め、ポストプロセスに渡す
-void DamageInkEffect::Update(int hp,int maxHp,bool isVisible,float deltaTime){
+// recoverProgress は、自然回復で次に体力が1戻るまでの進み具合(0〜1)。その分だけ体力が戻りかけているものとして、インクを少しずつ引かせる
+void DamageInkEffect::Update(int hp,int maxHp,float recoverProgress,bool isVisible,float deltaTime){
 	if(!isVisible){
 		Reset();
 		return;
@@ -36,7 +37,9 @@ void DamageInkEffect::Update(int hp,int maxHp,bool isVisible,float deltaTime){
 
 	// 体力の減り具合(0: 満タン 〜 1: 尽きた)へ、インクの広がりを少しずつ寄せる
 	// やり直しで体力が満タンに戻ったときも、インクが一瞬で消えずに引いていくように見える
-	const float targetAmount = (maxHp > 0)?std::clamp(1.0f - static_cast<float>(hp) / static_cast<float>(maxHp),0.0f,1.0f):0.0f;
+	// 自然回復の進み具合を体力に足して、体力が戻る瞬間にまとめて引くのではなく、待っている間に少しずつ引くようにする
+	const float recoveringHp = static_cast<float>(hp) + std::clamp(recoverProgress,0.0f,1.0f);
+	const float targetAmount = (maxHp > 0)?std::clamp(1.0f - recoveringHp / static_cast<float>(maxHp),0.0f,1.0f):0.0f;
 	displayedAmount_ += (targetAmount - displayedAmount_) * (std::min)(1.0f,kFollowSpeed * deltaTime);
 
 	// 体力が残り少ない間は、鼓動のようにインクを脈打たせる

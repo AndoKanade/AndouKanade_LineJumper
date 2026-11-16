@@ -586,7 +586,7 @@ void GameScene::UpdateGameplay(){
 	speedLines_->Update(isRidingRail,kDeltaTime);
 
 	// 体力の表現の更新(Play中だけ出し、Editモードでは外す)
-	damageInkEffect_->Update(player_->GetHp(),player_->GetMaxHp(),isPlayMode,kDeltaTime);
+	damageInkEffect_->Update(player_->GetHp(),player_->GetMaxHp(),player_->GetRegenProgress(),isPlayMode,kDeltaTime);
 
 	// 画面表示の更新(左上のアイコンには残機を出す)
 	stageHUD_->Update(lives_,kMaxLives,targetManager_->GetDestroyedCount(),targetManager_->GetTotalCount(),*comboCounter_);

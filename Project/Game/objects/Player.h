@@ -86,6 +86,9 @@ public:
 	void UpdateInvincible(float deltaTime);
 	// 体力の自然回復を進める(被弾してから決めた時間がたつと、体力が1ずつ戻る)
 	void UpdateRegeneration(float deltaTime);
+	// 次に体力が1戻るまでの進み具合(0: 数え始め 〜 1: 戻る直前。回復していないときは0)を取得
+	// 体力の表現(画面の縁のインク)を、戻る瞬間にまとめて引かせず、時間とともに少しずつ引かせるのに使う
+	float GetRegenProgress() const{ return regenProgress_; }
 	// レールを進む速さに掛ける倍率を設定する(ボスの2形態目で輪を回る速さを上げるのに使う。1で元の速さ)
 	void SetRailSpeedRate(float rate){ railSpeedRate_ = rate; }
 
@@ -241,8 +244,12 @@ private:
 	int hp_ = kMaxHp;
 	// 被弾後の無敵時間の残り(秒)。0より大きい間は敵弾が当たっても体力が減らない
 	float invincibleTimer_ = 0.0f;
-	// 最後に被弾してから(回復した後は、次に回復するまで)の経過時間(秒)
+	// 最後に被弾してから(回復した後は、その回復から)の経過時間(秒)
 	float regenTimer_ = 0.0f;
+	// 最後に被弾してから、自然回復で体力が戻ったことがあるか(戻った後は、短い間隔で次が戻る)
+	bool hasRegeneratedSinceHit_ = false;
+	// 次に体力が1戻るまでの進み具合(0〜1)
+	float regenProgress_ = 0.0f;
 	// レールを進む速さに掛ける倍率(SetRailSpeedRate()で受け取る)
 	float railSpeedRate_ = 1.0f;
 
@@ -271,6 +278,8 @@ private:
 	// 被弾してから体力が戻り始めるまでの時間と、その後1ずつ戻る間隔の初期値(秒。保存済みJSONがあればそちらが優先される)
 	static constexpr float kDefaultHpRegenDelay = 5.0f;
 	static constexpr float kDefaultHpRegenInterval = 3.0f;
+	// 自然回復までの時間として扱う下限(秒。0以下にされても、進み具合を求める割り算が壊れないようにする)
+	static constexpr float kMinHpRegenTime = 0.01f;
 	// ジャンプ初速(上方向、1秒あたりの速度)
 	static constexpr float kJumpSpeed = 6.0f;
 	// 重力加速度(1秒あたりの下方向への速度変化量)

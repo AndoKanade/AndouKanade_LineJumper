@@ -173,6 +173,9 @@ private:
 	// このフレームで2形態目に変わり始めたか(ConsumePhaseChanged()で読むと消える)
 	bool hasPhaseChanged_ = false;
 
+	// 弾を撃つ前の予備動作の進み具合(0: していない 〜 1: 撃つ直前。体をふくらませて白く光らせるのに使う)
+	float telegraphRate_ = 0.0f;
+
 	// 輪を塗り返す攻撃の段階・対象のレールの番号・今の段階に入ってからの経過時間(秒)
 	RingAttackState ringAttackState_ = RingAttackState::None;
 	int ringAttackRailIndex_ = kNoRingAttackRail;
@@ -203,6 +206,8 @@ private:
 	static constexpr float kDefaultHomingTurnRate = 1.2f;
 	// 先読みの強さ(1でプレイヤーがそのまま進んだときに当たる位置、0で撃った瞬間の位置を狙う)
 	static constexpr float kDefaultLeadRate = 1.0f;
+	// 弾を撃つ前の予備動作の時間(秒。攻撃の間隔のうち、最後のこの時間だけ体をふくらませて白く光らせ、撃つタイミングを見せる)
+	static constexpr float kDefaultTelegraphTime = 0.7f;
 	// 2形態目の体力
 	static constexpr int kDefaultPhase2Hp = 160;
 	// 2形態目へ変わる演出にかける時間(秒。この間は弾が当たらず、攻撃もしない)
@@ -229,6 +234,10 @@ private:
 	// 輪を塗り返す攻撃の予告と攻撃中に、輪の色を寄せる先の色(予告は白、攻撃中は敵のインクより目立つ赤)
 	static constexpr Vector4 kRingWarnColor = {1.0f, 1.0f, 1.0f, 1.0f};
 	static constexpr Vector4 kRingDangerColor = {1.0f, 0.1f, 0.1f, 1.0f};
+	// 予備動作で、撃つ直前に体をふくらませる量(表示スケールに対する割合)と、体の色を寄せる先の色・寄せる割合の上限
+	static constexpr float kTelegraphScaleRate = 0.18f;
+	static constexpr Vector4 kTelegraphColor = {1.0f, 1.0f, 1.0f, 1.0f};
+	static constexpr float kTelegraphColorRate = 0.8f;
 	// 2形態目へ変わる演出の間に、体を一瞬ふくらませる量(表示スケールに対する割合)
 	static constexpr float kPhaseChangeScalePulse = 0.25f;
 	// 2形態目の、体力が満タンのときの色(1形態目の黄色と見分けられるよう紫にする。残りわずかの色は1形態目と同じ赤)

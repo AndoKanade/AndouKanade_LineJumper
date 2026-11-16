@@ -67,6 +67,8 @@ void Player::Reset(){
 	hp_ = kMaxHp;
 	invincibleTimer_ = 0.0f;
 	regenTimer_ = 0.0f;
+	hasRegeneratedSinceHit_ = false;
+	regenProgress_ = 0.0f;
 
 	// 現れる演出の途中なら止め、ふつうに見える状態にする
 	revealStyle_ = Model::RevealStyle::None;
@@ -303,17 +305,22 @@ void Player::UpdateRegeneration(float deltaTime){
 	// 体力が尽きているとき・減っていないときは回復しない
 	if(hp_ <= 0 || hp_ >= kMaxHp){
 		regenTimer_ = 0.0f;
+		hasRegeneratedSinceHit_ = false;
+		regenProgress_ = 0.0f;
 		return;
 	}
 
+	// 被弾してから最初の1回は hpRegenDelay、その後は hpRegenInterval だけ待つ
 	GlobalVariables* gv = GlobalVariables::GetInstance();
-	const float regenDelay = gv->GetFloatValue(paramGroup_,"hpRegenDelay");
+	const float waitTime = (std::max)(gv->GetFloatValue(paramGroup_,hasRegeneratedSinceHit_?"hpRegenInterval":"hpRegenDelay"),kMinHpRegenTime);
 	regenTimer_ += deltaTime;
-	if(regenTimer_ >= regenDelay){
+	if(regenTimer_ >= waitTime){
 		++hp_;
-		// 次は間隔の分だけ待てば戻るよう、戻り始めるまでの時間から間隔を引いた所へ戻す
-		regenTimer_ = regenDelay - gv->GetFloatValue(paramGroup_,"hpRegenInterval");
+		regenTimer_ = 0.0f;
+		hasRegeneratedSinceHit_ = true;
 	}
+	// 戻った直後は0から数え直すため、「体力 + 進み具合」は途切れずに増えていく
+	regenProgress_ = (hp_ < kMaxHp)?regenTimer_ / waitTime:0.0f;
 }
 
 // 敵弾が当たったときの処理
@@ -327,6 +334,8 @@ void Player::TakeDamage(){
 	invincibleTimer_ = kInvincibleTime;
 	// 被弾したら、自然回復までの時間を最初から数え直す
 	regenTimer_ = 0.0f;
+	hasRegeneratedSinceHit_ = false;
+	regenProgress_ = 0.0f;
 
 	// 被弾位置に火花パーティクルを発生させ、当たったことを見た目で分かるようにする
 	ParticleManager::GetInstance()->EmitSpark(position_);

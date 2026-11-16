@@ -43,6 +43,8 @@ namespace{
 	// 調整項目名(輪を塗り返す攻撃の、予告の時間と攻撃中の時間)
 	const char* kRingWarnTimeKey = "ringWarnTime";
 	const char* kRingDangerTimeKey = "ringDangerTime";
+	// 調整項目名(弾を撃つ前の予備動作の時間)
+	const char* kTelegraphTimeKey = "telegraphTime";
 }
 
 Boss::Boss() = default;
@@ -75,6 +77,7 @@ void Boss::Initialize(Obj3dCommon* objCommon){
 	gv->AddItem(kBossGroup,kPhase2RailIndexKey,static_cast<int32_t>(kDefaultPhase2RailIndex));
 	gv->AddItem(kBossGroup,kRingWarnTimeKey,kDefaultRingWarnTime);
 	gv->AddItem(kBossGroup,kRingDangerTimeKey,kDefaultRingDangerTime);
+	gv->AddItem(kBossGroup,kTelegraphTimeKey,kDefaultTelegraphTime);
 
 	ModelManager::GetInstance()->LoadModel(kBossModelPath);
 
@@ -175,6 +178,7 @@ void Boss::ResetAttack(){
 	attackIndex_ = 0;
 	attackTimer_ = GlobalVariables::GetInstance()->GetFloatValue(kBossGroup,kAttackIntervalKey);
 	burstShotsLeft_ = 0;
+	telegraphRate_ = 0.0f;
 	// 輪を塗り返す攻撃も、予告・攻撃中の途中なら止める
 	ringAttackState_ = RingAttackState::None;
 	ringAttackRailIndex_ = kNoRingAttackRail;
@@ -252,11 +256,13 @@ void Boss::Update(bool isBossStage,const Vector3& playerPosition,PlayerBulletMan
 	if(Model::Material* mat = obj_->GetMaterial()){
 		const Vector4& fullHpColor = (phase_ == kSecondPhase)?kPhase2FullHpColor:kFullHpColor;
 		const float damageRate = 1.0f - static_cast<float>(hp_) / static_cast<float>(maxHp_);
+		// 予備動作の間は、撃つ直前へ向けてだんだん白く光らせる(進み具合の2乗で、撃つ直前に一気に白くする)
+		const float telegraphColorRate = kTelegraphColorRate * telegraphRate_ * telegraphRate_;
 		mat->color = {
-			Lerp(fullHpColor.x,kLowHpColor.x,damageRate),
-			Lerp(fullHpColor.y,kLowHpColor.y,damageRate),
-			Lerp(fullHpColor.z,kLowHpColor.z,damageRate),
-			Lerp(fullHpColor.w,kLowHpColor.w,damageRate),
+			Lerp(Lerp(fullHpColor.x,kLowHpColor.x,damageRate),kTelegraphColor.x,telegraphColorRate),
+			Lerp(Lerp(fullHpColor.y,kLowHpColor.y,damageRate),kTelegraphColor.y,telegraphColorRate),
+			Lerp(Lerp(fullHpColor.z,kLowHpColor.z,damageRate),kTelegraphColor.z,telegraphColorRate),
+			Lerp(Lerp(fullHpColor.w,kLowHpColor.w,damageRate),kTelegraphColor.w,telegraphColorRate),
 		};
 	}
 
@@ -266,7 +272,9 @@ void Boss::Update(bool isBossStage,const Vector3& playerPosition,PlayerBulletMan
 		obj_->SetRotate({0.0f, std::atan2(toPlayerXZ.x,toPlayerXZ.z), 0.0f});
 	}
 	obj_->SetTranslate(position_);
-	obj_->SetScale({scale_, scale_, scale_});
+	// 予備動作の間は、撃つ直前へ向けて体をふくらませ、撃った瞬間に元の大きさへ戻す(当たり判定の大きさは変えない)
+	const float visualScale = scale_ * (1.0f + kTelegraphScaleRate * telegraphRate_ * telegraphRate_);
+	obj_->SetScale({visualScale, visualScale, visualScale});
 	if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
 		obj_->SetCamera(activeCamera);
 	}
@@ -302,13 +310,23 @@ void Boss::UpdateAttack(const Vector3& playerPosition,bool canAttack,int playerR
 	if(!canAttack){
 		attackTimer_ = attackInterval;
 		burstShotsLeft_ = 0;
+		telegraphRate_ = 0.0f;
 		return;
 	}
 
 	attackTimer_ -= deltaTime;
+
+	// 弾を撃つ攻撃の前は、待ち時間の最後の telegraphTime 秒を予備動作にして、撃つタイミングを見せる
+	// 連射の2発目以降(1発目の予備動作で足りる)と、輪の塗り返し(輪の点滅が予告になる)では行わない
+	const float telegraphTime = gv->GetFloatValue(kBossGroup,kTelegraphTimeKey);
+	const bool telegraphs = burstShotsLeft_ <= 0 && GetAttackType(attackIndex_) != AttackType::RingInk && telegraphTime > 0.0f;
+	telegraphRate_ = telegraphs?std::clamp(1.0f - attackTimer_ / telegraphTime,0.0f,1.0f):0.0f;
+
 	if(attackTimer_ > 0.0f){
 		return;
 	}
+	// 撃った瞬間に、ふくらんだ体と色を元に戻す
+	telegraphRate_ = 0.0f;
 
 	const float bulletSpeed = (std::max)(gv->GetFloatValue(kBossGroup,kBulletSpeedKey),kMinBulletSpeed);
 

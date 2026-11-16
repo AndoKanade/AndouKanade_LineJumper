@@ -17,7 +17,7 @@ public:
 	/// <param name="maxHp">プレイヤーの体力の最大値</param>
 	/// <param name="isVisible">体力の表現を出すか(Play中だけtrue)</param>
 	/// <param name="deltaTime">経過時間(秒)</param>
-	void Update(int hp,int maxHp,bool isVisible,float deltaTime);
+	void Update(int hp,int maxHp,float recoverProgress,bool isVisible,float deltaTime);
 
 private:
 	// 今表示しているインクの広がり(体力から求めた広がりへ少しずつ寄せ、インクがじわっと迫って見えるようにする)
