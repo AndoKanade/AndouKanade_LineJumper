@@ -36,6 +36,16 @@ public:
 	void RecenterAim();
 
 	/// <summary>
+	/// 照準を指定した点へ向ける(ループするレールに乗ったときに、輪の中心にいるボスを画面の中央へ入れるのに使う)
+	/// 照準オフセットを変えた分を追従中の向きから引くため、見えている向きはその瞬間には変わらず、その後の更新でなめらかに回っていく
+	/// 上下は照準の可動範囲に収める
+	/// </summary>
+	/// <param name="basePosition">カメラ・プレイヤーの共通の基準位置</param>
+	/// <param name="baseRotation">カメラ・プレイヤーの共通の基準向き</param>
+	/// <param name="target">照準を向ける点</param>
+	void TurnAimToward(const Vector3& basePosition,const Vector3& baseRotation,const Vector3& target);
+
+	/// <summary>
 	/// 更新処理(位置・向き・前方/右方向ベクトルを計算し、プレイ用カメラに反映する)
 	/// </summary>
 	/// <param name="basePosition">カメラ・プレイヤーの共通の基準位置</param>
@@ -94,6 +104,8 @@ private:
 	static constexpr Vector3 kBaseForward = {0.0f, 0.0f, 1.0f};
 	// 回転前の右方向ベクトル
 	static constexpr Vector3 kBaseRight = {1.0f, 0.0f, 0.0f};
+	// 照準を向ける点が回転の中心と重なっているとみなす距離(向きが定まらないため照準を変えない)
+	static constexpr float kMinAimTargetDistance = 0.001f;
 	// 円周率(角度の差を -π〜π に収めるために使う)
 	static constexpr float kPi = 3.14159265f;
 };

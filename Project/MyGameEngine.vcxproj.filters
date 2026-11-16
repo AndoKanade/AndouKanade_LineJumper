@@ -324,6 +324,9 @@
     <ClCompile Include="Game\objects\Enemy.cpp">
       <Filter>ソース ファイル\Game\objects</Filter>
     </ClCompile>
+    <ClCompile Include="Game\objects\EnemyBulletPool.cpp">
+      <Filter>ソース ファイル\Game\objects</Filter>
+    </ClCompile>
     <ClCompile Include="Game\objects\CloudWave.cpp">
       <Filter>ソース ファイル\Game\objects</Filter>
     </ClCompile>
@@ -354,6 +357,9 @@
     <ClCompile Include="Game\objects\GoalTarget.cpp">
       <Filter>ソース ファイル\Game\objects</Filter>
     </ClCompile>
+    <ClCompile Include="Game\objects\Boss.cpp">
+      <Filter>ソース ファイル\Game\objects</Filter>
+    </ClCompile>
     <ClCompile Include="Game\objects\EnemyManager.cpp">
       <Filter>ソース ファイル\Game\objects</Filter>
     </ClCompile>
@@ -376,6 +382,9 @@
       <Filter>ソース ファイル\Game\objects</Filter>
     </ClCompile>
     <ClCompile Include="Game\UI\StageHUD.cpp">
+      <Filter>ソース ファイル\Game\UI</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\UI\BossHpGauge.cpp">
       <Filter>ソース ファイル\Game\UI</Filter>
     </ClCompile>
     <ClCompile Include="Game\UI\StageClearUI.cpp">
@@ -644,6 +653,9 @@
     <ClInclude Include="Game\objects\Enemy.h">
       <Filter>ヘッダー ファイル\Game\objects</Filter>
     </ClInclude>
+    <ClInclude Include="Game\objects\EnemyBulletPool.h">
+      <Filter>ヘッダー ファイル\Game\objects</Filter>
+    </ClInclude>
     <ClInclude Include="Game\objects\CloudWave.h">
       <Filter>ヘッダー ファイル\Game\objects</Filter>
     </ClInclude>
@@ -669,6 +681,9 @@
       <Filter>ヘッダー ファイル\Game\objects</Filter>
     </ClInclude>
     <ClInclude Include="Game\objects\GoalTarget.h">
+      <Filter>ヘッダー ファイル\Game\objects</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\objects\Boss.h">
       <Filter>ヘッダー ファイル\Game\objects</Filter>
     </ClInclude>
     <ClInclude Include="Game\objects\EnemyManager.h">
@@ -702,6 +717,9 @@
       <Filter>ヘッダー ファイル\Game\objects</Filter>
     </ClInclude>
     <ClInclude Include="Game\UI\StageHUD.h">
+      <Filter>ヘッダー ファイル\Game\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\UI\BossHpGauge.h">
       <Filter>ヘッダー ファイル\Game\UI</Filter>
     </ClInclude>
     <ClInclude Include="Game\UI\StageClearUI.h">

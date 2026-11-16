@@ -23,6 +23,7 @@
 #include "objects/PlayerBulletManager.h"
 #include "objects/TargetManager.h"
 #include "objects/GoalTarget.h"
+#include "objects/Boss.h"
 #include "objects/EnemyManager.h"
 #include "objects/InkEffectManager.h"
 #include "objects/ComboCounter.h"
@@ -37,6 +38,7 @@
 #include "UI/Reticle.h"
 #include "UI/StageHUD.h"
 #include "UI/StageClearUI.h"
+#include "UI/BossHpGauge.h"
 #include "UI/StageLockedNotice.h"
 #include "UI/TutorialHints.h"
 #include "UI/RailSwitchPrompt.h"
@@ -89,10 +91,18 @@ void GameScene::UpdateGameplay(){
 		// 残機も満タンから始める(コンティニューで戻ってきたときも満タンにする)
 		checkpoint_ = Checkpoint{};
 		lives_ = kMaxLives;
+		// ボスも体力満タンから始める(残機を減らしてやり直すときは戻さず、減らした体力を残す)
+		// コンティニューで戻ってきたときは、残機が尽きたときの形態の最初から始める
+		if(ContinuePoint::isRequested){
+			boss_->ResetToPhase(ContinuePoint::bossPhase);
+		} else{
+			boss_->Reset();
+		}
 		// タイトルから新しく始めるときは、クリアしたステージも忘れ、操作の案内も最初から出す(コンティニューのときは残す)
 		if(!ContinuePoint::isRequested){
 			StageInfo::ResetProgress();
 			tutorialHints_->Reset();
+			hasSwitchedBossRing_ = false;
 			hasPlayedRailSwitchSlow_ = false;
 			hasDestroyedFirstKeyTarget_ = false;
 		}
@@ -109,9 +119,10 @@ void GameScene::UpdateGameplay(){
 		returnJump_->Reset();
 		barrierCutscene_->Reset();
 		startPlatform_->ReleaseBarrierHold();
-		isPlaySessionClearPending_ = false;
 		// Play中に現れたゴールの的が、Editモードで出たままにならないよう消す
 		goalTarget_->Reset();
+		// Play中に減らした・倒したボスも、Editモードでは体力満タンで出す
+		boss_->Reset();
 		// Editモードに戻ったら、Play前に見ていた位置のまま俯瞰デバッグカメラに戻す
 		debugTopCamera_->Enable();
 		// Play前に編集していたレールと制御点を選び直し、続けて編集できるようにする
@@ -121,8 +132,10 @@ void GameScene::UpdateGameplay(){
 		// 最初からやり直すため、通ったチェックポイントも忘れ、残機も満タンに戻す
 		checkpoint_ = Checkpoint{};
 		lives_ = kMaxLives;
+		boss_->Reset();
 		StageInfo::ResetProgress();
 		tutorialHints_->Reset();
+		hasSwitchedBossRing_ = false;
 		hasPlayedRailSwitchSlow_ = false;
 		hasDestroyedFirstKeyTarget_ = false;
 		ResetPlayState();
@@ -174,7 +187,13 @@ void GameScene::UpdateGameplay(){
 	// 最初に飛び移り方の案内を出したときだけ、レールを進む・敵・弾・的・しぶきをゆっくりにする
 	// カメラ(照準)とキーの入力は通常の速さのままにして、落ち着いて案内のキーを押せるようにする
 	UpdateRailSwitchSlow(isGameplayActive);
-	const float worldDeltaTime = kDeltaTime * railSwitchTimeScale_;
+	// ボスが2形態目に変わった直後も、しばらくゆっくりにして、形態が変わったことを見せる
+	float bossPhaseTimeScale = 1.0f;
+	if(bossPhaseSlowTimer_ > 0.0f){
+		bossPhaseSlowTimer_ -= kDeltaTime;
+		bossPhaseTimeScale = kBossPhaseChangeTimeScale;
+	}
+	const float worldDeltaTime = kDeltaTime * railSwitchTimeScale_ * bossPhaseTimeScale;
 
 	// 出発の演出を使うときは、ゲートが開いてから演出を始めるまでの間だけ、ゲートの先に出発台の目印を出す
 	startPlatform_->SetDeparturePadVisible(startSequence_->IsBoarding() && departureDirector_->UsesDeparturePad());
@@ -196,6 +215,16 @@ void GameScene::UpdateGameplay(){
 		// チェックポイントの制御点を通ったら、落ちたときにやり直す位置として覚えておく
 		UpdateCheckpoint();
 	}
+
+	// ボスの周りを回るループするレールに乗った瞬間に、照準を輪の中心にいるボスへ向ける
+	// レールの向きは輪の接線のため、そのままだとボスが画面の横に外れる。乗った後はレールの向きに追従するため、ボスは画面のほぼ同じ位置に残る
+	const bool isOnBossLoop = isGameplayActive && boss_->IsActive() && player_->IsOnRail() && railEditor_->IsLoopRail(railEditor_->GetActiveRailIndex());
+	if(isOnBossLoop && !wasOnBossLoop_){
+		railCamera_->TurnAimToward(player_->GetBasePosition(),player_->GetBaseRotation(),boss_->GetPosition());
+	}
+	wasOnBossLoop_ = isOnBossLoop;
+	// ボスの2形態目では、輪を回る速さを上げる(輪に乗っていない間は元の速さ)
+	player_->SetRailSpeedRate(isOnBossLoop?boss_->GetRailSpeedRate():1.0f);
 
 	// カメラを基準位置の後ろ上に置き、照準の入力を反映する
 	// スタート台の上を動ける間も照準(カメラの向き)を動かせるようにして、周りを見回せるようにする
@@ -266,13 +295,7 @@ void GameScene::UpdateGameplay(){
 			if(railEditor_->GetStageIndex() == StageInfo::kFinalStageIndex){
 				StartStageClear(landedPos);
 			} else{
-				// プレイ会用の設定では、壁が壊れるのを見せた後にクリア画面へ移り、次の人がタイトルから遊べるようにする
-				// 始め直すと的・連鎖数が初期状態に戻るため、結果は先に書き込んでおく
-				if(StageInfo::isPlaySessionMode){
-					WriteStageResult();
-				}
 				RestartFromReturnJump(landedPos);
-				isPlaySessionClearPending_ = StageInfo::isPlaySessionMode;
 				// クリアしたステージの通路の壁は、演出で壊れるまで立たせておき、カメラを向けて壊れるところを見せる
 				startPlatform_->HoldBarrier(railEditor_->GetStageIndex());
 				barrierCutscene_->Begin(*startPlatform_,railEditor_->GetStageIndex());
@@ -289,14 +312,12 @@ void GameScene::UpdateGameplay(){
 		}
 	}
 
-	// プレイ会用の設定では、壁が壊れるのを見せ終えたらクリア画面へ移る
-	if(isPlayMode && isPlaySessionClearPending_ && !barrierCutscene_->IsRunning() && !sceneManager_->IsTransitioning()){
-		isPlaySessionClearPending_ = false;
-		sceneManager_->ChangeScene("CLEAR",GetTransitionStyle(kClearTransitionKey));
-	}
-
 	// 着地の演出を見せ終えたら、クリア画面へ移る(Editモードへ戻ったときは止める)
 	if(isPlayMode && isStageCleared_){
+		// ボスを倒したときは、体が弾けて消えるまでの演出も進める
+		if(boss_->IsDefeated()){
+			UpdateBossDefeat();
+		}
 		UpdateStageClear();
 	}
 
@@ -368,14 +389,21 @@ void GameScene::UpdateGameplay(){
 	if(isGameplayActive){
 		// 無敵時間の経過を進める
 		player_->UpdateInvincible(kDeltaTime);
+		// 被弾してからしばらくたったら、体力を少しずつ戻す
+		player_->UpdateRegeneration(kDeltaTime);
 
 		// 命中した弾は無敵中でもここで消滅させ、すり抜けて後から当たらないようにする
 		// プレイヤーの行列はこのフレームの配置処理でUpdate()済み
-		int hitCount = enemyManager_->CheckHitToPlayer(player_->GetHitSphere());
+		// 雑魚敵の弾はどれも同じダメージ、ボスの弾は種類ごとのダメージを持つ
+		float hitDamage = 0.0f;
+		if(enemyManager_->CheckHitToPlayer(player_->GetHitSphere()) > 0){
+			hitDamage = GlobalVariables::GetInstance()->GetFloatValue(kGameSceneGroup,kEnemyBulletDamageKey);
+		}
+		hitDamage = (std::max)(hitDamage,boss_->CheckHitToPlayer(player_->GetHitSphere()));
 
-		// 同時に複数当たっても体力の減少は1回分だけにする
-		if(hitCount > 0){
-			player_->TakeDamage();
+		// 同時に複数当たっても体力の減少は1回分(一番大きいダメージ)だけにする
+		if(hitDamage > 0.0f){
+			player_->TakeDamage(hitDamage);
 		}
 	}
 
@@ -461,6 +489,12 @@ void GameScene::UpdateGameplay(){
 		float aimedGoalDistance = 0.0f;
 		if(goalTarget_->FindAimed(cameraPos,cameraForward,minAimDistance,aimedGoalDistance) && (!isAimingAny || aimedGoalDistance < aimDistance)){
 			aimDistance = aimedGoalDistance;
+			isAimingAny = true;
+		}
+		// ボスを狙えているときは、レティクルの線が体に入る手前の面の奥行きを狙う
+		float aimedBossDistance = 0.0f;
+		if(boss_->FindAimed(cameraPos,cameraForward,minAimDistance,aimedBossDistance) && (!isAimingAny || aimedBossDistance < aimDistance)){
+			aimDistance = aimedBossDistance;
 		}
 		Vector3 aimPoint = cameraPos + cameraForward * aimDistance;
 		Vector3 shootDirection = Normalize(aimPoint - muzzlePos);
@@ -512,6 +546,23 @@ void GameScene::UpdateGameplay(){
 		returnJump_->Begin(MakeDepartureContext());
 	}
 
+	// ボスの更新と弾との当たり判定(最後のステージでだけ出す。Edit中・開始演出中は弾を当てず、揺れも止める)
+	// プレイヤーが輪に乗っている間だけ攻撃させる。やられ演出の最中は、雑魚敵と同じくボスの弾もスローで動かす
+	boss_->Update(railEditor_->GetStageIndex() == StageInfo::kFinalStageIndex,playerPos,*bulletManager_,isGameplayActive,isOnBossLoop,isOnBossLoop?railEditor_->GetActiveRailIndex():-1,enemyDeltaTime);
+
+	// ボスが2形態目に変わり始めたら、変わったことを見せる演出を出す
+	if(boss_->ConsumePhaseChanged()){
+		StartBossPhaseChange();
+	}
+	// ボスの輪を塗り返す攻撃を、輪の色・被弾・飛び移り方の案内に反映する
+	UpdateBossRingAttack(isOnBossLoop,enemyDeltaTime);
+
+	// ボスの体力を0にして倒したら、倒した演出を見せてからクリア画面へ移る
+	// クリア画面へ移るのを待っている間はプレイ可能でなくなるため、倒した処理が二重に起きることはない
+	if(isGameplayActive && boss_->IsDefeated()){
+		StartBossDefeat();
+	}
+
 	// 鍵の的を壊したら、そのレールを出す(始点から終点へ管を伸ばす)
 	ApplyRailLocks(false);
 
@@ -523,7 +574,8 @@ void GameScene::UpdateGameplay(){
 
 	// 狙えているときはレティクル中心を赤くする(ゴールの的は、レティクルの方向が当たり判定の球を通っていれば狙えているとする)
 	float goalAimDistance = 0.0f;
-	reticle_->SetAiming(isAimingAtAnyTarget || goalTarget_->FindAimed(cameraPos,cameraForward,kReticleAimMinDistance,goalAimDistance));
+	float bossAimDistance = 0.0f;
+	reticle_->SetAiming(isAimingAtAnyTarget || goalTarget_->FindAimed(cameraPos,cameraForward,kReticleAimMinDistance,goalAimDistance) || boss_->FindAimed(cameraPos,cameraForward,kReticleAimMinDistance,bossAimDistance));
 
 	// 演出の更新(このフレームで出した分も含めて行列を求めるため、出す処理がすべて終わってから行う)
 	// ヒットストップ中は、飛び散ったインクも空中で止める
@@ -532,7 +584,8 @@ void GameScene::UpdateGameplay(){
 	float inkTimeScale = 1.0f;
 	if(isDefeated_){
 		inkTimeScale = kDefeatTimeScale;
-	} else if(returnJump_->IsWaiting()){
+	} else if(returnJump_->IsWaiting() || boss_->IsDefeated()){
+		// ボスを倒してクリア画面へ移るまでの間も、同じようにゆっくり飛び散らせる
 		inkTimeScale = kGoalBreakTimeScale;
 	}
 	inkEffect_->Update(screenImpact_->IsHitStopping()?0.0f:worldDeltaTime * inkTimeScale);
@@ -541,13 +594,17 @@ void GameScene::UpdateGameplay(){
 	speedLines_->Update(isRidingRail,kDeltaTime);
 
 	// 体力の表現の更新(Play中だけ出し、Editモードでは外す)
-	damageInkEffect_->Update(player_->GetHp(),player_->GetMaxHp(),isPlayMode,kDeltaTime);
+	damageInkEffect_->Update(player_->GetHpRate(),isPlayMode,kDeltaTime);
 
 	// 画面表示の更新(左上のアイコンには残機を出す)
 	stageHUD_->Update(lives_,kMaxLives,targetManager_->GetDestroyedCount(),targetManager_->GetTotalCount(),*comboCounter_);
+	// ボスの体力ゲージは、プレイが始まっていて、ボスがまだ倒されていない間だけ出す
+	bossHpGauge_->Update(isPlayMode && startSequence_->IsPlayable() && boss_->IsActive(),boss_->GetHp(),boss_->GetMaxHp(),boss_->GetPhase(),kDeltaTime);
 	// 「STAGE CLEAR!」の表示の動きを進める(出していないときは何もしない)
 	stageClearUI_->Update(kDeltaTime);
 	goalBannerUI_->Update(kDeltaTime);
+	bossPhaseBannerUI_->Update(kDeltaTime);
+	bossRingHintUI_->Update(kDeltaTime);
 	// プレイ会用の設定で閉じているゲートの前に、台の上を歩いて来たら「いまは遊べないよ!!」を出す
 	stageLockedNotice_->Update(isPlayerMovable && startPlatform_->IsInFrontOfPlaySessionClosedGate(player_->GetPosition()),kDeltaTime);
 	// レールを進んでいる間に、生きている鍵の的が近くにあるかを調べる(鍵の的の目印と案内に使う)

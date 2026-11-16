@@ -21,6 +21,7 @@
 #include "objects/PlayerBulletManager.h"
 #include "objects/TargetManager.h"
 #include "objects/GoalTarget.h"
+#include "objects/Boss.h"
 #include "objects/EnemyManager.h"
 #include "objects/InkEffectManager.h"
 #include "objects/ComboCounter.h"
@@ -33,6 +34,7 @@
 #include "Camera/CameraPose.h"
 // UI
 #include "UI/StageClearUI.h"
+#include "UI/BossHpGauge.h"
 #include "UI/StageLockedNotice.h"
 #include "UI/RailSwitchPrompt.h"
 #include "UI/KeyTargetMarker.h"
@@ -51,8 +53,13 @@ namespace{
 // ゲームを初期状態(レール先頭)から始め直す
 // Playに入った瞬間と、レールから落ちたときのリスタートで共通して使う
 void GameScene::ResetPlayState(){
+	// やり直してループするレールに乗り直したときも、照準をボスへ向け直す
+	// 輪に乗っている間はゲートからのレールを出ていない状態にしているため、下でレールの出方を求めるより先に忘れておく
+	wasOnBossLoop_ = false;
+	lastBossLoopRailIndex_ = -1;
 	// レール位置・オンレール状態・体力を初期状態に戻す
 	player_->Reset();
+	player_->SetRailSpeedRate(1.0f);
 	// 照準を正面に戻す
 	railCamera_->Reset();
 	// 的を復活させる
@@ -67,6 +74,7 @@ void GameScene::ResetPlayState(){
 	if(railEditor_){
 		railEditor_->SwitchActiveRail(0);
 		railEditor_->ClearPaint();
+		railEditor_->ClearRailTints();
 
 		// プレイヤーを台の真ん中から始めさせる(今のステージのレールの向き、つまりそのステージのゲートの方を向かせる)
 		player_->StartOnPlatform(startPlatform_->GetSpawnPosition(),railEditor_->GetRotationOnRail(0.0f));
@@ -91,19 +99,24 @@ void GameScene::ResetPlayState(){
 	stageClearUI_->Reset();
 	goalBannerUI_->Reset();
 	wasGoalTargetAppeared_ = false;
+	bossPhaseBannerUI_->Reset();
+	bossRingHintUI_->Reset();
+	bossPhaseSlowTimer_ = 0.0f;
+	wasBossRingAttacking_ = false;
 	stageLockedNotice_->Reset();
 	railSwitchPrompt_->Reset();
 	keyTargetMarker_->Reset();
 
 	// 雑魚敵も撃破前の初期状態(体力満タン)から始める
 	enemyManager_->Reset();
+	// ボスは減らした体力を残したまま、撃った弾だけを消して攻撃を最初からやり直させる
+	boss_->ResetAttack();
 
 	// やられ演出の最中にRキーなどでやり直したときも、自機を出して操作できる状態に戻す
 	isDefeated_ = false;
 	defeatTimer_ = 0.0f;
 	isStageCleared_ = false;
 	stageClearTimer_ = 0.0f;
-	isPlaySessionClearPending_ = false;
 
 	// やり直したら、ゆっくりにしている途中でも元の速さに戻す(最初の1回を済ませたかは残す)
 	isRailSwitchSlowActive_ = false;
@@ -211,6 +224,8 @@ void GameScene::LoseLife(){
 	ContinuePoint::railIndex = checkpoint_.railIndex;
 	ContinuePoint::pointIndex = checkpoint_.pointIndex;
 	ContinuePoint::targetAliveStates = checkpoint_.targetAliveStates;
+	// コンティニューでは、残機が尽きたときのボスの形態の最初から戦い直せるようにする
+	ContinuePoint::bossPhase = boss_->GetPhase();
 	// すぐに切り替えず、やられ演出で「やられた」ことを見せてからゲームオーバー画面へ移る
 	StartDefeat();
 }
@@ -244,6 +259,24 @@ void GameScene::UpdateDefeat(){
 void GameScene::ApplyRailLocks(bool isInstant){
 	lockedRails_.assign(static_cast<size_t>(railEditor_->GetRailCount()),false);
 	targetManager_->FillLockedRails(lockedRails_);
+
+	// ボスのいるステージでは、ボスの形態とプレイヤーの位置でもレールの出方を決める
+	if(railEditor_->GetStageIndex() == StageInfo::kFinalStageIndex){
+		// 2形態目で現れる輪は、2形態目に変わるまで出さない(変わったら、鍵のレールと同じく管を伸ばして出す)
+		const int phase2RailIndex = boss_->GetPhase2RailIndex();
+		if(!boss_->IsSecondPhase() && phase2RailIndex >= 0 && phase2RailIndex < static_cast<int>(lockedRails_.size())){
+			lockedRails_[phase2RailIndex] = true;
+		}
+		// 輪に乗っている間は、ゲートからのレール(ループしないレール)を出ていない状態にする
+		// 輪のすぐ横を通っているため、出したままだと、輪から輪へ飛び移るときに一番近いレールとして選ばれて飛び移れない区間ができる
+		if(wasOnBossLoop_){
+			for(int i = 0; i < static_cast<int>(lockedRails_.size()); ++i){
+				if(!railEditor_->IsLoopRail(i)){
+					lockedRails_[i] = true;
+				}
+			}
+		}
+	}
 	if(isInstant){
 		railEditor_->ResetRailLocks(lockedRails_);
 	} else{
@@ -288,6 +321,11 @@ void GameScene::ResetOtherStageRailLocks(){
 		}
 		stageLockedRails.assign(static_cast<size_t>(railEditor_->GetStageRailCount(stage)),false);
 		targetManager_->FillStageLockedRails(stage,stageLockedRails);
+		// ボスのいるステージの、2形態目で現れる輪は、ほかのステージから見えるときも出ていない状態にする
+		const int phase2RailIndex = boss_->GetPhase2RailIndex();
+		if(stage == StageInfo::kFinalStageIndex && phase2RailIndex >= 0 && phase2RailIndex < static_cast<int>(stageLockedRails.size())){
+			stageLockedRails[phase2RailIndex] = true;
+		}
 		railEditor_->ResetStageRailLocks(stage,stageLockedRails);
 	}
 }
@@ -319,6 +357,7 @@ void GameScene::RestartFromReturnJump(const Vector3& landedPos){
 	// 新しく始め直すため、通ったチェックポイントも忘れ、残機も満タンに戻す
 	checkpoint_ = Checkpoint{};
 	lives_ = kMaxLives;
+	boss_->Reset();
 	// 的・敵・レールの塗り・ゴールの的などを初期状態に戻し、プレイヤーをスタート台の上に立たせる
 	// (演出・画面の揺れもここで消えるため、着地の演出はこの後に出す)
 	ResetPlayState();
@@ -342,18 +381,112 @@ void GameScene::PlayReturnLandEffects(const Vector3& landedPos){
 void GameScene::StartStageClear(const Vector3& landedPos){
 	isStageCleared_ = true;
 	stageClearTimer_ = 0.0f;
+	stageClearDuration_ = kStageClearDuration;
 	PlayReturnLandEffects(landedPos);
+}
+
+// ボスを倒した瞬間に、倒した演出を出してクリア画面へ移るのを待ち始める
+// まず一瞬動きを止めて画面を小さく揺らし続け、体が弾けるまでの溜めにする(弾ける演出は UpdateBossDefeat() で出す)
+void GameScene::StartBossDefeat(){
+	StageInfo::clearedStages[StageInfo::kFinalStageIndex] = true;
+	isStageCleared_ = true;
+	stageClearTimer_ = 0.0f;
+	stageClearDuration_ = kBossDefeatClearDuration;
+	bossDefeatBurstTimer_ = 0.0f;
+	bossDefeatBurstCount_ = 0;
+
+	inkEffect_->EmitTargetBreak(boss_->GetPosition());
+	screenImpact_->Trigger(kBossDefeatHitStopDuration,kBossDefeatShakeAmplitude,kBossDefeatShakeDuration);
+}
+
+// ボスを倒してから体が消えるまでの演出を進める
+// 体を震わせながら、体の表面のあちこちから小さな破片を続けて出し、決めた時間がたったら大きく弾けさせて体を消し、「STAGE CLEAR!」を出す
+void GameScene::UpdateBossDefeat(){
+	if(!boss_->IsShown()){
+		return;
+	}
+	boss_->UpdateDefeated(kDeltaTime);
+	const Vector3 bossPosition = boss_->GetPosition();
+
+	// 小さな破片は、出すたびに体の周りを回しながら上下にも振った位置から出す
+	bossDefeatBurstTimer_ += kDeltaTime;
+	if(bossDefeatBurstTimer_ >= kBossDefeatBurstInterval){
+		bossDefeatBurstTimer_ -= kBossDefeatBurstInterval;
+		const float angle = static_cast<float>(bossDefeatBurstCount_) * kBossDefeatBurstAngleStep;
+		const Vector3 direction = Normalize(Vector3{std::cos(angle), std::sin(angle * kBossDefeatBurstHeightRate), std::sin(angle)});
+		inkEffect_->EmitTargetBreak(bossPosition + direction * boss_->GetBodyRadius());
+		++bossDefeatBurstCount_;
+	}
+
+	// 体が弾ける瞬間:ゴールの的を壊したときと同じ作りの大きな破片・しぶき・閃光を出し、一瞬動きを止めて画面を大きく揺らし、ボスを中心に放射ブラーをかける
+	if(stageClearTimer_ >= kBossDefeatVanishTime){
+		boss_->Vanish();
+		inkEffect_->EmitGoalBreak(bossPosition);
+		screenImpact_->Trigger(kGoalBreakHitStopDuration,kGoalBreakShakeAmplitude,kGoalBreakShakeDuration);
+		if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
+			Application::GetInstance()->TriggerRadialBlur(CameraPoseMath::WorldToScreenUv(bossPosition,activeCamera->GetViewProjectionMatrix()),kGoalBreakRadialBlurWidth,kGoalBreakRadialBlurDuration);
+		}
+		stageClearUI_->Begin();
+	}
 }
 
 // 着地の演出を見せ終えたら、結果を書き込んでクリア画面へ移る
 // シーンが作り直される前に、クリア画面で出す結果を書き込んでおく
 void GameScene::UpdateStageClear(){
-	const bool wasWaiting = stageClearTimer_ < kStageClearDuration;
+	const bool wasWaiting = stageClearTimer_ < stageClearDuration_;
 	stageClearTimer_ += kDeltaTime;
-	if(wasWaiting && stageClearTimer_ >= kStageClearDuration){
+	if(wasWaiting && stageClearTimer_ >= stageClearDuration_){
 		WriteStageResult();
 		sceneManager_->ChangeScene("CLEAR",GetTransitionStyle(kClearTransitionKey));
 	}
+}
+
+// ボスが2形態目に変わり始めた瞬間の演出
+// ボスから破片としぶきを飛ばし、一瞬動きを止めて画面を揺らし、ボスを中心に放射ブラーをかけ、しばらくゲームをゆっくりにして「まだ終わらない!!」を出す
+// 内側の輪は、ApplyRailLocks() がボスの形態を見て、このフレームから管を伸ばして出す
+void GameScene::StartBossPhaseChange(){
+	const Vector3 bossPosition = boss_->GetPosition();
+	inkEffect_->EmitGoalBreak(bossPosition);
+	screenImpact_->Trigger(kGoalBreakHitStopDuration,kGoalBreakShakeAmplitude,kGoalBreakShakeDuration);
+	if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
+		Application::GetInstance()->TriggerRadialBlur(CameraPoseMath::WorldToScreenUv(bossPosition,activeCamera->GetViewProjectionMatrix()),kGoalBreakRadialBlurWidth,kGoalBreakRadialBlurDuration);
+	}
+	bossPhaseSlowTimer_ = kBossPhaseChangeSlowDuration;
+	bossPhaseBannerUI_->Begin();
+}
+
+// ボスの輪を塗り返す攻撃を、輪の色・被弾・飛び移り方の案内に反映する
+void GameScene::UpdateBossRingAttack(bool isOnBossLoop,float deltaTime){
+	// 輪の色は毎フレーム元に戻してから、予告・攻撃中の輪だけ色を寄せる(予告は白く点滅、攻撃中は赤)
+	railEditor_->ClearRailTints();
+	const Boss::RingAttackState ringState = boss_->GetRingAttackState();
+	const int ringRailIndex = boss_->GetRingAttackRailIndex();
+	const bool isRingAttacking = boss_->IsActive() && ringState != Boss::RingAttackState::None;
+	const int activeRailIndex = railEditor_->GetActiveRailIndex();
+	if(isRingAttacking){
+		railEditor_->SetRailTint(ringRailIndex,boss_->GetRingAttackColor(),boss_->GetRingAttackTintRate());
+
+		// 攻撃中の輪に乗っている間は、敵のインクに浸かっているものとして体力が減り続ける(跳ねていても輪の上にいるものとする。無敵時間に関係なく減る)
+		if(ringState == Boss::RingAttackState::Danger && isOnBossLoop && activeRailIndex == ringRailIndex){
+			player_->TakeContinuousDamage(boss_->GetRingDamagePerSecond(),deltaTime);
+		}
+	}
+
+	// 輪から輪へ飛び移ったことがあるかを覚える(乗っている輪の番号が、前のフレームの輪から変わったら飛び移った)
+	if(isOnBossLoop){
+		if(lastBossLoopRailIndex_ >= 0 && lastBossLoopRailIndex_ != activeRailIndex){
+			hasSwitchedBossRing_ = true;
+		}
+		lastBossLoopRailIndex_ = activeRailIndex;
+	} else{
+		lastBossLoopRailIndex_ = -1;
+	}
+
+	// 予告が始まった瞬間に、まだ輪から輪へ飛び移ったことが無ければ、飛び移り方の案内を出す
+	if(isRingAttacking && !wasBossRingAttacking_ && !hasSwitchedBossRing_){
+		bossRingHintUI_->Begin();
+	}
+	wasBossRingAttacking_ = isRingAttacking;
 }
 
 // クリア画面で出す結果を書き込む

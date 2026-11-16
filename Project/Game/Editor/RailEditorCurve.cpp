@@ -41,7 +41,43 @@ Vector3 RailEditor::ComputePositionOnRail(const std::vector<ControlPoint>& contr
 
 // 進行度t(0〜1)からレール上の座標を取得(対象はアクティブなレール)
 Vector3 RailEditor::GetPositionOnRail(float t) const{
-	return ComputePositionOnRail(rails_[activeRailIndex_].controlPoints,t);
+	return ComputePositionOnRail(GetCurvePoints(rails_[activeRailIndex_]),t);
+}
+
+// 曲線の計算に使う制御点の並びを取得
+const std::vector<RailEditor::ControlPoint>& RailEditor::GetCurvePoints(const Rail& rail) const{
+	return rail.loopCurvePoints.empty()?rail.controlPoints:rail.loopCurvePoints;
+}
+
+// ループするレールの曲線の計算に使う制御点の並びを作り直す
+// Catmull-Romの曲線は2番目の制御点から最後の1つ前の制御点までを通るため、
+// 「最後の制御点・すべての制御点・最初の制御点・2番目の制御点」の順に並べると、最初の制御点から1周して最初の制御点へ戻る曲線になる
+// つなぎ目の前後でも同じ4点の組で補間されるため、位置・向き・ロール・速さがつなぎ目で途切れない
+void RailEditor::RefreshLoopCurvePoints(Rail& rail){
+	if(!rail.isLoop || rail.controlPoints.size() < kMinLoopPointCount){
+		rail.loopCurvePoints.clear();
+		return;
+	}
+
+	const std::vector<ControlPoint>& controlPoints = rail.controlPoints;
+	rail.loopCurvePoints.clear();
+	rail.loopCurvePoints.reserve(controlPoints.size() + kCatmullRomExtraPointCount);
+	rail.loopCurvePoints.push_back(controlPoints.back());
+	rail.loopCurvePoints.insert(rail.loopCurvePoints.end(),controlPoints.begin(),controlPoints.end());
+	rail.loopCurvePoints.push_back(controlPoints[0]);
+	rail.loopCurvePoints.push_back(controlPoints[1]);
+}
+
+// 全ステージの全レールのloopCurvePointsを作り直す
+void RailEditor::RefreshAllLoopCurvePoints(){
+	for(int stage = 0; stage < StageInfo::kStageCount; ++stage){
+		for(Rail& rail : GetStageRails(stage)){
+			// ループしないレールは空のままでよいため、作り直すのはループの設定があるレールと、設定を外した直後のレールだけにする
+			if(rail.isLoop || !rail.loopCurvePoints.empty()){
+				RefreshLoopCurvePoints(rail);
+			}
+		}
+	}
 }
 
 // 指定ワールド座標に最も近いレール上の進行度tを計算する
@@ -102,8 +138,13 @@ RailEditor::NearestRailResult RailEditor::FindNearestRail(const Vector3& worldPo
 			continue;
 		}
 
-		float t = ComputeNearestTOnRail(rails_[i].controlPoints,worldPos);
-		Vector3 nearestPos = ComputePositionOnRail(rails_[i].controlPoints,t);
+		const std::vector<ControlPoint>& curvePoints = GetCurvePoints(rails_[i]);
+		float t = ComputeNearestTOnRail(curvePoints,worldPos);
+		// ループするレールでは進行度1と0が同じ位置のため、0〜1未満にそろえる
+		if(!rails_[i].loopCurvePoints.empty() && t >= kLoopLapT){
+			t -= kLoopLapT;
+		}
+		Vector3 nearestPos = ComputePositionOnRail(curvePoints,t);
 		float distance = Distance(nearestPos,worldPos);
 
 		if(bestDistance < 0.0f || distance < bestDistance){
@@ -120,7 +161,7 @@ RailEditor::NearestRailResult RailEditor::FindNearestRail(const Vector3& worldPo
 
 // 進行度t(0〜1)からレール上の回転(オイラー角)を取得(対象はアクティブなレール)
 Vector3 RailEditor::GetRotationOnRail(float t) const{
-	const std::vector<ControlPoint>& controlPoints = rails_[activeRailIndex_].controlPoints;
+	const std::vector<ControlPoint>& controlPoints = GetCurvePoints(rails_[activeRailIndex_]);
 
 	Vector3 forward = GetForwardOnRail(t);
 
@@ -171,7 +212,7 @@ Vector3 RailEditor::GetForwardOnRail(float t) const{
 
 // 進行度t(0〜1)からレール上の速度(各制御点のSpeed値を補間したもの)を取得(対象はアクティブなレール)
 float RailEditor::GetSpeedOnRail(float t) const{
-	return ComputeSpeedOnRail(rails_[activeRailIndex_].controlPoints,t);
+	return ComputeSpeedOnRail(GetCurvePoints(rails_[activeRailIndex_]),t);
 }
 
 // 進行度tと制御点配列から、レール上の速度(各制御点のSpeed値を補間したもの)を計算する
@@ -235,7 +276,8 @@ int RailEditor::GetControlPointCount() const{
 // 進行度tから、直近に通過した制御点のインデックスを取得(対象はアクティブなレール)
 // GetPositionOnRailと同じ区間分割を用い、区間の始点(制御点)のインデックスを返す
 int RailEditor::GetControlPointIndexFromT(float t) const{
-	const std::vector<ControlPoint>& controlPoints = rails_[activeRailIndex_].controlPoints;
+	const Rail& rail = rails_[activeRailIndex_];
+	const std::vector<ControlPoint>& controlPoints = GetCurvePoints(rail);
 
 	// Catmull-Rom補間には最低4点必要
 	if(controlPoints.size() < 4){
@@ -250,6 +292,11 @@ int RailEditor::GetControlPointIndexFromT(float t) const{
 		segment = numSegments - 1;
 	}
 
+	// ループするレールは、曲線の計算に使う並びの先頭に最後の制御点を1つ足しているため、区間の番号がそのまま制御点の番号になる
+	if(!rail.loopCurvePoints.empty()){
+		return static_cast<int>(segment);
+	}
+
 	// 区間の始点(GetPositionOnRailで言うp1)のインデックスが「直近に通過した制御点」
 	return static_cast<int>(segment) + 1;
 }
@@ -258,7 +305,14 @@ int RailEditor::GetControlPointIndexFromT(float t) const{
 // 制御点iは、ComputePositionOnRailの区間(i - 1)の始点にあたる
 // 0番目は曲線より手前、最後の制御点は曲線より先にあり曲線が通らないため、曲線の始点・終点の進行度に丸める
 float RailEditor::GetTOfControlPoint(int index) const{
-	const std::vector<ControlPoint>& controlPoints = rails_[activeRailIndex_].controlPoints;
+	const Rail& rail = rails_[activeRailIndex_];
+	const std::vector<ControlPoint>& controlPoints = rail.controlPoints;
+
+	// ループするレールはすべての制御点を曲線が通り、区間の数は制御点の数と同じになる
+	if(!rail.loopCurvePoints.empty()){
+		const int pointCount = static_cast<int>(controlPoints.size());
+		return static_cast<float>(std::clamp(index,0,pointCount - 1)) / static_cast<float>(pointCount);
+	}
 
 	// Catmull-Rom補間には最低4点必要
 	if(controlPoints.size() < 4){
@@ -289,7 +343,9 @@ int RailEditor::FindPassedCheckpoint(float t) const{
 // 速さはPlayerと同じく、制御点のSpeed値に全体の速さ(railSpeed)を掛けたもの
 RailEditor::RailStats RailEditor::ComputeActiveRailStats() const{
 	RailStats stats;
-	const std::vector<ControlPoint>& controlPoints = rails_[activeRailIndex_].controlPoints;
+	const Rail& rail = rails_[activeRailIndex_];
+	// ループするレールでは1周分の長さと秒数になる
+	const std::vector<ControlPoint>& controlPoints = GetCurvePoints(rail);
 
 	// Catmull-Rom補間には最低4点必要
 	if(controlPoints.size() < 4){
@@ -301,8 +357,10 @@ RailEditor::RailStats RailEditor::ComputeActiveRailStats() const{
 
 	// 選択中の制御点までに含まれる、分けた区間の数(制御点が曲線を通る位置は区間の境目にあたるため、整数で数えられる)
 	size_t samplesToSelected = 0;
-	if(selectedPointIndex_ >= 0 && selectedPointIndex_ < static_cast<int>(controlPoints.size())){
-		const int curveSegmentIndex = std::clamp(selectedPointIndex_ - static_cast<int>(kRailStartPointIndex),0,static_cast<int>(curveSegmentCount));
+	if(selectedPointIndex_ >= 0 && selectedPointIndex_ < static_cast<int>(rail.controlPoints.size())){
+		// ループするレールは最初の制御点から曲線が始まるため、制御点の番号がそのまま区間の数になる
+		const int firstCurvePointIndex = rail.loopCurvePoints.empty()?static_cast<int>(kRailStartPointIndex):0;
+		const int curveSegmentIndex = std::clamp(selectedPointIndex_ - firstCurvePointIndex,0,static_cast<int>(curveSegmentCount));
 		samplesToSelected = static_cast<size_t>(curveSegmentIndex) * kCurveSamplesPerSegment;
 	}
 
@@ -380,4 +438,42 @@ float RailEditor::GetControlPointsRadius() const{
 	}
 
 	return std::sqrt(maxDistSq);
+}
+
+// 今のステージの指定したレールがループするレールか(範囲外のレール・制御点が足りず輪にならないレールはループしないものとする)
+bool RailEditor::IsLoopRail(int railIndex) const{
+	if(railIndex < 0 || railIndex >= static_cast<int>(rails_.size())){
+		return false;
+	}
+	return !rails_[railIndex].loopCurvePoints.empty();
+}
+
+// 今のステージの指定したレールに、終点で自動で飛び移る先のレールが決めてあれば、そのレールと乗る位置を求める
+bool RailEditor::FindEndTransfer(int railIndex,int& outRailIndex,float& outT) const{
+	if(railIndex < 0 || railIndex >= static_cast<int>(rails_.size())){
+		return false;
+	}
+
+	// 自分自身・範囲外・鍵の的が残っていて出ていないレールへは飛び移らない
+	const int targetIndex = rails_[railIndex].endTransferRailIndex;
+	if(targetIndex < 0 || targetIndex >= static_cast<int>(rails_.size()) || targetIndex == railIndex || rails_[targetIndex].isLocked){
+		return false;
+	}
+
+	// Catmull-Rom補間には最低4点必要
+	const std::vector<ControlPoint>& sourcePoints = GetCurvePoints(rails_[railIndex]);
+	const std::vector<ControlPoint>& targetPoints = GetCurvePoints(rails_[targetIndex]);
+	if(sourcePoints.size() < 4 || targetPoints.size() < 4){
+		return false;
+	}
+
+	// 飛び移る先のレールの上で、終点に最も近い位置から進行を続ける
+	const Vector3 endPosition = ComputePositionOnRail(sourcePoints,kLoopLapT);
+	outRailIndex = targetIndex;
+	outT = ComputeNearestTOnRail(targetPoints,endPosition);
+	// ループするレールでは進行度1と0が同じ位置のため、0〜1未満にそろえる
+	if(!rails_[targetIndex].loopCurvePoints.empty() && outT >= kLoopLapT){
+		outT -= kLoopLapT;
+	}
+	return true;
 }

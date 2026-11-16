@@ -91,6 +91,16 @@ public:
 	// 今のステージの指定したレールがゴールのレールか(ほかのレールは終点でレールから外れるが、ゴールのレールは終点で止まる)
 	// 乗るとゴールの的が現れて先を並走し、終点で止まった後もゴールの的を壊すまで撃ち続けられる
 	bool IsGoalRail(int railIndex) const;
+	// 今のステージの指定したレールがループするレールか(終点と始点がつながっていて、進行度が1を越えたら0へ回って何周でも回れる)
+	bool IsLoopRail(int railIndex) const;
+	/// <summary>
+	/// 今のステージの指定したレールに、終点で自動で飛び移る先のレールが決めてあれば、そのレールと乗る位置を求める
+	/// </summary>
+	/// <param name="railIndex">終点に着いたレール</param>
+	/// <param name="outRailIndex">飛び移る先のレール</param>
+	/// <param name="outT">飛び移る先のレールの上で、終点に最も近い位置の進行度</param>
+	/// <returns>飛び移る先があれば true(決めていない・出ていないレール・曲線を作れないレールのときは false)</returns>
+	bool FindEndTransfer(int railIndex,int& outRailIndex,float& outT) const;
 
 	// アクティブなレールの制御点数を取得
 	int GetControlPointCount() const;
@@ -122,6 +132,15 @@ public:
 	void PaintActiveRail(float t);
 	// 全ステージの全レールの塗った区間を消す(リスタート時に呼ぶ)
 	void ClearPaint();
+	/// <summary>
+	/// 今のステージの指定したレールの管の色を、指定した色へ寄せて描く(ボスが輪を塗り返す予告・攻撃の見た目に使う)
+	/// </summary>
+	/// <param name="railIndex">色を変えるレール</param>
+	/// <param name="color">寄せる先の色</param>
+	/// <param name="rate">寄せる割合(0で元の色、1で指定した色)</param>
+	void SetRailTint(int railIndex,const Vector4& color,float rate);
+	// 全ステージの全レールの管の色を元に戻す
+	void ClearRailTints();
 
 	/// <summary>
 	/// 鍵の的が残っていて出ていないレールを反映する(Play中に毎フレーム呼ぶ)
@@ -175,6 +194,8 @@ private:
 		std::string name;
 		std::vector<ControlPoint> controlPoints;
 		bool isGoalRail = false;
+		bool isLoop = false;
+		int endTransferRailIndex = kNoEndTransferRail;
 	};
 	using RailsSnapshot = std::vector<RailSnapshot>;
 	// 編集履歴に残す、全ステージ分のレールのデータ(並びはステージの番号と同じ)
@@ -193,6 +214,11 @@ private:
 		std::string name;                                   // レール名(UI表示・保存ファイル名の目印用)
 		std::vector<ControlPoint> controlPoints;            // 制御点を保存する配列
 		bool isGoalRail = false;                            // ゴールのレールか(終点で止まり、乗るとゴールの的が現れる)
+		bool isLoop = false;                                // ループするレールか(最後の制御点から最初の制御点へつながり、何周でも回れる)
+		int endTransferRailIndex = kNoEndTransferRail;      // 終点に着いたら自動で飛び移る先のレール(kNoEndTransferRail: 飛び移らない)
+		// ループするレールの曲線の計算に使う制御点の並び(RefreshLoopCurvePoints()で作る。ループしないレールでは空)
+		// 最後の制御点を先頭に、最初の2つの制御点を末尾に足した並びにすると、ループしないレールと同じ計算のまま、すべての制御点を通って1周する曲線になる
+		std::vector<ControlPoint> loopCurvePoints;
 		std::vector<std::unique_ptr<Obj3D>> pointObjects;   // 制御点描画用の3Dオブジェクト群
 
 		// Play中にレールの本体として描く管(レールに沿った1本のモデル。BuildTubes()で頂点から作る)
@@ -213,6 +239,9 @@ private:
 		bool isPainted = false;
 		float paintStartT = 0.0f;
 		float paintEndT = 0.0f;
+		// 管の色を一時的に寄せる先の色と、寄せる割合(SetRailTint()で受け取る。0なら元の色)
+		Vector4 tintColor = {1.0f, 1.0f, 1.0f, 1.0f};
+		float tintRate = 0.0f;
 
 		// 出ていないレールとして描く点線(管と同じ頂点のうち、点線の区間の三角形だけを持つモデルと、それを描くオブジェクト)
 		std::unique_ptr<Model> dashedTubeModel;
@@ -270,6 +299,12 @@ private:
 	const std::vector<Rail>& GetStageRails(int stageIndex) const;
 	// ステージとレールのインデックスから保存先ファイルパスを求める(resource/stage/stage1/rail/rail0.json など)
 	std::string GetRailFilePath(int stageIndex,int railIndex) const;
+	// 曲線の計算に使う制御点の並びを取得(ループするレールはloopCurvePoints、それ以外は制御点そのまま)
+	const std::vector<ControlPoint>& GetCurvePoints(const Rail& rail) const;
+	// ループするレールの曲線の計算に使う制御点の並びを、今の制御点から作り直す(ループしない・制御点が足りないレールでは空にする)
+	void RefreshLoopCurvePoints(Rail& rail);
+	// 全ステージの全レールのloopCurvePointsを作り直す(制御点・ループの設定が変わりうる編集・読み込み・Undoの後に呼ぶ)
+	void RefreshAllLoopCurvePoints();
 	// 進行度tと制御点配列から、レール上の座標を計算する(GetPositionOnRail・全レール描画で共用)
 	Vector3 ComputePositionOnRail(const std::vector<ControlPoint>& controlPoints,float t) const;
 	// 指定ワールド座標に最も近いレール上の進行度tを計算する(粗いサンプリング+三分探索で絞り込み)
@@ -355,6 +390,12 @@ private:
 
 	// ステージを選び直していないことを表す値
 	static constexpr int kNoStageRequest = -1;
+	// 終点で飛び移る先のレールを決めていないことを表す値
+	static constexpr int kNoEndTransferRail = -1;
+	// ループするレールとして扱える制御点の数の下限(これ未満だと輪にならないため、ループしないレールと同じ扱いにする)
+	static constexpr size_t kMinLoopPointCount = 3;
+	// ループするレールで1周にあたる進行度
+	static constexpr float kLoopLapT = 1.0f;
 
 	// 螺旋の設定で使える範囲(半径が小さすぎると急カーブになり、1周の点が少なすぎると円に見えないため)
 	static constexpr float kMinSpiralRadius = 1.0f;

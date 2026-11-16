@@ -26,12 +26,14 @@ class DebugTopCamera;
 class PlayerBulletManager;
 class TargetManager;
 class GoalTarget;
+class Boss;
 class EnemyManager;
 class Reticle;
 class InkEffectManager;
 class ComboCounter;
 class StageHUD;
 class StageClearUI;
+class BossHpGauge;
 class StageLockedNotice;
 class TutorialHints;
 class RailSwitchPrompt;
@@ -129,6 +131,14 @@ private:
 	/// </summary>
 	/// <param name="landedPos">着地した位置</param>
 	void StartStageClear(const Vector3& landedPos);
+	// ボスを倒した瞬間に、倒した演出を出してクリア画面へ移るのを待ち始める
+	void StartBossDefeat();
+	// ボスを倒してから体が消えるまでの演出(体を震わせて小さな破片を続けて出し、最後に大きく弾けさせて「STAGE CLEAR!」を出す)を進める
+	void UpdateBossDefeat();
+	// ボスが2形態目に変わり始めた瞬間の演出(破片・ヒットストップ・揺れ・放射ブラー・スロー・「まだ終わらない!!」)を出す
+	void StartBossPhaseChange();
+	// ボスの輪を塗り返す攻撃を、輪の色・被弾・飛び移り方の案内に反映する
+	void UpdateBossRingAttack(bool isOnBossLoop,float deltaTime);
 	// 着地の演出を見せ終えたら、結果を書き込んでクリア画面へ移る
 	void UpdateStageClear();
 	// クリア画面で出す結果(壊した的の数・最大連鎖数)を書き込む(シーンが作り直される前、的・連鎖数を初期状態に戻す前に呼ぶ)
@@ -205,6 +215,25 @@ private:
 
 	// ゴールの的(ゴールのレールに乗ると現れて先を並走し、壊すとステージクリア)
 	std::unique_ptr<GoalTarget> goalTarget_;
+	// 最後のステージのボス(ループするレールの輪の中心に浮かび、倒すとクリア画面へ移る)
+	std::unique_ptr<Boss> boss_;
+	// 前のフレームで、ボスのいるステージのループするレールに乗っていたか(乗った瞬間に照準をボスへ向ける)
+	bool wasOnBossLoop_ = false;
+	// ボスが2形態目に変わったときに出す「まだ終わらない!!」と、輪を塗り返す予告のときに出す飛び移り方の案内
+	std::unique_ptr<StageClearUI> bossPhaseBannerUI_;
+	// ボスの体力ゲージ(画面の上に出す)
+	std::unique_ptr<BossHpGauge> bossHpGauge_;
+	// ボスを倒してから体が消えるまでの、次の小さな破片を出すまでの経過時間(秒)と、出した回数(出す位置を回数でずらす)
+	float bossDefeatBurstTimer_ = 0.0f;
+	int bossDefeatBurstCount_ = 0;
+	std::unique_ptr<StageClearUI> bossRingHintUI_;
+	// ボスが2形態目に変わった直後の、ゲームをゆっくりにしておく残り時間(秒。実際の時間)
+	float bossPhaseSlowTimer_ = 0.0f;
+	// 前のフレームで、ボスが輪を塗り返す攻撃(予告を含む)をしていたか(始まった瞬間に飛び移り方の案内を出す)
+	bool wasBossRingAttacking_ = false;
+	// 前のフレームで乗っていたボスの輪のレールの番号(-1: 乗っていなかった)と、今回のプレイで輪から輪へ飛び移ったことがあるか(飛び移ったら案内を出さない)
+	int lastBossLoopRailIndex_ = -1;
+	bool hasSwitchedBossRing_ = false;
 
 	// 雑魚敵
 	std::unique_ptr<EnemyManager> enemyManager_;
@@ -296,12 +325,12 @@ private:
 	bool isDefeated_ = false;
 	// やられ演出が始まってからの経過時間(秒)
 	float defeatTimer_ = 0.0f;
-	// 大ジャンプでスタート台に着地し、クリア画面へ移るのを待っている最中か(操作・判定を止める)
+	// 大ジャンプでスタート台に着地したか、ボスを倒して、クリア画面へ移るのを待っている最中か(操作・判定を止める)
 	bool isStageCleared_ = false;
+	// クリア画面への切り替えを始めるまでの時間(秒。着地したときとボスを倒したときで変える)
+	float stageClearDuration_ = kStageClearDuration;
 	// スタート台に着地してからの経過時間(秒)
 	float stageClearTimer_ = 0.0f;
-	// プレイ会用の設定で、壁が壊れるのを見せ終えたらクリア画面へ移るのを待っている最中か
-	bool isPlaySessionClearPending_ = false;
 
 	// 最後に通ったチェックポイント(レールから落ちたら、ここからやり直す)
 	struct Checkpoint{
@@ -329,6 +358,14 @@ private:
 	// ゴールの的が現れたときに出す「撃ちまくれ!!!」の画像(tools/generate_stage_clear_assets.py で生成する)と、出す高さ(画面の上からの割合)
 	inline static const std::string kGoalBannerTexturePath = "resource/UI/goalBanner.png";
 	static constexpr float kGoalBannerHeightRate = 0.2f;
+	// ボスが2形態目に変わったときに出す「まだ終わらない!!」と、輪を塗り返す予告のときに出す飛び移り方の案内の画像(tools/generate_boss_ui_assets.py で生成する)
+	inline static const std::string kBossPhaseBannerTexturePath = "resource/UI/bossPhaseBanner.png";
+	inline static const std::string kBossRingHintTexturePath = "resource/UI/bossRingHint.png";
+	// 飛び移り方の案内を出す高さ(画面の上からの割合。ボスに重ならないよう画面の上の方に出す)
+	static constexpr float kBossRingHintHeightRate = 0.2f;
+	// ボスが2形態目に変わった直後の、ゲームの進む速さ(通常の何倍か)と、ゆっくりにしておく時間(秒。実際の時間)
+	static constexpr float kBossPhaseChangeTimeScale = 0.3f;
+	static constexpr float kBossPhaseChangeSlowDuration = 1.0f;
 	// 最初に飛び移り方の案内を出したときの、ゲームの進む速さ(通常の何倍か)と、ゆっくりにしておく最大の時間(秒。実際の時間)
 	// 飛び移るか、飛び移れなくなったら、最大の時間より前でも元に戻す
 	static constexpr float kRailSwitchSlowTimeScale = 0.25f;
@@ -386,6 +423,20 @@ private:
 	// 大ジャンプでスタート台に着地してから、クリア画面への切り替えを始めるまでの時間(秒)
 	// 着地の揺れ(kReturnLandShakeDuration)が収まり、インクのしぶきが落ちきるのを見せてから移る
 	static constexpr float kStageClearDuration = 1.0f;
+	// ボスを倒してから、クリア画面への切り替えを始めるまでの時間(秒)
+	// 体が弾けて「STAGE CLEAR!」が出て、飛び散った破片がゆっくり広がっていくのを見せてから移る
+	static constexpr float kBossDefeatClearDuration = 3.4f;
+	// ボスを倒してから、体が大きく弾けて消えるまでの時間(秒)と、その間に小さな破片を出す間隔(秒)
+	static constexpr float kBossDefeatVanishTime = 1.2f;
+	static constexpr float kBossDefeatBurstInterval = 0.15f;
+	// 小さな破片を出す位置を、出すたびに体の周りで回す角度(ラジアン。黄金角にして、同じ場所に続けて出ないようにする)
+	static constexpr float kBossDefeatBurstAngleStep = 2.39996f;
+	// 小さな破片を出す位置の高さを、出すたびに上下へ振る速さ(回す角度に対する割合)
+	static constexpr float kBossDefeatBurstHeightRate = 0.37f;
+	// ボスを倒した瞬間の衝撃(動きを止める時間、画面の揺れの幅・収まるまでの時間。体が弾ける瞬間より小さくする)
+	static constexpr float kBossDefeatHitStopDuration = 0.12f;
+	static constexpr float kBossDefeatShakeAmplitude = 0.15f;
+	static constexpr float kBossDefeatShakeDuration = 1.2f;
 	// 通路の壁が壊れた瞬間に、壁から高く飛び散らせて台に落とすインクのしぶきの数
 	static constexpr int kBarrierBurstCount = 20;
 	// 通路の壁が壊れた瞬間の衝撃(動きを止める時間、画面の揺れの幅・収まるまでの時間。出発ゲートが開く瞬間と同じくらいにする)

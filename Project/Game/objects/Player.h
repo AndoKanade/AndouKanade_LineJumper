@@ -70,7 +70,7 @@ public:
 	/// <param name="railEditor">進行するレール</param>
 	/// <param name="isGameplayActive">プレイ可能かどうか</param>
 	/// <param name="deltaTime">経過時間(秒)</param>
-	void UpdateRailProgress(const RailEditor* railEditor,bool isGameplayActive,float deltaTime);
+	void UpdateRailProgress(RailEditor* railEditor,bool isGameplayActive,float deltaTime);
 
 	// オンレール/オフレールの状態に応じて、カメラ・プレイヤーの基準位置と基準向きを求める
 	void UpdateBasePose(const RailEditor* railEditor);
@@ -84,6 +84,10 @@ public:
 
 	// 被弾後の無敵時間を進める
 	void UpdateInvincible(float deltaTime);
+	// 体力の自然回復を進める(最後に被弾してから決めた時間がたつと、体力が時間とともに少しずつ戻る)
+	void UpdateRegeneration(float deltaTime);
+	// レールを進む速さに掛ける倍率を設定する(ボスの2形態目で輪を回る速さを上げるのに使う。1で元の速さ)
+	void SetRailSpeedRate(float rate){ railSpeedRate_ = rate; }
 
 	/// <summary>
 	/// 透明な体がだんだん元に戻る、現れる演出を始める(復活したとき用。Reset() で止まる)
@@ -95,8 +99,17 @@ public:
 	// 現れる演出を進める
 	void UpdateReveal(float deltaTime);
 
-	// 敵弾が当たったときの処理(無敵中でなければ体力を1減らし、無敵時間を始める)
-	void TakeDamage();
+	/// <summary>
+	/// 敵弾が当たったときの処理(無敵中でなければ体力を減らし、無敵時間を始める)
+	/// </summary>
+	/// <param name="damage">減らす体力の量</param>
+	void TakeDamage(float damage);
+	/// <summary>
+	/// 敵のインクに浸かっている間などの、時間に応じて減り続けるダメージを受ける(無敵中でも減り、無敵時間は始めない)
+	/// </summary>
+	/// <param name="damagePerSecond">1秒あたりに減らす体力の量</param>
+	/// <param name="deltaTime">経過時間(秒)</param>
+	void TakeContinuousDamage(float damagePerSecond,float deltaTime);
 
 	/// <summary>
 	/// ジャンプ・WASD移動・着地判定(レール上ではWASD移動はせず、その場でのジャンプと並走レールへの乗り換えのみ)
@@ -129,7 +142,7 @@ public:
 	// ゴールのレールの終点に着いて止まったかどうか(オンレール中に終端まで進んだらtrue。ゴール以外のレールは終点でレールから外れるためtrueにならない)
 	bool HasReachedGoal() const{ return isOnRail_ && isRailFinished_; }
 	// 体力が尽きたかどうか
-	bool IsDead() const{ return hp_ <= 0; }
+	bool IsDead() const{ return hp_ <= 0.0f; }
 
 	// デバッグ表示用の取得
 	float GetRailT() const{ return railT_; }
@@ -147,8 +160,10 @@ public:
 	/// <returns>右(D)にあれば 1、左(A)にあれば -1、無ければ 0</returns>
 	int FindSideRailDirection(const RailEditor* railEditor,const Vector3& cameraRight,int& outRailIndex) const;
 	float GetFreeVelocityY() const{ return freeVelocityY_; }
-	int GetHp() const{ return hp_; }
-	int GetMaxHp() const{ return kMaxHp; }
+	float GetHp() const{ return hp_; }
+	float GetMaxHp() const{ return maxHp_; }
+	// 体力の残りの割合(0: 尽きた 〜 1: 満タン)を取得(体力の表現に使う)
+	float GetHpRate() const{ return (maxHp_ > 0.0f)?hp_ / maxHp_:0.0f; }
 	float GetInvincibleTimer() const{ return invincibleTimer_; }
 
 	// 足の裏の左右の幅の半分(モデルの足の裏の幅0.5の半分0.25に、表示スケール0.3を掛けた値)
@@ -234,9 +249,15 @@ private:
 	Vector3 position_ = {0.0f, 0.0f, 0.0f};
 
 	// 現在の体力(0になるとそれ以上減らない)	
-	int hp_ = kMaxHp;
+	float hp_ = kDefaultMaxHp;
+	// 体力の最大値(Reset()で調整項目から読み直す)
+	float maxHp_ = kDefaultMaxHp;
 	// 被弾後の無敵時間の残り(秒)。0より大きい間は敵弾が当たっても体力が減らない
 	float invincibleTimer_ = 0.0f;
+	// 最後にダメージを受けてからの経過時間(秒。決めた時間を超えると自然回復が始まる)
+	float regenTimer_ = 0.0f;
+	// レールを進む速さに掛ける倍率(SetRailSpeedRate()で受け取る)
+	float railSpeedRate_ = 1.0f;
 
 	// 現れる演出の見せ方(None のときは演出をしていない)・経過時間・元に戻りきるまでの時間(秒)
 	Model::RevealStyle revealStyle_ = Model::RevealStyle::None;
@@ -256,10 +277,15 @@ private:
 	static constexpr float kScale = 0.3f;
 	// 弾を撃ち出す高さ(足元からの高さ。モデルの身長1.66にkScaleを掛けた約0.5のうち、胸の高さにする)
 	static constexpr float kMuzzleHeight = 0.35f;
-	// 体力の最大値(Reset()でこの値へ戻す)
-	static constexpr int kMaxHp = 3;
+	// 体力の最大値の初期値(保存済みJSONがあればそちらが優先される)
+	static constexpr float kDefaultMaxHp = 100.0f;
+	// 体力の最大値として設定できる下限(0以下にすると始めた瞬間にやられてしまうため)
+	static constexpr float kMinMaxHp = 1.0f;
 	// 被弾してから次に被弾できるようになるまでの無敵時間(秒)
 	static constexpr float kInvincibleTime = 1.0f;
+	// 最後にダメージを受けてから体力が戻り始めるまでの時間(秒)と、戻る速さ(1秒あたりの体力)の初期値(保存済みJSONがあればそちらが優先される)
+	static constexpr float kDefaultHpRegenStartDelay = 3.0f;
+	static constexpr float kDefaultHpRegenSpeed = 12.0f;
 	// ジャンプ初速(上方向、1秒あたりの速度)
 	static constexpr float kJumpSpeed = 6.0f;
 	// 重力加速度(1秒あたりの下方向への速度変化量)

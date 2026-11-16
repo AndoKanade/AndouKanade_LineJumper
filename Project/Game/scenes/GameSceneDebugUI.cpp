@@ -23,6 +23,7 @@
 #include "objects/Player.h"
 #include "objects/PlayerBulletManager.h"
 #include "objects/EnemyManager.h"
+#include "objects/Boss.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -79,11 +80,15 @@ namespace{
 	constexpr int kMaxToolPanelShortcutCount = 9;
 	// パネル名の後ろに未保存の印を付けたラベルを作るときの、文字列の長さの上限
 	constexpr size_t kToolPanelLabelSize = 64;
+	// 1秒をミリ秒に直す倍率(1フレームの時間の表示に使う)
+	constexpr float kMillisecondsPerSecond = 1000.0f;
 }
 
 // レール・プレイヤー・敵の状態確認用のデバッグウィンドウ
 void GameScene::ShowStatusWindow(){
 	ImGui::Begin("Rail Branch Debug");
+	// 重くなる場面を確かめるための、1秒あたりの描画回数と1フレームの時間(ImGuiが直近のフレームから求めた平均)
+	ImGui::Text("FPS: %.1f (%.2f ms)",ImGui::GetIO().Framerate,kMillisecondsPerSecond / ImGui::GetIO().Framerate);
 	ImGui::Text("Rail Count: %d",railEditor_->GetRailCount());
 	ImGui::Text("Active Rail Index: %d",railEditor_->GetActiveRailIndex());
 	ImGui::Text("Active Rail Point Count: %d",railEditor_->GetControlPointCount());
@@ -105,8 +110,15 @@ void GameScene::ShowStatusWindow(){
 	// 雑魚敵のデバッグ表示
 	enemyManager_->ShowDebugInfo();
 
+	// ボスのデバッグ表示(最後のステージでだけ出す)
+	if(boss_->IsActive() || boss_->IsDefeated()){
+		ImGui::Text("Boss Phase: %d",boss_->GetPhase());
+		ImGui::Text("Boss HP: %d / %d",boss_->GetHp(),boss_->GetMaxHp());
+		ImGui::Text("Boss Bullets: %d",boss_->GetActiveBulletCount());
+	}
+
 	// プレイヤーの体力・無敵時間のデバッグ表示
-	ImGui::Text("Player HP: %d / %d",player_->GetHp(),player_->GetMaxHp());
+	ImGui::Text("Player HP: %.1f / %.1f",player_->GetHp(),player_->GetMaxHp());
 	ImGui::Text("Lives: %d / %d",lives_,kMaxLives);
 	ImGui::Text("Player Invincible: %.2f",player_->GetInvincibleTimer());
 	ImGui::End();

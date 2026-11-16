@@ -37,9 +37,9 @@
             "branchTargetRailIndex": -1,
             "isCheckpoint": false,
             "position": [
-                -24.3,
-                0.3,
-                0.0
+                -25.0,
+                0.4,
+                0.4
             ],
             "rotation": [
                 0.0,
@@ -53,41 +53,9 @@
             "branchTargetRailIndex": -1,
             "isCheckpoint": false,
             "position": [
-                -29.3,
-                0.6,
-                0.0
-            ],
-            "rotation": [
-                0.0,
-                0.0,
-                0.0
-            ],
-            "speed": 1.0
-        },
-        {
-            "branchTargetPointIndex": -1,
-            "branchTargetRailIndex": -1,
-            "isCheckpoint": false,
-            "position": [
-                -34.3,
-                0.9,
-                0.0
-            ],
-            "rotation": [
-                0.0,
-                0.0,
-                0.0
-            ],
-            "speed": 1.0
-        },
-        {
-            "branchTargetPointIndex": -1,
-            "branchTargetRailIndex": -1,
-            "isCheckpoint": false,
-            "position": [
-                -39.3,
+                -31.0,
                 1.2,
-                0.0
+                2.6
             ],
             "rotation": [
                 0.0,
@@ -101,9 +69,9 @@
             "branchTargetRailIndex": -1,
             "isCheckpoint": false,
             "position": [
-                -44.3,
-                1.5,
-                0.0
+                -37.0,
+                2.2,
+                7.0
             ],
             "rotation": [
                 0.0,
@@ -117,9 +85,9 @@
             "branchTargetRailIndex": -1,
             "isCheckpoint": false,
             "position": [
-                -49.3,
-                1.8,
-                0.0
+                -43.0,
+                3.1,
+                11.2
             ],
             "rotation": [
                 0.0,
@@ -133,9 +101,9 @@
             "branchTargetRailIndex": -1,
             "isCheckpoint": false,
             "position": [
-                -54.3,
-                2.1,
-                0.0
+                -49.0,
+                3.7,
+                13.4
             ],
             "rotation": [
                 0.0,
@@ -149,9 +117,9 @@
             "branchTargetRailIndex": -1,
             "isCheckpoint": false,
             "position": [
-                -59.3,
-                2.4,
-                0.0
+                -55.0,
+                4.0,
+                14.0
             ],
             "rotation": [
                 0.0,
@@ -165,9 +133,25 @@
             "branchTargetRailIndex": -1,
             "isCheckpoint": false,
             "position": [
-                -64.3,
-                2.7,
+                -60.0,
+                4.0,
+                14.0
+            ],
+            "rotation": [
+                0.0,
+                0.0,
                 0.0
+            ],
+            "speed": 1.0
+        },
+        {
+            "branchTargetPointIndex": -1,
+            "branchTargetRailIndex": -1,
+            "isCheckpoint": false,
+            "position": [
+                -65.0,
+                4.0,
+                14.0
             ],
             "rotation": [
                 0.0,
@@ -177,6 +161,8 @@
             "speed": 1.0
         }
     ],
-    "isGoalRail": true,
+    "endTransferRailIndex": 1,
+    "isGoalRail": false,
+    "isLoop": false,
     "name": "Rail 0"
 }

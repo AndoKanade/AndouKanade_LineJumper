@@ -31,6 +31,8 @@ bool RailEditor::SaveRailToFile(const Rail& rail,const std::string& filePath) co
 	nlohmann::json root;
 	root["name"] = rail.name;
 	root["isGoalRail"] = rail.isGoalRail;
+	root["isLoop"] = rail.isLoop;
+	root["endTransferRailIndex"] = rail.endTransferRailIndex;
 
 	// 各制御点を配列に詰める
 	nlohmann::json pointsJson = nlohmann::json::array();
@@ -84,6 +86,9 @@ void RailEditor::LoadRailFromFile(Rail& rail,const std::string& filePath){
 	}
 	// ゴールのレールか(旧フォーマットのJSONには無いため、value()で既定値falseを補う)
 	rail.isGoalRail = root.value("isGoalRail",false);
+	// ループするレールか・終点で飛び移る先のレール(どちらも旧フォーマットのJSONには無いため、今までどおりの動きになる既定値を補う)
+	rail.isLoop = root.value("isLoop",false);
+	rail.endTransferRailIndex = root.value("endTransferRailIndex",kNoEndTransferRail);
 
 	// 読み込んだ内容で制御点を置き換える
 	rail.controlPoints.clear();
@@ -111,6 +116,8 @@ void RailEditor::LoadRailFromFile(Rail& rail,const std::string& filePath){
 
 	// 描画用オブジェクトの数を制御点数に合わせる
 	SyncPointObjectsToControlPoints(rail);
+	// ループするレールなら、曲線の計算に使う制御点の並びを読み込んだ制御点から作り直す
+	RefreshLoopCurvePoints(rail);
 }
 
 // 全ステージの全レールをそれぞれ対応するJSONファイルへ保存する
@@ -181,7 +188,7 @@ RailEditor::StagesSnapshot RailEditor::MakeSnapshot() const{
 		const std::vector<Rail>& rails = GetStageRails(stage);
 		snapshot[stage].reserve(rails.size());
 		for(const Rail& rail : rails){
-			snapshot[stage].push_back({rail.name, rail.controlPoints, rail.isGoalRail});
+			snapshot[stage].push_back({rail.name, rail.controlPoints, rail.isGoalRail, rail.isLoop, rail.endTransferRailIndex});
 		}
 	}
 	return snapshot;
@@ -207,7 +214,10 @@ void RailEditor::ApplySnapshot(const StagesSnapshot& snapshot){
 			rails[i].name = stageSnapshot[i].name;
 			rails[i].controlPoints = stageSnapshot[i].controlPoints;
 			rails[i].isGoalRail = stageSnapshot[i].isGoalRail;
+			rails[i].isLoop = stageSnapshot[i].isLoop;
+			rails[i].endTransferRailIndex = stageSnapshot[i].endTransferRailIndex;
 			SyncPointObjectsToControlPoints(rails[i]);
+			RefreshLoopCurvePoints(rails[i]);
 		}
 	}
 
@@ -229,7 +239,7 @@ void RailEditor::CommitEditIfChanged(){
 		const RailsSnapshot& committedRails = committed[stage];
 		isChanged = (committedRails.size() != rails.size());
 		for(size_t i = 0; !isChanged && i < rails.size(); ++i){
-			isChanged = (committedRails[i].name != rails[i].name || committedRails[i].controlPoints != rails[i].controlPoints || committedRails[i].isGoalRail != rails[i].isGoalRail);
+			isChanged = (committedRails[i].name != rails[i].name || committedRails[i].controlPoints != rails[i].controlPoints || committedRails[i].isGoalRail != rails[i].isGoalRail || committedRails[i].isLoop != rails[i].isLoop || committedRails[i].endTransferRailIndex != rails[i].endTransferRailIndex);
 		}
 	}
 	if(!isChanged){

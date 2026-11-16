@@ -17,6 +17,11 @@ namespace{
 
 	// 体の色(参考にしたスプラトゥーンの映像に合わせ、自分のインクと同じ黄色にする)
 	constexpr Vector4 kPlayerColor = {1.0f, 0.85f, 0.15f, 1.0f};
+
+	// 調整項目名(体力の最大値・最後にダメージを受けてから体力が戻り始めるまでの時間・戻る速さ)
+	const char* kMaxHpKey = "playerMaxHp";
+	const char* kHpRegenStartDelayKey = "hpRegenStartDelay";
+	const char* kHpRegenSpeedKey = "hpRegenSpeed";
 }
 
 Player::Player() = default;
@@ -39,6 +44,9 @@ void Player::Initialize(Obj3dCommon* objCommon,const std::string& paramGroup){
 
 	// 調整項目の登録(第3引数はデフォルト値。保存済みJSONがあればそちらが優先される)
 	GlobalVariables::GetInstance()->AddItem(paramGroup_,"railSpeed",kDefaultRailSpeed);
+	GlobalVariables::GetInstance()->AddItem(paramGroup_,kMaxHpKey,kDefaultMaxHp);
+	GlobalVariables::GetInstance()->AddItem(paramGroup_,kHpRegenStartDelayKey,kDefaultHpRegenStartDelay);
+	GlobalVariables::GetInstance()->AddItem(paramGroup_,kHpRegenSpeedKey,kDefaultHpRegenSpeed);
 }
 
 // レール先頭・オンレール・体力満タンの初期状態に戻す
@@ -62,8 +70,11 @@ void Player::Reset(){
 	endedRailIndex_ = -1;
 
 	// 体力・無敵時間も初期状態に戻す
-	hp_ = kMaxHp;
+	// 体力の最大値は、ImGuiで変えた値がやり直すたびに反映されるよう、ここで調整項目から読み直す
+	maxHp_ = (std::max)(GlobalVariables::GetInstance()->GetFloatValue(paramGroup_,kMaxHpKey),kMinMaxHp);
+	hp_ = maxHp_;
 	invincibleTimer_ = 0.0f;
+	regenTimer_ = 0.0f;
 
 	// 現れる演出の途中なら止め、ふつうに見える状態にする
 	revealStyle_ = Model::RevealStyle::None;
@@ -125,8 +136,8 @@ void Player::StartRailBoost(float rate,float duration){
 
 // レールの進行
 // Edit中・開始演出中・オフレール中はその位置で静止させる
-// 終端に到達したらループさせず、その場で停止させる
-void Player::UpdateRailProgress(const RailEditor* railEditor,bool isGameplayActive,float deltaTime){
+// 終端に到達したらループさせず、その場で停止させる(ループするレールだけは、終端から始点へ回って進み続ける)
+void Player::UpdateRailProgress(RailEditor* railEditor,bool isGameplayActive,float deltaTime){
 	if(!railEditor || !isGameplayActive || !isOnRail_ || isRailFinished_){
 		return;
 	}
@@ -137,6 +148,9 @@ void Player::UpdateRailProgress(const RailEditor* railEditor,bool isGameplayActi
 	// 現在位置に対応する制御点のSpeed値を取得し、全体速度(railSpeed)に掛けて今フレームに進む距離を求める
 	// 進行度に直接足すと制御点間の距離で速さが変わるため、距離として進めて一定の速さにする
 	float pointSpeed = railEditor->GetSpeedOnRail(railT_);
+
+	// ボスの2形態目などで、外から指定された倍率を掛ける
+	railSpeed *= railSpeedRate_;
 
 	// レール上で跳ねている間・並走レールへ飛び移っている間は、空中で前へ流されすぎないよう進む速さを落とす
 	if(!IsGroundedOnRail()){
@@ -151,9 +165,34 @@ void Player::UpdateRailProgress(const RailEditor* railEditor,bool isGameplayActi
 
 	const float railMoveSpeed = pointSpeed * railSpeed;
 	railT_ = railEditor->AdvanceTByDistance(railT_,railMoveSpeed * deltaTime);
+
+	// ループするレールには終点が無いため、進行度が1周分を越えたら越えた分を残して始点側へ回し、そのまま進み続ける
+	// 進行度1と0は同じ位置・同じ向きのため、つなぎ目で位置もカメラも跳ばない
+	if(railEditor->IsLoopRail(railEditor->GetActiveRailIndex())){
+		if(railT_ >= kRailEndT){
+			railT_ -= kRailEndT;
+		}
+		return;
+	}
+
 	if(railT_ >= kRailEndT){
 		railT_ = kRailEndT; // 終端で固定する
 		isRailFinished_ = true;
+
+		// 終点で飛び移る先のレールが決めてあれば、並走レールへの飛び移りと同じ動きで、そのレールへ自動で飛び移って進み続ける
+		// 乗るレールを切り替えるのはすぐに行い、見た目の位置だけを終点から飛び移る先へ山なりに寄せていく
+		int transferRailIndex = -1;
+		float transferT = 0.0f;
+		if(railEditor->FindEndTransfer(railEditor->GetActiveRailIndex(),transferRailIndex,transferT)){
+			const Vector3 endPosition = railEditor->GetPositionOnRail(railT_);
+			railEditor->SwitchActiveRail(transferRailIndex);
+			railT_ = transferT;
+			isRailFinished_ = false;
+			railSwitchStartOffset_ = endPosition - railEditor->GetPositionOnRail(railT_);
+			railSwitchTimer_ = 0.0f;
+			isSwitchingRail_ = true;
+			return;
+		}
 
 		// ゴールのレール以外は、終点に着いたらレールから外れ、進んでいた勢いのまま前へジャンプさせる(どのレールにも乗れずに落ちたらリスタートになる)
 		// その場で真下に落としたり別の場所へ移したりすると不具合に見えるため、レールの続きのように前へ飛ばす
@@ -266,18 +305,47 @@ void Player::UpdateInvincible(float deltaTime){
 	}
 }
 
-// 敵弾が当たったときの処理
-// 連続被弾で一瞬に体力が尽きないよう、被弾後は一定時間無敵にする
-void Player::TakeDamage(){
-	if(invincibleTimer_ > 0.0f || hp_ <= 0){
+// 体力の自然回復を進める
+// 最後にダメージを受けてから hpRegenStartDelay 秒たつと、1秒あたり hpRegenSpeed ずつ体力が戻る(ダメージを受けると数え直す)
+void Player::UpdateRegeneration(float deltaTime){
+	// 体力が尽きているとき・減っていないときは回復しない
+	if(hp_ <= 0.0f || hp_ >= maxHp_){
 		return;
 	}
 
-	--hp_;
+	GlobalVariables* gv = GlobalVariables::GetInstance();
+	regenTimer_ += deltaTime;
+	if(regenTimer_ >= gv->GetFloatValue(paramGroup_,kHpRegenStartDelayKey)){
+		hp_ = (std::min)(hp_ + gv->GetFloatValue(paramGroup_,kHpRegenSpeedKey) * deltaTime,maxHp_);
+	}
+}
+
+// 敵弾が当たったときの処理
+// 連続被弾で一瞬に体力が尽きないよう、被弾後は一定時間無敵にする
+void Player::TakeDamage(float damage){
+	if(invincibleTimer_ > 0.0f || hp_ <= 0.0f){
+		return;
+	}
+
+	hp_ = (std::max)(hp_ - damage,0.0f);
 	invincibleTimer_ = kInvincibleTime;
+	// ダメージを受けたら、自然回復までの時間を最初から数え直す
+	regenTimer_ = 0.0f;
 
 	// 被弾位置に火花パーティクルを発生させ、当たったことを見た目で分かるようにする
 	ParticleManager::GetInstance()->EmitSpark(position_);
+}
+
+// 時間に応じて減り続けるダメージを受ける
+// 敵のインクに浸かっている間のように、当たった瞬間ではなく受けている間ずっと減るダメージのため、無敵時間に関係なく減らす
+void Player::TakeContinuousDamage(float damagePerSecond,float deltaTime){
+	if(hp_ <= 0.0f){
+		return;
+	}
+
+	hp_ = (std::max)(hp_ - damagePerSecond * deltaTime,0.0f);
+	// ダメージを受けている間は、自然回復が始まらないよう数え直し続ける
+	regenTimer_ = 0.0f;
 }
 
 // プレイヤーの自立(ジャンプ+WASD移動)
@@ -303,8 +371,15 @@ bool Player::UpdateMovement(Input* input,RailEditor* railEditor,const StartPlatf
 			if(input->PushKey(DIK_D)) sideDir += rightXZ;
 			if(input->PushKey(DIK_A)) sideDir += -rightXZ;
 
+			// ループするレールの上では、輪の中心(ボス)を見ていると隣の輪が左右ではなく前後に来るため、W/Sでも飛び移れるようにする
+			if(railEditor->IsLoopRail(railEditor->GetActiveRailIndex())){
+				Vector3 forwardXZ = Normalize(Vector3{cameraForward.x, 0.0f, cameraForward.z});
+				if(input->PushKey(DIK_W)) sideDir += forwardXZ;
+				if(input->PushKey(DIK_S)) sideDir += -forwardXZ;
+			}
+
 			// A/D同時押しで打ち消し合ったときや、押した方向にレールがないときは、その場で跳ねるジャンプにする
-			if(Length(sideDir) > 0.0f && TrySwitchToSideRail(railEditor,sideDir)){
+			if(Length(sideDir) > 0.0f && TrySwitchToSideRail(railEditor,Normalize(sideDir))){
 				return false;
 			}
 

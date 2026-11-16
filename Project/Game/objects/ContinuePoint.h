@@ -16,4 +16,6 @@ struct ContinuePoint{
 	inline static int pointIndex = -1;
 	// チェックポイントを通った時点での的ごとの生存状態
 	inline static std::vector<bool> targetAliveStates;
+	// 残機が尽きたときのボスの形態(コンティニューでは、この形態の最初から戦い直す)
+	inline static int bossPhase = 1;
 };
