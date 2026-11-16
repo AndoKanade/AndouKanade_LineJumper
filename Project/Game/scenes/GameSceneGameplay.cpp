@@ -394,13 +394,16 @@ void GameScene::UpdateGameplay(){
 
 		// 命中した弾は無敵中でもここで消滅させ、すり抜けて後から当たらないようにする
 		// プレイヤーの行列はこのフレームの配置処理でUpdate()済み
-		int hitCount = enemyManager_->CheckHitToPlayer(player_->GetHitSphere());
-		// ボスの弾も同じように判定する
-		hitCount += boss_->CheckHitToPlayer(player_->GetHitSphere());
+		// 雑魚敵の弾はどれも同じダメージ、ボスの弾は種類ごとのダメージを持つ
+		float hitDamage = 0.0f;
+		if(enemyManager_->CheckHitToPlayer(player_->GetHitSphere()) > 0){
+			hitDamage = GlobalVariables::GetInstance()->GetFloatValue(kGameSceneGroup,kEnemyBulletDamageKey);
+		}
+		hitDamage = (std::max)(hitDamage,boss_->CheckHitToPlayer(player_->GetHitSphere()));
 
-		// 同時に複数当たっても体力の減少は1回分だけにする
-		if(hitCount > 0){
-			player_->TakeDamage();
+		// 同時に複数当たっても体力の減少は1回分(一番大きいダメージ)だけにする
+		if(hitDamage > 0.0f){
+			player_->TakeDamage(hitDamage);
 		}
 	}
 
@@ -552,7 +555,7 @@ void GameScene::UpdateGameplay(){
 		StartBossPhaseChange();
 	}
 	// ボスの輪を塗り返す攻撃を、輪の色・被弾・飛び移り方の案内に反映する
-	UpdateBossRingAttack(isOnBossLoop);
+	UpdateBossRingAttack(isOnBossLoop,enemyDeltaTime);
 
 	// ボスの体力を0にして倒したら、倒した演出を見せてからクリア画面へ移る
 	// クリア画面へ移るのを待っている間はプレイ可能でなくなるため、倒した処理が二重に起きることはない
@@ -591,7 +594,7 @@ void GameScene::UpdateGameplay(){
 	speedLines_->Update(isRidingRail,kDeltaTime);
 
 	// 体力の表現の更新(Play中だけ出し、Editモードでは外す)
-	damageInkEffect_->Update(player_->GetHp(),player_->GetMaxHp(),player_->GetRegenProgress(),isPlayMode,kDeltaTime);
+	damageInkEffect_->Update(player_->GetHpRate(),isPlayMode,kDeltaTime);
 
 	// 画面表示の更新(左上のアイコンには残機を出す)
 	stageHUD_->Update(lives_,kMaxLives,targetManager_->GetDestroyedCount(),targetManager_->GetTotalCount(),*comboCounter_);

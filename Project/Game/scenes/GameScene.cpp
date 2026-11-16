@@ -143,6 +143,7 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kDepartureStyleKey,static_cast<int32_t>(kDefaultDepartureStyle));
 	// プレイ会用の設定(Global Variables の Save で保存し、プレイ会では保存した JSON をそのまま使う)
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kPlaySessionModeKey,kDefaultPlaySessionMode);
+	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kEnemyBulletDamageKey,kDefaultEnemyBulletDamage);
 	// 遠くの物を空の色に溶け込ませる距離(Play中だけ使う)
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kObjectFadeStartKey,kDefaultObjectFadeStart);
 	GlobalVariables::GetInstance()->AddItem(kGameSceneGroup,kObjectFadeEndKey,kDefaultObjectFadeEnd);

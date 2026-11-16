@@ -52,14 +52,16 @@ public:
 	/// <param name="direction">飛ばす方向(内部で正規化する)</param>
 	/// <param name="speed">移動速度(1秒あたりの移動量)</param>
 	/// <param name="isHoming">追尾するかどうか</param>
-	void Fire(const Vector3& spawnPosition,const Vector3& direction,float speed,bool isHoming);
+	/// <param name="damage">当たったときに減らす体力の量(弾ごとに変えないときは省略できる)</param>
+	void Fire(const Vector3& spawnPosition,const Vector3& direction,float speed,bool isHoming,float damage = 0.0f);
 
 	/// <summary>
 	/// 発射済みの弾とプレイヤーの当たり判定(弾とプレイヤーの境界球が重なったら、その弾を未使用に戻す)
 	/// </summary>
 	/// <param name="playerSphere">プレイヤーのワールド座標系の境界球</param>
+	/// <param name="outMaxDamage">命中した弾のうち、一番大きいダメージを入れる先(いらないときは nullptr)</param>
 	/// <returns>命中した弾の数</returns>
-	int CheckHitToPlayer(const Model::BoundingSphere& playerSphere);
+	int CheckHitToPlayer(const Model::BoundingSphere& playerSphere,float* outMaxDamage = nullptr);
 
 	// 発射中の弾を描画する
 	void Draw();
@@ -80,6 +82,7 @@ private:
 		bool isAlive = false;                  // 使用中かどうか(falseなら未使用=再利用できる)
 		float speed = 0.0f;                    // 移動速度(向きを変えても速さを保つために保持する)
 		bool isHoming = false;                 // 追尾するかどうか(trueなら毎フレーム向きを補正する)
+		float damage = 0.0f;                   // 当たったときに減らす体力の量
 	};
 
 	// 弾の作り

@@ -456,7 +456,7 @@ void GameScene::StartBossPhaseChange(){
 }
 
 // ボスの輪を塗り返す攻撃を、輪の色・被弾・飛び移り方の案内に反映する
-void GameScene::UpdateBossRingAttack(bool isOnBossLoop){
+void GameScene::UpdateBossRingAttack(bool isOnBossLoop,float deltaTime){
 	// 輪の色は毎フレーム元に戻してから、予告・攻撃中の輪だけ色を寄せる(予告は白く点滅、攻撃中は赤)
 	railEditor_->ClearRailTints();
 	const Boss::RingAttackState ringState = boss_->GetRingAttackState();
@@ -466,9 +466,9 @@ void GameScene::UpdateBossRingAttack(bool isOnBossLoop){
 	if(isRingAttacking){
 		railEditor_->SetRailTint(ringRailIndex,boss_->GetRingAttackColor(),boss_->GetRingAttackTintRate());
 
-		// 攻撃中の輪に乗っていたら被弾する(跳ねていても輪の上にいるものとする。無敵時間の間は減らない)
+		// 攻撃中の輪に乗っている間は、敵のインクに浸かっているものとして体力が減り続ける(跳ねていても輪の上にいるものとする。無敵時間に関係なく減る)
 		if(ringState == Boss::RingAttackState::Danger && isOnBossLoop && activeRailIndex == ringRailIndex){
-			player_->TakeDamage();
+			player_->TakeContinuousDamage(boss_->GetRingDamagePerSecond(),deltaTime);
 		}
 	}
 

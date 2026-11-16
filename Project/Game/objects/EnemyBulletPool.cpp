@@ -100,7 +100,7 @@ void EnemyBulletPool::Update(const Vector3& playerPosition,float deltaTime){
 }
 
 // 指定した方向へ弾を1発発射する
-void EnemyBulletPool::Fire(const Vector3& spawnPosition,const Vector3& direction,float speed,bool isHoming){
+void EnemyBulletPool::Fire(const Vector3& spawnPosition,const Vector3& direction,float speed,bool isHoming,float damage){
 	// 未使用の弾を探して使い回す(全弾使用中のときは発射しない)
 	for(auto& bullet : bullets_){
 		if(bullet.isAlive){
@@ -111,6 +111,7 @@ void EnemyBulletPool::Fire(const Vector3& spawnPosition,const Vector3& direction
 		bullet.velocity = Normalize(direction) * speed;
 		bullet.speed = speed;
 		bullet.isHoming = isHoming;
+		bullet.damage = damage;
 		bullet.lifeTime = 0.0f;
 		bullet.isAlive = true;
 		return;
@@ -118,8 +119,11 @@ void EnemyBulletPool::Fire(const Vector3& spawnPosition,const Vector3& direction
 }
 
 // 発射済みの弾とプレイヤーの当たり判定
-int EnemyBulletPool::CheckHitToPlayer(const Model::BoundingSphere& playerSphere){
+int EnemyBulletPool::CheckHitToPlayer(const Model::BoundingSphere& playerSphere,float* outMaxDamage){
 	int hitCount = 0;
+	if(outMaxDamage){
+		*outMaxDamage = 0.0f;
+	}
 
 	// 弾のモデルが無いときは境界球を求められないため判定しない
 	if(!bulletModel_){
@@ -139,6 +143,10 @@ int EnemyBulletPool::CheckHitToPlayer(const Model::BoundingSphere& playerSphere)
 		if(bulletSphere.IsHit(playerSphere)){
 			bullet.isAlive = false;
 			++hitCount;
+			// 同時に複数当たっても体力の減少は1回分だけにするため、一番大きいダメージだけを返す
+			if(outMaxDamage && bullet.damage > *outMaxDamage){
+				*outMaxDamage = bullet.damage;
+			}
 		}
 	}
 

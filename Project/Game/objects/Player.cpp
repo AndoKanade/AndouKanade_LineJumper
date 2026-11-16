@@ -17,6 +17,11 @@ namespace{
 
 	// 体の色(参考にしたスプラトゥーンの映像に合わせ、自分のインクと同じ黄色にする)
 	constexpr Vector4 kPlayerColor = {1.0f, 0.85f, 0.15f, 1.0f};
+
+	// 調整項目名(体力の最大値・最後にダメージを受けてから体力が戻り始めるまでの時間・戻る速さ)
+	const char* kMaxHpKey = "playerMaxHp";
+	const char* kHpRegenStartDelayKey = "hpRegenStartDelay";
+	const char* kHpRegenSpeedKey = "hpRegenSpeed";
 }
 
 Player::Player() = default;
@@ -39,8 +44,9 @@ void Player::Initialize(Obj3dCommon* objCommon,const std::string& paramGroup){
 
 	// 調整項目の登録(第3引数はデフォルト値。保存済みJSONがあればそちらが優先される)
 	GlobalVariables::GetInstance()->AddItem(paramGroup_,"railSpeed",kDefaultRailSpeed);
-	GlobalVariables::GetInstance()->AddItem(paramGroup_,"hpRegenDelay",kDefaultHpRegenDelay);
-	GlobalVariables::GetInstance()->AddItem(paramGroup_,"hpRegenInterval",kDefaultHpRegenInterval);
+	GlobalVariables::GetInstance()->AddItem(paramGroup_,kMaxHpKey,kDefaultMaxHp);
+	GlobalVariables::GetInstance()->AddItem(paramGroup_,kHpRegenStartDelayKey,kDefaultHpRegenStartDelay);
+	GlobalVariables::GetInstance()->AddItem(paramGroup_,kHpRegenSpeedKey,kDefaultHpRegenSpeed);
 }
 
 // レール先頭・オンレール・体力満タンの初期状態に戻す
@@ -64,11 +70,11 @@ void Player::Reset(){
 	endedRailIndex_ = -1;
 
 	// 体力・無敵時間も初期状態に戻す
-	hp_ = kMaxHp;
+	// 体力の最大値は、ImGuiで変えた値がやり直すたびに反映されるよう、ここで調整項目から読み直す
+	maxHp_ = (std::max)(GlobalVariables::GetInstance()->GetFloatValue(paramGroup_,kMaxHpKey),kMinMaxHp);
+	hp_ = maxHp_;
 	invincibleTimer_ = 0.0f;
 	regenTimer_ = 0.0f;
-	hasRegeneratedSinceHit_ = false;
-	regenProgress_ = 0.0f;
 
 	// 現れる演出の途中なら止め、ふつうに見える状態にする
 	revealStyle_ = Model::RevealStyle::None;
@@ -300,45 +306,46 @@ void Player::UpdateInvincible(float deltaTime){
 }
 
 // 体力の自然回復を進める
-// 被弾してから hpRegenDelay 秒たつと体力が1戻り、その後は hpRegenInterval 秒ごとに1ずつ戻る(被弾すると数え直す)
+// 最後にダメージを受けてから hpRegenStartDelay 秒たつと、1秒あたり hpRegenSpeed ずつ体力が戻る(ダメージを受けると数え直す)
 void Player::UpdateRegeneration(float deltaTime){
 	// 体力が尽きているとき・減っていないときは回復しない
-	if(hp_ <= 0 || hp_ >= kMaxHp){
-		regenTimer_ = 0.0f;
-		hasRegeneratedSinceHit_ = false;
-		regenProgress_ = 0.0f;
+	if(hp_ <= 0.0f || hp_ >= maxHp_){
 		return;
 	}
 
-	// 被弾してから最初の1回は hpRegenDelay、その後は hpRegenInterval だけ待つ
 	GlobalVariables* gv = GlobalVariables::GetInstance();
-	const float waitTime = (std::max)(gv->GetFloatValue(paramGroup_,hasRegeneratedSinceHit_?"hpRegenInterval":"hpRegenDelay"),kMinHpRegenTime);
 	regenTimer_ += deltaTime;
-	if(regenTimer_ >= waitTime){
-		++hp_;
-		regenTimer_ = 0.0f;
-		hasRegeneratedSinceHit_ = true;
+	if(regenTimer_ >= gv->GetFloatValue(paramGroup_,kHpRegenStartDelayKey)){
+		hp_ = (std::min)(hp_ + gv->GetFloatValue(paramGroup_,kHpRegenSpeedKey) * deltaTime,maxHp_);
 	}
-	// 戻った直後は0から数え直すため、「体力 + 進み具合」は途切れずに増えていく
-	regenProgress_ = (hp_ < kMaxHp)?regenTimer_ / waitTime:0.0f;
 }
 
 // 敵弾が当たったときの処理
 // 連続被弾で一瞬に体力が尽きないよう、被弾後は一定時間無敵にする
-void Player::TakeDamage(){
-	if(invincibleTimer_ > 0.0f || hp_ <= 0){
+void Player::TakeDamage(float damage){
+	if(invincibleTimer_ > 0.0f || hp_ <= 0.0f){
 		return;
 	}
 
-	--hp_;
+	hp_ = (std::max)(hp_ - damage,0.0f);
 	invincibleTimer_ = kInvincibleTime;
-	// 被弾したら、自然回復までの時間を最初から数え直す
+	// ダメージを受けたら、自然回復までの時間を最初から数え直す
 	regenTimer_ = 0.0f;
-	hasRegeneratedSinceHit_ = false;
-	regenProgress_ = 0.0f;
 
 	// 被弾位置に火花パーティクルを発生させ、当たったことを見た目で分かるようにする
 	ParticleManager::GetInstance()->EmitSpark(position_);
+}
+
+// 時間に応じて減り続けるダメージを受ける
+// 敵のインクに浸かっている間のように、当たった瞬間ではなく受けている間ずっと減るダメージのため、無敵時間に関係なく減らす
+void Player::TakeContinuousDamage(float damagePerSecond,float deltaTime){
+	if(hp_ <= 0.0f){
+		return;
+	}
+
+	hp_ = (std::max)(hp_ - damagePerSecond * deltaTime,0.0f);
+	// ダメージを受けている間は、自然回復が始まらないよう数え直し続ける
+	regenTimer_ = 0.0f;
 }
 
 // プレイヤーの自立(ジャンプ+WASD移動)

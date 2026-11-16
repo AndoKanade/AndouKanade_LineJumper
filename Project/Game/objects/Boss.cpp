@@ -43,6 +43,10 @@ namespace{
 	// 調整項目名(輪を塗り返す攻撃の、予告の時間と攻撃中の時間)
 	const char* kRingWarnTimeKey = "ringWarnTime";
 	const char* kRingDangerTimeKey = "ringDangerTime";
+	// 調整項目名(先読みの連射・扇状の弾の1発のダメージ、追尾弾のダメージ、塗られた輪に乗っている間の1秒あたりのダメージ)
+	const char* kBulletDamageKey = "bulletDamage";
+	const char* kHomingDamageKey = "homingDamage";
+	const char* kRingDamagePerSecondKey = "ringDamagePerSecond";
 	// 調整項目名(弾を撃つ前の予備動作の時間)
 	const char* kTelegraphTimeKey = "telegraphTime";
 	// 点滅の sin の結果(-1〜1)を 0〜1 にする係数
@@ -80,6 +84,9 @@ void Boss::Initialize(Obj3dCommon* objCommon){
 	gv->AddItem(kBossGroup,kRingWarnTimeKey,kDefaultRingWarnTime);
 	gv->AddItem(kBossGroup,kRingDangerTimeKey,kDefaultRingDangerTime);
 	gv->AddItem(kBossGroup,kTelegraphTimeKey,kDefaultTelegraphTime);
+	gv->AddItem(kBossGroup,kBulletDamageKey,kDefaultBulletDamage);
+	gv->AddItem(kBossGroup,kHomingDamageKey,kDefaultHomingDamage);
+	gv->AddItem(kBossGroup,kRingDamagePerSecondKey,kDefaultRingDamagePerSecond);
 
 	ModelManager::GetInstance()->LoadModel(kBossModelPath);
 
@@ -333,6 +340,7 @@ void Boss::UpdateAttack(const Vector3& playerPosition,bool canAttack,int playerR
 	telegraphRate_ = 0.0f;
 
 	const float bulletSpeed = (std::max)(gv->GetFloatValue(kBossGroup,kBulletSpeedKey),kMinBulletSpeed);
+	const float bulletDamage = gv->GetFloatValue(kBossGroup,kBulletDamageKey);
 
 	switch(GetAttackType(attackIndex_)){
 	case AttackType::RingInk:
@@ -354,7 +362,7 @@ void Boss::UpdateAttack(const Vector3& playerPosition,bool canAttack,int playerR
 		const Vector3 target = ComputeLeadTarget(playerPosition,bulletSpeed);
 		const int centerIndex = fanCount / 2;
 		for(int i = 0; i < fanCount; ++i){
-			FireToward(target,static_cast<float>(i - centerIndex) * fanAngle,bulletSpeed,false);
+			FireToward(target,static_cast<float>(i - centerIndex) * fanAngle,bulletSpeed,false,bulletDamage);
 		}
 		break;
 	}
@@ -362,7 +370,7 @@ void Boss::UpdateAttack(const Vector3& playerPosition,bool canAttack,int playerR
 	{
 		// 発射後もプレイヤーを追い続ける遅い弾を1発だけ撃つ(追いかけるため先読みはしない)
 		const float homingSpeed = (std::max)(gv->GetFloatValue(kBossGroup,kHomingSpeedKey),kMinBulletSpeed);
-		FireToward({playerPosition.x, playerPosition.y + kPlayerAimHeight, playerPosition.z},0.0f,homingSpeed,true);
+		FireToward({playerPosition.x, playerPosition.y + kPlayerAimHeight, playerPosition.z},0.0f,homingSpeed,true,gv->GetFloatValue(kBossGroup,kHomingDamageKey));
 		break;
 	}
 	case AttackType::Burst:
@@ -371,7 +379,7 @@ void Boss::UpdateAttack(const Vector3& playerPosition,bool canAttack,int playerR
 		if(burstShotsLeft_ <= 0){
 			burstShotsLeft_ = (std::max)(static_cast<int>(gv->GetIntValue(kBossGroup,kBurstCountKey)),kMinShotCount);
 		}
-		FireToward(ComputeLeadTarget(playerPosition,bulletSpeed),0.0f,bulletSpeed,false);
+		FireToward(ComputeLeadTarget(playerPosition,bulletSpeed),0.0f,bulletSpeed,false,bulletDamage);
 		--burstShotsLeft_;
 		// 連射の残りがあるときは、攻撃の種類を進めずに次の1発を待つ
 		if(burstShotsLeft_ > 0){
@@ -432,7 +440,7 @@ Vector3 Boss::ComputeLeadTarget(const Vector3& playerPosition,float bulletSpeed)
 }
 
 // 体の表面から、狙う点へ向かう向きを左右にずらして弾を1発撃つ
-void Boss::FireToward(const Vector3& target,float yawOffset,float speed,bool isHoming){
+void Boss::FireToward(const Vector3& target,float yawOffset,float speed,bool isHoming,float damage){
 	const Vector3 toTarget = target - position_;
 	if(Length(toTarget) < kMinFaceDistance){
 		return; // 狙う点がボスの中心とほぼ同じ場合は方向が定まらないため撃たない
@@ -449,7 +457,7 @@ void Boss::FireToward(const Vector3& target,float yawOffset,float speed,bool isH
 	};
 
 	// 体の中から出てくるように見えないよう、体の表面から撃つ
-	bulletPool_.Fire(position_ + direction * GetHitSphere().radius,direction,speed,isHoming);
+	bulletPool_.Fire(position_ + direction * GetHitSphere().radius,direction,speed,isHoming,damage);
 }
 
 // レティクルの方向が当たり判定の球を通っているかを調べる
@@ -481,8 +489,15 @@ bool Boss::FindAimed(const Vector3& cameraPosition,const Vector3& cameraForward,
 }
 
 // ボスの弾とプレイヤーの当たり判定
-int Boss::CheckHitToPlayer(const Model::BoundingSphere& playerSphere){
-	return bulletPool_.CheckHitToPlayer(playerSphere);
+float Boss::CheckHitToPlayer(const Model::BoundingSphere& playerSphere){
+	float maxDamage = 0.0f;
+	bulletPool_.CheckHitToPlayer(playerSphere,&maxDamage);
+	return maxDamage;
+}
+
+// 輪を塗り返す攻撃の、塗られた輪に乗っている間に受ける1秒あたりのダメージ(調整項目)を取得
+float Boss::GetRingDamagePerSecond() const{
+	return GlobalVariables::GetInstance()->GetFloatValue(kBossGroup,kRingDamagePerSecondKey);
 }
 
 // 当たり判定に使う、体の球をワールド座標系に置いた球を取得

@@ -138,7 +138,7 @@ private:
 	// ボスが2形態目に変わり始めた瞬間の演出(破片・ヒットストップ・揺れ・放射ブラー・スロー・「まだ終わらない!!」)を出す
 	void StartBossPhaseChange();
 	// ボスの輪を塗り返す攻撃を、輪の色・被弾・飛び移り方の案内に反映する
-	void UpdateBossRingAttack(bool isOnBossLoop);
+	void UpdateBossRingAttack(bool isOnBossLoop,float deltaTime);
 	// 着地の演出を見せ終えたら、結果を書き込んでクリア画面へ移る
 	void UpdateStageClear();
 	// クリア画面で出す結果(壊した的の数・最大連鎖数)を書き込む(シーンが作り直される前、的・連鎖数を初期状態に戻す前に呼ぶ)

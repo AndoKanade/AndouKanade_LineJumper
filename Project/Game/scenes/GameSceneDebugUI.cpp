@@ -118,7 +118,7 @@ void GameScene::ShowStatusWindow(){
 	}
 
 	// プレイヤーの体力・無敵時間のデバッグ表示
-	ImGui::Text("Player HP: %d / %d",player_->GetHp(),player_->GetMaxHp());
+	ImGui::Text("Player HP: %.1f / %.1f",player_->GetHp(),player_->GetMaxHp());
 	ImGui::Text("Lives: %d / %d",lives_,kMaxLives);
 	ImGui::Text("Player Invincible: %.2f",player_->GetInvincibleTimer());
 	ImGui::End();

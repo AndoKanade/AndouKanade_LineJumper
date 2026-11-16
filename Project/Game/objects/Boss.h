@@ -70,8 +70,10 @@ public:
 	/// ボスの弾とプレイヤーの当たり判定(当たった弾は消える)
 	/// </summary>
 	/// <param name="playerSphere">プレイヤーのワールド座標系の境界球</param>
-	/// <returns>命中した弾の数</returns>
-	int CheckHitToPlayer(const Model::BoundingSphere& playerSphere);
+	/// <returns>命中した弾のダメージ(同時に複数当たったときは一番大きいもの。当たっていなければ 0)</returns>
+	float CheckHitToPlayer(const Model::BoundingSphere& playerSphere);
+	// 輪を塗り返す攻撃の、塗られた輪に乗っている間に受ける1秒あたりのダメージ(調整項目)を取得
+	float GetRingDamagePerSecond() const;
 
 	/// <summary>
 	/// 倒されてから消えるまでの動きを進める(体を小刻みに震わせ、白く点滅させる)
@@ -144,8 +146,8 @@ private:
 	size_t GetAttackOrderCount() const;
 	// 速さbulletSpeedの弾が届くころにプレイヤーがいる位置(先読みした狙う点)を求める
 	Vector3 ComputeLeadTarget(const Vector3& playerPosition,float bulletSpeed) const;
-	// 体の表面から、狙う点へ向かう向きを左右にyawOffset(ラジアン)だけずらして弾を1発撃つ
-	void FireToward(const Vector3& target,float yawOffset,float speed,bool isHoming);
+	// 体の表面から、狙う点へ向かう向きを左右にyawOffset(ラジアン)だけずらして、ダメージdamageの弾を1発撃つ
+	void FireToward(const Vector3& target,float yawOffset,float speed,bool isHoming,float damage);
 
 	// 描画用の3Dオブジェクト
 	std::unique_ptr<Obj3D> obj_;
@@ -222,6 +224,10 @@ private:
 	static constexpr float kDefaultHomingTurnRate = 1.2f;
 	// 先読みの強さ(1でプレイヤーがそのまま進んだときに当たる位置、0で撃った瞬間の位置を狙う)
 	static constexpr float kDefaultLeadRate = 1.0f;
+	// 先読みの連射・扇状の弾の1発のダメージ、追尾弾のダメージ、塗られた輪に乗っている間の1秒あたりのダメージ(プレイヤーの体力の最大値は100)
+	static constexpr float kDefaultBulletDamage = 30.0f;
+	static constexpr float kDefaultHomingDamage = 40.0f;
+	static constexpr float kDefaultRingDamagePerSecond = 35.0f;
 	// 弾を撃つ前の予備動作の時間(秒。攻撃の間隔のうち、最後のこの時間だけ体をふくらませて白く光らせ、撃つタイミングを見せる)
 	static constexpr float kDefaultTelegraphTime = 0.7f;
 	// 2形態目の体力
