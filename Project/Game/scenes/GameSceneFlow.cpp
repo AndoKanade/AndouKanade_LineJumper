@@ -388,7 +388,7 @@ void GameScene::StartStageClear(const Vector3& landedPos){
 // ボスを倒した瞬間に、倒した演出を出してクリア画面へ移るのを待ち始める
 // まず一瞬動きを止めて画面を小さく揺らし続け、体が弾けるまでの溜めにする(弾ける演出は UpdateBossDefeat() で出す)
 void GameScene::StartBossDefeat(){
-	StageInfo::clearedStages[StageInfo::kFinalStageIndex] = true;
+	RecordStageClear();
 	isStageCleared_ = true;
 	stageClearTimer_ = 0.0f;
 	stageClearDuration_ = kBossDefeatClearDuration;
@@ -489,11 +489,17 @@ void GameScene::UpdateBossRingAttack(bool isOnBossLoop,float deltaTime){
 	wasBossRingAttacking_ = isRingAttacking;
 }
 
-// クリア画面で出す結果を書き込む
+// クリア画面で出す結果を書き込む(クリアしたときに残したステージごとの結果の合計にする)
 void GameScene::WriteStageResult(){
-	StageResult::destroyedTargetCount = targetManager_->GetDestroyedCount();
-	StageResult::totalTargetCount = targetManager_->GetTotalCount();
-	StageResult::maxCombo = comboCounter_->GetMaxCombo();
+	StageResult::CalculateTotal();
+}
+
+// 今のステージをクリアしたことにし、そのステージの結果を残す
+// クリアした後は的・連鎖数を初期状態に戻して次のステージを始めるため、戻す前のこの時点の値を残しておく
+void GameScene::RecordStageClear(){
+	const int stageIndex = railEditor_->GetStageIndex();
+	StageInfo::clearedStages[stageIndex] = true;
+	StageResult::RecordStage(stageIndex,targetManager_->GetDestroyedCount(),targetManager_->GetTotalCount(),comboCounter_->GetMaxCombo());
 }
 
 // 最後のステージへ続く通路の壁が壊れた瞬間の演出

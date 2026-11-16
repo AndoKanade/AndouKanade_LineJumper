@@ -29,6 +29,7 @@
 #include "objects/ComboCounter.h"
 #include "objects/ContinuePoint.h"
 #include "objects/StageInfo.h"
+#include "objects/StageResult.h"
 // カメラ
 #include "Camera/RailCamera.h"
 #include "Camera/DebugTopCamera.h"
@@ -98,9 +99,10 @@ void GameScene::UpdateGameplay(){
 		} else{
 			boss_->Reset();
 		}
-		// タイトルから新しく始めるときは、クリアしたステージも忘れ、操作の案内も最初から出す(コンティニューのときは残す)
+		// タイトルから新しく始めるときは、クリアしたステージとその結果も忘れ、操作の案内も最初から出す(コンティニューのときは残す)
 		if(!ContinuePoint::isRequested){
 			StageInfo::ResetProgress();
+			StageResult::ResetStageRecords();
 			tutorialHints_->Reset();
 			hasSwitchedBossRing_ = false;
 			hasPlayedRailSwitchSlow_ = false;
@@ -134,6 +136,7 @@ void GameScene::UpdateGameplay(){
 		lives_ = kMaxLives;
 		boss_->Reset();
 		StageInfo::ResetProgress();
+		StageResult::ResetStageRecords();
 		tutorialHints_->Reset();
 		hasSwitchedBossRing_ = false;
 		hasPlayedRailSwitchSlow_ = false;
@@ -291,7 +294,7 @@ void GameScene::UpdateGameplay(){
 		// スタート台へ着地したら、今のステージをクリアしたことにする
 		// 最後のステージなら着地の演出を出してクリア画面へ移るのを待ち始め、それ以外はスタート台の上から次のステージを選べるようにする
 		if(returnJump_->ConsumeLanded(landedPos)){
-			StageInfo::clearedStages[railEditor_->GetStageIndex()] = true;
+			RecordStageClear();
 			if(railEditor_->GetStageIndex() == StageInfo::kFinalStageIndex){
 				StartStageClear(landedPos);
 			} else{
