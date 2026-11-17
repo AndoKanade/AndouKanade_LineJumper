@@ -54,7 +54,7 @@ public:
 
 	/// <summary>
 	/// 結果からランクを決める
-	/// 的を壊した割合と、最大連鎖数の的の総数に対する割合を重みを付けて足し、その値でランクを決める。
+	/// 的を壊した割合と、最大連鎖数の満点の連鎖数に対する割合を重みを付けて足し、その値でランクを決める。
 	/// </summary>
 	static Rank CalculateRank(int destroyedCount,int totalCount,int maxCombo);
 
@@ -164,6 +164,9 @@ private:
 	// 的を壊した割合と、最大連鎖数の割合の重み(足すと 1 になるようにする)
 	static constexpr float kTargetRateWeight = 0.7f;
 	static constexpr float kComboRateWeight = 0.3f;
+	// 最大連鎖数の割合を満点にする連鎖数
+	// 最大連鎖数は1つのステージの中で続いた数なので、全ステージの的の総数では割らない(的を足すほど満点が遠くなるため)
+	static constexpr int kFullComboCount = 10;
 	// ランクごとに必要な値(S・A・B の順。どれにも届かなければ C)
 	static constexpr std::array<float,static_cast<size_t>(Rank::C)> kRankThresholds = {0.9f, 0.7f, 0.5f};
 	// ランクごとのインクの色(S・A・B・C の順)

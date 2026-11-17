@@ -240,14 +240,13 @@ void ClearResultUI::Draw(){
 
 // 結果からランクを決める
 ClearResultUI::Rank ClearResultUI::CalculateRank(int destroyedCount,int totalCount,int maxCombo){
-	// 的が1つも無いときは、割合を求められないため最高の値として扱う
+	// 的が1つも無いときは、壊した割合を求められないため最高の値として扱う
 	float targetRate = kProgressMax;
-	float comboRate = kProgressMax;
 	if(totalCount > 0){
-		const float total = static_cast<float>(totalCount);
-		targetRate = std::clamp(static_cast<float>(destroyedCount) / total,kProgressMin,kProgressMax);
-		comboRate = std::clamp(static_cast<float>(maxCombo) / total,kProgressMin,kProgressMax);
+		targetRate = std::clamp(static_cast<float>(destroyedCount) / static_cast<float>(totalCount),kProgressMin,kProgressMax);
 	}
+	// 最大連鎖数は、満点の連鎖数に届いたら最高の値にする
+	const float comboRate = std::clamp(static_cast<float>(maxCombo) / static_cast<float>(kFullComboCount),kProgressMin,kProgressMax);
 	const float score = targetRate * kTargetRateWeight + comboRate * kComboRateWeight;
 
 	// 良いランクから順に、必要な値に届いているかを調べる
