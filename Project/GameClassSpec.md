@@ -222,7 +222,7 @@ Game/
    4. `Player::UpdateRailProgress()` でレールを進め、`Player::UpdateBasePose()` で基準位置・基準向きを求める。
    5. `RailCamera::Update()` でカメラをプレイヤーの後ろ上に置き、照準の入力を反映する（スタート台の上を動ける間も照準を動かせる）。地面の高さとスタート台を渡し、カメラがめり込まないようにする。
    6. 状態確認用のデバッグウィンドウ（`ShowStatusWindow()`）。
-   7. `Player::UpdateTransform()` でプレイヤーをレールの上に立たせ、照準の方向へ向ける。出発の演出中は `DepartureDirector::Update()`、大ジャンプの最中は `ReturnJump::Update()` でプレイヤーの表示を上書きする。大ジャンプで跳び上がった瞬間（`ConsumeLaunched()`）にプレイヤーをスタート台の上へ移して照準を戻し、「STAGE CLEAR!」を出す。着地した瞬間（`ConsumeLanded()`）に今のステージをクリアしたことにし（`StageInfo::clearedStages`）、最後のステージなら `StartStageClear()`、それ以外は `RestartFromReturnJump()` を呼ぶ。出発ゲートを開け始めた瞬間（`StartSequence::IsGateOpenTriggered()`）に、開けたゲートのステージへ `SwitchStage()` で切り替える。カメラは「タイトル・回り込み（StartSequence）→ 出発の演出 → 大ジャンプ → ゲートを映すカメラ」の優先順で上書きし、最後に画面の揺れを足す。
+   7. `Player::UpdateTransform()` でプレイヤーをレールの上に立たせ、照準の方向へ向ける。出発の演出中は `DepartureDirector::Update()`、大ジャンプの最中は `ReturnJump::Update()` でプレイヤーの表示を上書きする。大ジャンプで跳び上がった瞬間（`ConsumeLaunched()`）にプレイヤーをスタート台の上へ移して照準を戻し、「STAGE CLEAR!」を出す。着地した瞬間（`ConsumeLanded()`）に今のステージをクリアしたことにし（`StageInfo::clearedStages`）、最後のステージとプレイ会用の設定で遊ぶステージなら `StartStageClear()`、それ以外は `RestartFromReturnJump()` を呼ぶ。出発ゲートを開け始めた瞬間（`StartSequence::IsGateOpenTriggered()`）に、開けたゲートのステージへ `SwitchStage()` で切り替える。カメラは「タイトル・回り込み（StartSequence）→ 出発の演出 → 大ジャンプ → ゲートを映すカメラ」の優先順で上書きし、最後に画面の揺れを足す。
    8. 敵の更新、敵弾とプレイヤーの当たり判定、ゲームオーバー判定。
    9. `Player::UpdateMovement()` でジャンプ・WASD 移動・着地判定を行う。地面まで落ちたら、プレイ中なら `LoseLife()`、出発前のスタート台の上なら `RestartAfterMiss()` を呼ぶ。`isPlayerMovable` の間も同じく動かす。出発台を使う演出なら、出発台の手前の線を越えたら演出を始める。歩いてレールへ乗ったとき・出発の演出がレールへ乗せ終えたときは `StartSequence::NotifyBoarded()` を呼び、`PlayBoardedEffects()` で足元から輪・インクのしぶき・インクの跡を出す。
    10. 射撃（手元からインクのしぶきも出す。スタート台の上では的・敵に当たらない試し撃ち）、弾の移動、的・敵と弾の当たり判定、壊れた的ごとの演出と連鎖数の加算、ゴールの的の並走と当たり判定・クリア判定、弾の行列の更新、レティクルの色の更新。
@@ -245,7 +245,7 @@ Game/
 | ゴールの的 | ゴールのレール（Rail Editor の「Goal Rail」を ON にしたレール。ステージ1は Rail 5）に乗ると、ゴールの的（GoalTarget）が現れてプレイヤーの先を並走する。ゴールのレールは終点でレールから外れず止まるため、壊すまで撃ち続けられる（ほかのレールの終点ではレールから外れて落ちる） |
 | ボス戦 | 最後のステージ（ステージ4）では、ゲートからのレールの終点で輪（ループするレール）へ自動で飛び移り、輪の中心のボス（Boss）の周りを回りながら撃つ。輪に乗った瞬間に照準がボスへ向く（`RailCamera::TurnAimToward()`）。輪に乗っている間だけボスが攻撃する。輪に乗っている間は、ゲートからのレールを出ていない状態（点線）にする。ボスを倒すと、体が震えて小さな破片を出し続け、1.2 秒後に大きく弾けて消えて「STAGE CLEAR!」を出し、倒してから 3.4 秒後に結果を書き込んでクリア画面へ移る。残機を減らしてやり直すときはボスの体力を残し（弾は消す）、Play に入り直したとき・R キー・Edit へ戻ったときに1形態目の満タンへ戻す |
 | プレイヤーの体力 | 最大 100 の連続した値。雑魚敵の弾は `enemyBulletDamage`、ボスの弾は種類ごとのダメージを受ける（同時に複数当たっても一番大きい 1 回分だけ）。最後にダメージを受けてから `hpRegenStartDelay` 秒たつと、1 秒あたり `hpRegenSpeed` ずつ戻る（プレイ可能な間だけ進む）。0 で残機が 1 つ減る |
-| クリア | ゴールの的の体力を 0 にして壊したらステージクリア。普通の的より派手な破片（`InkEffectManager::EmitGoalBreak()`）を出し、0.2 秒のヒットストップ・画面の揺れ・的を中心にした放射ブラーをかける。そのまま `ReturnJump` を始め、1.2 秒待つ間は破片・しぶきを 0.3 倍のスローにする。跳び上がった瞬間に「STAGE CLEAR!」を出す。スタート台に着地したら、ステージ1〜3なら `RestartFromReturnJump()` でスタート台の上から始め直し（次のステージのゲートを選べる）、最後のステージはゴールの的を置かず、ボスを倒すとクリア画面へ移る（的を全部壊すことはクリアの条件にしない） |
+| クリア | ゴールの的の体力を 0 にして壊したらステージクリア。普通の的より派手な破片（`InkEffectManager::EmitGoalBreak()`）を出し、0.2 秒のヒットストップ・画面の揺れ・的を中心にした放射ブラーをかける。そのまま `ReturnJump` を始め、1.2 秒待つ間は破片・しぶきを 0.3 倍のスローにする。跳び上がった瞬間に「STAGE CLEAR!」を出す。スタート台に着地したら、ステージ1〜3なら `RestartFromReturnJump()` でスタート台の上から始め直し（次のステージのゲートを選べる）、最後のステージはゴールの的を置かず、ボスを倒すとクリア画面へ移る（的を全部壊すことはクリアの条件にしない）。プレイ会用の設定で遊ぶステージ（ステージ3）では、的を1つ壊しても `ReturnJump` を始め、着地したらクリア画面へ移る |
 | 復活の見せ方 | 落下リスタート・残機を減らしたやり直し・コンティニューで始めるときは、透明な体がだんだん元に戻る見せ方にする（`Player::StartReveal()`、0.8 秒）。暗転が明けてから進める。見せ方は Edit モードの「GameScene Debug」パネルの「Respawn Reveal」で、Stripes（細い横じまだけ見えている状態から、しまが太くなってすき間が埋まる）と Sweep（光る境界線が下から上へ通り、線より下だけ見える）から選ぶ。「Preview Respawn Reveal」でその場で確認できる。選んだものは調整項目 `respawnRevealStyle` に入り、Global Variables の Save で保存する（初期値は Stripes） |
 | やられ演出 | 残機が 0 になったら、すぐには切り替えず `StartDefeat()` を呼ぶ。自機が敵のインク（ピンク）になって弾け（`InkEffectManager::EmitDefeatBurst()`）、一瞬動きを止めて（0.15 秒）画面を揺らし、自機を中心に放射ブラーをかける。自機は描かず、操作・判定は止め、敵とインクの演出は 0.35 倍のスローで動かす。カメラはその場に止まる |
 | ゲームオーバー | やられ演出が始まってから 1.4 秒たったら（`UpdateDefeat()`）、暗いインクが垂れる演出（`InkDrip`）で GAMEOVER へ移る |
@@ -447,7 +447,7 @@ GameScene が直接触るのは StartSequence・DepartureDirector・ReturnJump �
 | `IsRunning()` / `IsWaiting()` | 演出の最中か / `Wait` の最中か |
 | `GetCameraPose(outPose)` | 演出のカメラの位置と向き（カメラを動かしている最中なら true） |
 | `ConsumeLaunched()` | このフレームで跳び上がったかを受け取る。GameScene はプレイヤーをスタート台の上へ移し、照準を戻し、「STAGE CLEAR!」を出す |
-| `ConsumeLanded(outPosition)` | このフレームで着地したかを受け取る。GameScene は、最後のステージなら `StartStageClear()`、それ以外は `RestartFromReturnJump()` を呼ぶ |
+| `ConsumeLanded(outPosition)` | このフレームで着地したかを受け取る。GameScene は、最後のステージとプレイ会用の設定で遊ぶステージなら `StartStageClear()`、それ以外は `RestartFromReturnJump()` を呼ぶ |
 
 ### TitleCameraDirector（`Title/TitleCameraDirector.h/.cpp`）
 
@@ -939,8 +939,8 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `GetStageDirectory(stageIndex)` | `resource/stage/stage1/` などのフォルダ |
 | `GetStageLabel(stageIndex)` | エディターの一覧に出す名前（`Stage 1 (Front)` など） |
 | `ToStageNumber(stageIndex)` / `IsValidStageIndex(stageIndex)` | 画面に出す 1 始まりの番号 / 範囲内か |
-| `clearedStages` / `IsFinalStageUnlocked()` / `IsStageSelectable(stageIndex)` / `ResetProgress()` | ステージごとにクリアしたか（シーンをまたいで残る）/ 最後のステージに出られるか / そのステージのゲートを開けられるか（プレイ会用の設定ではステージ1だけ）/ クリアしたステージを忘れる |
-| `isPlaySessionMode` / `IsClosedForPlaySession(stageIndex)` | プレイ会用の設定か（GameScene が調整項目 `playSessionMode` を毎フレーム書き込む）/ プレイ会用の設定で閉じている右・左のステージか |
+| `clearedStages` / `IsFinalStageUnlocked()` / `IsStageSelectable(stageIndex)` / `ResetProgress()` | ステージごとにクリアしたか（シーンをまたいで残る）/ 最後のステージに出られるか / そのステージのゲートを開けられるか（プレイ会用の設定ではステージ3だけ）/ クリアしたステージを忘れる |
+| `isPlaySessionMode` / `IsClosedForPlaySession(stageIndex)` / `IsPlaySessionStage(stageIndex)` | プレイ会用の設定か（GameScene が調整項目 `playSessionMode` を毎フレーム書き込む）/ プレイ会用の設定で閉じている正面・右のステージか / プレイ会用の設定で遊ぶステージ（ステージ3、`kPlaySessionStageIndex`）か。このステージでは的を1つ壊すとステージクリアにし、着地したらクリア画面へ移る |
 
 ### StageResult（`objects/StageResult.h`）
 
@@ -1091,7 +1091,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 
 ### StageLockedNotice（`UI/StageLockedNotice.h/.cpp`）
 
-プレイ会用の設定（`StageInfo::isPlaySessionMode`）のときに、閉じている右・左のゲートの前（ゲートの幅の中で、ゲートから手前へ 1.5 以内。`StartPlatform::IsInFrontOfPlaySessionClosedGate()`）に来たら出す「いまは遊べないよ!!」の画像（`UI/stageLocked.png`、`tools/generate_stage_locked_notice.py` で生成）。来た瞬間に 1.4 倍から 0.25 秒で弾むように縮んで出し（`EaseOutBack`）、離れたら 0.25 秒で薄くなって消える。画面の上から 3 割の高さに、832 × 260 で出す。
+プレイ会用の設定（`StageInfo::isPlaySessionMode`）のときに、閉じている正面・右のゲートの前（ゲートの幅の中で、ゲートから手前へ 1.5 以内。`StartPlatform::IsInFrontOfPlaySessionClosedGate()`）に来たら出す「いまは遊べないよ!!」の画像（`UI/stageLocked.png`、`tools/generate_stage_locked_notice.py` で生成）。来た瞬間に 1.4 倍から 0.25 秒で弾むように縮んで出し（`EaseOutBack`）、離れたら 0.25 秒で薄くなって消える。画面の上から 3 割の高さに、832 × 260 で出す。
 
 | 関数 | 内容 |
 | --- | --- |
@@ -1176,7 +1176,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 
 ### HelpOverlay（`UI/HelpOverlay.h/.cpp`）
 
-H キーで開閉する操作説明。操作方法と画面の流れ（どうすれば各画面へ進むか）を 1 枚の画像（`UI/help.png`、1440 × 800）で画面中央に等倍表示し、後ろのゲーム画面を黒の半透明で暗くする。閉じている間は左下に「H あそびかた」の案内（`UI/helpHint.png`）を出す。プレイ会用の設定（`StageInfo::isPlaySessionMode`）のときは、画面の流れをステージ1だけにした画像（`UI/helpPlaySession.png`）を出す。ImGui を使わずスプライトで描くため、Release 構成でも表示される。
+H キーで開閉する操作説明。操作方法と画面の流れ（どうすれば各画面へ進むか）を 1 枚の画像（`UI/help.png`、1440 × 800）で画面中央に等倍表示し、後ろのゲーム画面を黒の半透明で暗くする。閉じている間は左下に「H あそびかた」の案内（`UI/helpHint.png`）を出す。プレイ会用の設定（`StageInfo::isPlaySessionMode`）のときは、画面の流れをステージ3だけにした画像（`UI/helpPlaySession.png`）を出す。ImGui を使わずスプライトで描くため、Release 構成でも表示される。
 
 - 画像は `tools/generate_help_texture.py` で生成する（Project フォルダで `python tools/generate_help_texture.py`、Pillow が必要）。操作やキーを変えたときは、スクリプトの `CONTROLS` / `FLOWS` を書き換えて実行し直す。
 - GameScene では Play モード中だけ開ける（Edit モードで ImGui の文字入力に H を打っても開かないようにするため）。開いている間は `Update()` の冒頭で戻り、ゲームの進行と入力をすべて止める。

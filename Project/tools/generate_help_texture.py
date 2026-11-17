@@ -4,7 +4,7 @@
 # 出力先: resource/UI/help.png(説明の本体) / resource/UI/helpHint.png(画面の隅に常に出す「H あそびかた」)
 #         resource/UI/quitHint.png(タイトル画面の右上に出す「ESC ゲーム終了」)
 # 操作やキーを変えたときは、下の CONTROLS / FLOWS / PLAY_SESSION_FLOWS を書き換えて実行し直す。
-# プレイ会用の設定(調整項目 playSessionMode)のときは、画面の流れをステージ1だけにした helpPlaySession.png を出す。
+# プレイ会用の設定(調整項目 playSessionMode)のときは、画面の流れをステージ3だけにした helpPlaySession.png を出す。
 
 from pathlib import Path
 
@@ -66,11 +66,11 @@ FLOWS = [
     ("ゲームオーバー", "W/S で選んで SPACE", "コンティニュー / タイトルへ"),
 ]
 
-# プレイ会用の画面の流れ(ステージ1だけを遊ぶ)
+# プレイ会用の画面の流れ(ステージ3だけを遊び、的を1つ壊したらクリア)
 PLAY_SESSION_FLOWS = [
     ("タイトル", "SPACE", "スタート台"),
-    ("スタート台", "正面のゲートの前で SPACE", "ステージ1へ出発"),
-    ("プレイ", "ゴールの的を壊す", "クリア!"),
+    ("スタート台", "左のゲートの前で SPACE", "ステージ3へ出発"),
+    ("プレイ", "的を1つ壊す", "クリア!"),
     ("プレイ", "残機(左上)が0になる", "ゲームオーバー"),
     ("クリア / ゲームオーバー", "SPACE", "タイトルへ戻る"),
 ]

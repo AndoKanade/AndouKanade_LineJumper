@@ -80,9 +80,9 @@
   - 後ろの通路に、ステージ1〜3の壁を手前から1枚ずつ立てた（色はステージごとに違う）。立っている壁より奥へは歩けない。最後のステージのゲートは、壁がすべて壊れるまで開けられない。
   - ステージ1〜3をクリアして大ジャンプで着地すると、カメラが通路の壁へ向き、そのステージの壁が壊れてから戻る（`BarrierBreakCutscene`。回す 0.5 秒 → 壊す 1 秒 → 戻す 0.5 秒。調整項目 `barrierTurnDuration` / `barrierBreakDuration` / `barrierReturnDuration`）。SPACE で飛ばせる。
   - プレイ会用の設定を足した（調整項目 `GameScene` グループの `playSessionMode`。初期値は OFF）。ON のときは次のようになる。
-    - 開けられるのは正面（ステージ1）のゲートだけ。右・左のゲートの前に来ると「いまは遊べないよ!!」の画像を出す（`StageLockedNotice`、`resource/UI/stageLocked.png`、`tools/generate_stage_locked_notice.py`）。
-    - ステージ1をクリアした後は、ほかの設定と同じくスタート台へ戻って壁が壊れるのを見せるだけ（クリア画面へ移る処理は 2026-11-16 に消した）。
-    - H キーの操作説明も、画面の流れをステージ1だけにしたもの（`resource/UI/helpPlaySession.png`）を出す（画像は、クリア画面へ移っていたころの流れのまま）。
+    - 開けられるのは左（ステージ3）のゲートだけ（2026-11-17 にステージ1から変えた。`StageInfo::kPlaySessionStageIndex`）。正面・右のゲートの前に来ると「いまは遊べないよ!!」の画像を出す（`StageLockedNotice`、`resource/UI/stageLocked.png`、`tools/generate_stage_locked_notice.py`）。
+    - ステージ3では、的を1つ壊すとステージクリアにし、ゴールの的を壊したときと同じく大ジャンプでスタート台へ戻り、着地したらクリア画面へ移る（クリア画面をすぐ見られるようにするため。2026-11-17）。結果はステージ3の分だけなので、ランクはほぼ C になる。
+    - H キーの操作説明も、画面の流れをステージ3だけにしたもの（`resource/UI/helpPlaySession.png`）を出す。
     - プレイ会では、Global Variables パネルで `playSessionMode` を ON にして Save するか、`resource/GlobalVariables/GameScene.json` の `playSessionMode` を `true` にしたものを使う。提出用は OFF に戻す。
   - 場面ごとに画面の上へ操作の案内を1つずつ出すようにした（仮。`TutorialHints`、画像は `tools/generate_tutorial_hints.py`）。「WASD で移動・マウスで見回す（2m 歩いたら消える）→ 左クリックで試し撃ち（5 発撃ったら消える）→ ゲートの前で SPACE（ゲートを開けたら消える）→ レールで的を撃つ（的を1つ壊すか 6 秒で消える）」の順。タイトルから始め直すと最初から出し、落ちてやり直しても出し直さない。ゴールの的の案内は、見てから足すか決める。
   - 鍵の的を壊して出たレールへ飛び移れるとき、そのレールがある側の画面の端に「A + SPACE」「D + SPACE」を点滅させて出すようにした（`RailSwitchPrompt`、画像は `tools/generate_rail_switch_prompt.py`）。左右は飛び移る処理と同じ判定（`Player::FindSideRailDirection()`）で求める。一度乗った鍵のレールには出さない。最初にこの案内を出したときだけ、飛び移るまで（最大 3 秒）レールを進む・敵・弾・的・しぶきを 0.25 倍の速さにする（カメラとキーの入力は通常の速さ。タイトルから始め直すまでもう一度はしない）。

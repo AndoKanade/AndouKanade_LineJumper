@@ -377,7 +377,7 @@ void GameScene::PlayReturnLandEffects(const Vector3& landedPos){
 	}
 }
 
-// 最後のステージのゴールの的を壊し、大ジャンプでスタート台に着地したときに、着地の演出を出してクリア画面へ移るのを待ち始める
+// 最後のステージのゴールの的を壊したとき(プレイ会用の設定で遊ぶステージでは的を1つ壊したとき)、大ジャンプでスタート台に着地したときに、着地の演出を出してクリア画面へ移るのを待ち始める
 void GameScene::StartStageClear(const Vector3& landedPos){
 	isStageCleared_ = true;
 	stageClearTimer_ = 0.0f;

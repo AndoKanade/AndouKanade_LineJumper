@@ -292,10 +292,11 @@ void GameScene::UpdateGameplay(){
 		}
 		Vector3 landedPos;
 		// スタート台へ着地したら、今のステージをクリアしたことにする
-		// 最後のステージなら着地の演出を出してクリア画面へ移るのを待ち始め、それ以外はスタート台の上から次のステージを選べるようにする
+		// 最後のステージと、プレイ会用の設定で遊ぶステージなら着地の演出を出してクリア画面へ移るのを待ち始め、それ以外はスタート台の上から次のステージを選べるようにする
 		if(returnJump_->ConsumeLanded(landedPos)){
 			RecordStageClear();
-			if(railEditor_->GetStageIndex() == StageInfo::kFinalStageIndex){
+			const int stageIndex = railEditor_->GetStageIndex();
+			if(stageIndex == StageInfo::kFinalStageIndex || StageInfo::IsPlaySessionStage(stageIndex)){
 				StartStageClear(landedPos);
 			} else{
 				RestartFromReturnJump(landedPos);
@@ -520,6 +521,13 @@ void GameScene::UpdateGameplay(){
 	for(const Vector3& destroyedPos : targetManager_->GetDestroyedPositions()){
 		inkEffect_->EmitTargetBreak(destroyedPos);
 		comboCounter_->AddHit();
+	}
+
+	// プレイ会用の設定で遊ぶステージでは、的を1つ壊したらステージクリアとし、ゴールの的を壊したときと同じく大ジャンプでスタート台へ戻る
+	// スタート台に着地したらクリア画面へ移り、遊んだ人がすぐにクリア画面を見られるようにする
+	// 大ジャンプを始めるとプレイ可能でなくなるため、次のフレームから的が壊れても二重には始めない
+	if(isGameplayActive && StageInfo::IsPlaySessionStage(railEditor_->GetStageIndex()) && !targetManager_->GetDestroyedPositions().empty()){
+		returnJump_->Begin(MakeDepartureContext());
 	}
 
 	// ゴールの的の並走と弾との当たり判定
