@@ -312,12 +312,12 @@ Game/
 
 ### ClearScene（`scenes/ClearScene.h/.cpp`）
 
-最後のステージのボスを倒したときに移る画面。
+最後のステージのボスを倒したとき（プレイ会用の設定では、ステージ3で的を1つ壊してスタート台に着地したとき）に移る画面。
 
-- 背景に `resource/circle.png` を緑系の色で表示する。
-- 画面の中央に「GAME CLEAR!」と「SPACE でタイトルへ」を描いた画像（`resource/UI/clearTitle.png`、仮素材）を表示する。ImGui を使わないため Release 構成でも表示される。
-- 「STAGE CLEAR!」と操作説明を ImGui で表示する（専用のフォント描画が無いため）。
-- SPACE で GAME へ戻る（タイトルから始まる）。
+- 結果の表示は `ClearResultUI` に任せる（ImGui を使わないため Release 構成でも表示される）。`StageResult` の全ステージの合計を渡す。
+- ランクは `ClearResultUI::CalculateRank()` で結果から決める。プレイ会用の設定（`StageInfo::isPlaySessionMode`）では、結果がステージ3の分だけでほぼ C になるため、S〜C からランダムに決める。
+- クリア画面へ切り替える演出が画面を覆っている間は、結果を出し始めない。
+- SPACE で、結果を出している途中なら飛ばしてすべて出し、出し終えて 0.5 秒たっていれば GAME へ戻る（タイトルから始まる）。
 
 ### GameOverScene（`scenes/GameOverScene.h/.cpp`）
 

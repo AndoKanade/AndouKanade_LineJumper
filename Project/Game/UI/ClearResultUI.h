@@ -38,7 +38,8 @@ public:
 	/// <param name="destroyedCount">壊した的の数</param>
 	/// <param name="totalCount">配置されていた的の総数</param>
 	/// <param name="maxCombo">一番長く続いた連鎖数</param>
-	void Initialize(SpriteCommon* spriteCommon,int destroyedCount,int totalCount,int maxCombo);
+	/// <param name="rank">最後に押すランク(ふつうは CalculateRank() で結果から決めたもの)</param>
+	void Initialize(SpriteCommon* spriteCommon,int destroyedCount,int totalCount,int maxCombo,Rank rank);
 
 	// 表示の動きを進める
 	void Update(float deltaTime);

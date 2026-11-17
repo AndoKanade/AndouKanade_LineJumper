@@ -81,7 +81,7 @@
   - ステージ1〜3をクリアして大ジャンプで着地すると、カメラが通路の壁へ向き、そのステージの壁が壊れてから戻る（`BarrierBreakCutscene`。回す 0.5 秒 → 壊す 1 秒 → 戻す 0.5 秒。調整項目 `barrierTurnDuration` / `barrierBreakDuration` / `barrierReturnDuration`）。SPACE で飛ばせる。
   - プレイ会用の設定を足した（調整項目 `GameScene` グループの `playSessionMode`。初期値は OFF）。ON のときは次のようになる。
     - 開けられるのは左（ステージ3）のゲートだけ（2026-11-17 にステージ1から変えた。`StageInfo::kPlaySessionStageIndex`）。正面・右のゲートの前に来ると「いまは遊べないよ!!」の画像を出す（`StageLockedNotice`、`resource/UI/stageLocked.png`、`tools/generate_stage_locked_notice.py`）。
-    - ステージ3では、的を1つ壊すとステージクリアにし、ゴールの的を壊したときと同じく大ジャンプでスタート台へ戻り、着地したらクリア画面へ移る（クリア画面をすぐ見られるようにするため。2026-11-17）。結果はステージ3の分だけなので、ランクはほぼ C になる。
+    - ステージ3では、的を1つ壊すとステージクリアにし、ゴールの的を壊したときと同じく大ジャンプでスタート台へ戻り、着地したらクリア画面へ移る（クリア画面をすぐ見られるようにするため。2026-11-17）。結果はステージ3の分だけでランクがほぼ C になるため、ランクは S〜C からランダムに決める（`ClearScene::Initialize()`）。
     - H キーの操作説明も、画面の流れをステージ3だけにしたもの（`resource/UI/helpPlaySession.png`）を出す。
     - プレイ会では、Global Variables パネルで `playSessionMode` を ON にして Save するか、`resource/GlobalVariables/GameScene.json` の `playSessionMode` を `true` にしたものを使う。提出用は OFF に戻す。
   - 場面ごとに画面の上へ操作の案内を1つずつ出すようにした（仮。`TutorialHints`、画像は `tools/generate_tutorial_hints.py`）。「WASD で移動・マウスで見回す（2m 歩いたら消える）→ 左クリックで試し撃ち（5 発撃ったら消える）→ ゲートの前で SPACE（ゲートを開けたら消える）→ レールで的を撃つ（的を1つ壊すか 6 秒で消える）」の順。タイトルから始め直すと最初から出し、落ちてやり直しても出し直さない。ゴールの的の案内は、見てから足すか決める。

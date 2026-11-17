@@ -14,6 +14,11 @@
 // プレイの結果(GameSceneがクリア直前に全ステージの合計を書き込む)
 #include "objects/StageResult.h"
 
+// プレイ会用の設定か
+#include "objects/StageInfo.h"
+
+#include <random>
+
 // コンストラクタ
 ClearScene::ClearScene() = default;
 
@@ -27,9 +32,18 @@ void ClearScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommo
 	input_ = input;
 	spriteCommon_ = spriteCommon;
 
-	// 結果を順に見せる表示(GameScene が書き込んだ全ステージの合計を渡し、ランクもここで決める)
+	// ランクは、GameScene が書き込んだ全ステージの合計から決める
+	// プレイ会用の設定では、結果がステージ3の分(的1つ)だけでほぼ C になるため、ランクをランダムに決めて、どのランクの演出も見られるようにする
+	ClearResultUI::Rank rank = ClearResultUI::CalculateRank(StageResult::destroyedTargetCount,StageResult::totalTargetCount,StageResult::maxCombo);
+	if(StageInfo::isPlaySessionMode){
+		std::random_device randomDevice;
+		std::uniform_int_distribution<int> distribution(static_cast<int>(ClearResultUI::Rank::S),static_cast<int>(ClearResultUI::Rank::C));
+		rank = static_cast<ClearResultUI::Rank>(distribution(randomDevice));
+	}
+
+	// 結果を順に見せる表示(全ステージの合計と、決めたランクを渡す)
 	resultUI_ = std::make_unique<ClearResultUI>();
-	resultUI_->Initialize(spriteCommon_,StageResult::destroyedTargetCount,StageResult::totalTargetCount,StageResult::maxCombo);
+	resultUI_->Initialize(spriteCommon_,StageResult::destroyedTargetCount,StageResult::totalTargetCount,StageResult::maxCombo,rank);
 
 	// 操作説明
 	helpOverlay_ = std::make_unique<HelpOverlay>();

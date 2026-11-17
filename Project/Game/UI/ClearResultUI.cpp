@@ -49,12 +49,12 @@ ClearResultUI::~ClearResultUI() = default;
 
 // テクスチャの読み込みとスプライトの生成
 // 位置・大きさ・角度・濃さは毎フレームの Update() で決めるため、ここでは生成と基準点・切り出す範囲の設定だけ行う
-void ClearResultUI::Initialize(SpriteCommon* spriteCommon,int destroyedCount,int totalCount,int maxCombo){
+void ClearResultUI::Initialize(SpriteCommon* spriteCommon,int destroyedCount,int totalCount,int maxCombo,Rank rank){
 	spriteCommon_ = spriteCommon;
 	destroyedCount_ = destroyedCount;
 	totalCount_ = totalCount;
 	maxCombo_ = maxCombo;
-	rank_ = CalculateRank(destroyedCount,totalCount,maxCombo);
+	rank_ = rank;
 	timer_ = 0.0f;
 
 	TextureManager* textureManager = TextureManager::GetInstance();
