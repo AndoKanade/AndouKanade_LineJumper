@@ -180,9 +180,9 @@ void ClearResultUI::Update(float deltaTime){
 		rankLabelSprite_->Update();
 	}
 
-	// 「SPACE でタイトルへ」は、すべてを出し終えてから点滅させる
-	if(IsFinished()){
-		const float blink = kHalf + kHalf * std::cos((timer_ - kFinishTime) * kHintBlinkSpeed);
+	// 「SPACE でタイトルへ」は、SPACE でタイトルへ戻れるようになってから点滅させる
+	if(CanReturnToTitle()){
+		const float blink = kHalf + kHalf * std::cos((timer_ - kReturnAcceptTime) * kHintBlinkSpeed);
 		hintSprite_->SetPosition({screenWidth * kHintCenterRate.x, screenHeight * kHintCenterRate.y});
 		hintSprite_->SetSize(kHintTextureSize);
 		hintSprite_->SetColor({kWhite.x, kWhite.y, kWhite.z, Lerp(kHintMinAlpha,kProgressMax,blink)});
@@ -198,6 +198,12 @@ void ClearResultUI::Skip(){
 // すべての結果を出し終えたかどうか
 bool ClearResultUI::IsFinished() const{
 	return timer_ >= kFinishTime;
+}
+
+// SPACE でタイトルへ戻れるかどうか
+// 途中を飛ばしたときも、飛ばした時点(出し終えた時点)から少したつまでは戻れない
+bool ClearResultUI::CanReturnToTitle() const{
+	return timer_ >= kReturnAcceptTime;
 }
 
 // 描画処理(まだ出し始めていないものは描かない)
@@ -233,7 +239,7 @@ void ClearResultUI::Draw(){
 	for(size_t i = 0; i < usedDigitCount_; ++i){
 		digitSprites_[i]->Draw();
 	}
-	if(IsFinished()){
+	if(CanReturnToTitle()){
 		hintSprite_->Draw();
 	}
 }

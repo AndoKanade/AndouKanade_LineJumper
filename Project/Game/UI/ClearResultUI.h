@@ -49,6 +49,9 @@ public:
 	// すべての結果を出し終えたかどうか
 	bool IsFinished() const;
 
+	// SPACE でタイトルへ戻れるかどうか(すべての結果を出し終えてから少したつと戻れる)
+	bool CanReturnToTitle() const;
+
 	// 描画処理(スプライト共通の描画前処理も含む)
 	void Draw();
 
@@ -144,8 +147,13 @@ private:
 	// ランクを押しつけてくる時間と、押しつけた後に揺れる時間
 	static constexpr float kStampDuration = 0.25f;
 	static constexpr float kWobbleDuration = 0.45f;
-	// すべてを出し終えて「SPACE でタイトルへ」を出し始める時間
+	// すべてを出し終える時間
 	static constexpr float kFinishTime = kRankStampStartTime + kStampDuration + kWobbleDuration;
+	// すべてを出し終えてから、SPACE でタイトルへ戻れるようにするまでの間
+	// SPACE で途中を飛ばした直後の連打で、結果を見ないままタイトルへ戻らないようにする
+	static constexpr float kReturnInputDelay = 0.5f;
+	// 「SPACE でタイトルへ」を出し始め、SPACE でタイトルへ戻れるようにする時間
+	static constexpr float kReturnAcceptTime = kFinishTime + kReturnInputDelay;
 
 	// --- 動き ---
 	// 数え終わった瞬間に大きくする割合(1 + この値の倍率まで弾む)と、元の大きさに戻るまでの時間

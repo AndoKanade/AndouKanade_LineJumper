@@ -56,14 +56,17 @@ void ClearScene::Update(){
 	}
 	resultUI_->Update(kDeltaTime);
 
-	// SPACE キー: 結果を出している途中なら飛ばしてすべて出し、出し終えていればタイトルへ戻る
+	// SPACE キー: 結果を出している途中なら飛ばしてすべて出し、出し終えて少したっていればタイトルへ戻る
+	// 出し終えた直後は押しても何もしない(飛ばした直後の連打で、結果を見ないまま戻らないようにする)
 	// タイトルはゲームシーン内の開始演出として表示するため、ゲームシーンを最初から始め直す
 	if(input_->TriggerKey(DIK_SPACE)){
 		if(!resultUI_->IsFinished()){
 			resultUI_->Skip();
 			return;
 		}
-		SceneManager::GetInstance()->ChangeScene("GAME");
+		if(resultUI_->CanReturnToTitle()){
+			SceneManager::GetInstance()->ChangeScene("GAME");
+		}
 	}
 }
 
