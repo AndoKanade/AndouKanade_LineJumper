@@ -5,9 +5,6 @@
 #include "SceneManager.h"
 #include "SpriteCommon.h"
 
-// 操作説明
-#include "UI/HelpOverlay.h"
-
 // 結果を順に見せる表示
 #include "UI/ClearResultUI.h"
 
@@ -44,10 +41,6 @@ void ClearScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommo
 	// 結果を順に見せる表示(全ステージの合計と、決めたランクを渡す)
 	resultUI_ = std::make_unique<ClearResultUI>();
 	resultUI_->Initialize(spriteCommon_,StageResult::destroyedTargetCount,StageResult::totalTargetCount,StageResult::maxCombo,rank);
-
-	// 操作説明
-	helpOverlay_ = std::make_unique<HelpOverlay>();
-	helpOverlay_->Initialize(spriteCommon_);
 }
 
 // 終了処理
@@ -57,12 +50,6 @@ void ClearScene::Finalize(){
 
 // 更新処理
 void ClearScene::Update(){
-	// 操作説明の開閉(H キー)。開いている間は SPACE でタイトルへ戻らないよう、以降の処理を止める
-	helpOverlay_->Update(input_,true);
-	if(helpOverlay_->IsOpen()){
-		return;
-	}
-
 	// クリア画面へ切り替える演出が画面を覆っている間は、結果を出し始めない(出だしを見逃さないようにする)
 	if(SceneManager::GetInstance()->IsTransitioning()){
 		resultUI_->Update(0.0f);
@@ -88,7 +75,4 @@ void ClearScene::Update(){
 void ClearScene::Draw(){
 	// 結果の表示(描画前処理も含む)
 	resultUI_->Draw();
-
-	// 操作説明(閉じている間は左下の案内)を最前面に描画する
-	helpOverlay_->Draw();
 }

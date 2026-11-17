@@ -9,7 +9,6 @@
 class Input;
 class Obj3dCommon;
 class SpriteCommon;
-class HelpOverlay;
 class ClearResultUI;
 
 /// <summary>
@@ -37,8 +36,6 @@ private:
 	// --- メンバ変数：内部リソース (所有するもの) ---
 	// 「GAME CLEAR!」・結果のカウントアップ・ランクを順に見せる表示
 	std::unique_ptr<ClearResultUI> resultUI_;
-	// H キーで開く操作説明(タイトルへ戻る方法もここで確認できる)
-	std::unique_ptr<HelpOverlay> helpOverlay_;
 
 	// 1フレームの時間(秒)。フレームレートは TimeManager で60fpsに固定している
 	static constexpr float kDeltaTime = 1.0f / 60.0f;

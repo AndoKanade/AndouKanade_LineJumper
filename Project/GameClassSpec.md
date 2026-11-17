@@ -1180,7 +1180,7 @@ H キーで開閉する操作説明。操作方法と画面の流れ（どうす
 
 - 画像は `tools/generate_help_texture.py` で生成する（Project フォルダで `python tools/generate_help_texture.py`、Pillow が必要）。操作やキーを変えたときは、スクリプトの `CONTROLS` / `FLOWS` を書き換えて実行し直す。
 - GameScene では Play モード中だけ開ける（Edit モードで ImGui の文字入力に H を打っても開かないようにするため）。開いている間は `Update()` の冒頭で戻り、ゲームの進行と入力をすべて止める。
-- ClearScene / GameOverScene でも開ける。開いている間は SPACE でタイトルへ戻らない。
+- GameOverScene でも開ける。開いている間は SPACE でタイトルへ戻らない（ClearScene では結果の表示の邪魔になるため出さない）。
 
 | 関数 | 内容 |
 | --- | --- |
