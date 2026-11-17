@@ -40,7 +40,7 @@
 #### ステージ1の今の状態（2026-11-09時点）
 - レールは Rail 0〜5 の 6 本（`resource/stage/stage1/rail/rail0.json`〜`rail5.json`）。Rail 1〜5 は鍵の的（各 1 つ）を壊すと出る。Rail 4 の螺旋の入り口にチェックポイントが 1 つある。
 - 的は 22 個（うち鍵の的 5 個）。敵は置かない方針（`resource/stage/stage1/enemy.json` は空）。ステージ1は的とレールだけで作る。
-- クリアは、ゴールのレール（Rail 5。Rail Editor の「Goal Rail」）で並走するゴールの的（`GoalTarget`、体力 20）を壊すこと。壊すと大ジャンプでスタート台へ戻り（`ReturnJump`、跳んでいる間に「STAGE CLEAR!」を出す）、スタート台の上から次のステージを選べる（`GameScene::RestartFromReturnJump()`）。クリア画面（ClearScene）へ移るのは、最後のステージ（ステージ4）のボスを倒したときだけ。
+- クリアは、ゴールのレール（Rail 5。Rail Editor の「Goal Rail」）で並走するゴールの的（`GoalTarget`、体力 12。2026-11-17 に 20 から下げた）を壊すこと。壊すと大ジャンプでスタート台へ戻り（`ReturnJump`、跳んでいる間に「STAGE CLEAR!」を出す）、スタート台の上から次のステージを選べる（`GameScene::RestartFromReturnJump()`）。クリア画面（ClearScene）へ移るのは、最後のステージ（ステージ4）のボスを倒したときだけ。
 - 起動から「タイトル → ゲート前で SPACE → カウントダウン → CountdownFlip で出発 → レール走行」まで動くことを、2026-10-30 に Development で起動して確認した（2026-11-09 にスタート台を作り直した後は、まだ起動して確認していない）。
 
 #### 5. ボス戦（2026-11-16 に完了。見た目は仮）

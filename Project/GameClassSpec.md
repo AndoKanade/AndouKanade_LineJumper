@@ -289,7 +289,7 @@ Game/
 | `mouseSensitivity` | 0.0004 | RailCamera | マウス照準の感度 |
 | `aimPitchLimit` | 0.5 | RailCamera | 照準の上下の可動範囲（ラジアン。左右は制限しない） |
 | `aimHitAngle` | 0.09 | TargetManager | レティクルが的を捉えたとみなす角度（ラジアン） |
-| `goalTargetMaxHp` | 20 | GoalTarget | ゴールの的の体力（次にやり直したときから反映される） |
+| `goalTargetMaxHp` | 12 | GoalTarget | ゴールの的の体力（次にやり直したときから反映される） |
 | `goalTargetAheadDistance` | 10.0 | GoalTarget | ゴールの的がプレイヤーより先を並走する距離（レールに沿った距離） |
 | `goalTargetHeight` | 1.5 | GoalTarget | ゴールの的のレールからの高さ |
 | `fogDensity` | 1.0 | Ground | 雲の上に重ねる霧の濃さの倍率 |
