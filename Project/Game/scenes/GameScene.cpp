@@ -76,7 +76,7 @@ namespace{
 	// ParticleManager::EmitSpark()が内部で使用するグループ名と合わせる必要がある
 	const char* kHitParticleGroupName = "Spark";
 
-	// プレイ会用の設定にするかの調整項目名と初期値(ON にすると、ステージ3だけを遊べ、的を1つ壊したらステージクリアにしてクリア画面へ移る)
+	// プレイ会用の設定にするかの調整項目名と初期値(ON にすると、ステージ3だけを遊べ、ゴールの的を壊したらクリア画面へ移る)
 	const char* kPlaySessionModeKey = "playSessionMode";
 	constexpr bool kDefaultPlaySessionMode = false;
 	// Play中に、遠くのレール・スタート台・的・敵などを空の色に溶け込ませ始める距離・溶け込みきる距離の調整項目名と初期値(カメラからの距離)

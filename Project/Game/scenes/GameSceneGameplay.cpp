@@ -523,13 +523,6 @@ void GameScene::UpdateGameplay(){
 		comboCounter_->AddHit();
 	}
 
-	// プレイ会用の設定で遊ぶステージでは、的を1つ壊したらステージクリアとし、ゴールの的を壊したときと同じく大ジャンプでスタート台へ戻る
-	// スタート台に着地したらクリア画面へ移り、遊んだ人がすぐにクリア画面を見られるようにする
-	// 大ジャンプを始めるとプレイ可能でなくなるため、次のフレームから的が壊れても二重には始めない
-	if(isGameplayActive && StageInfo::IsPlaySessionStage(railEditor_->GetStageIndex()) && !targetManager_->GetDestroyedPositions().empty()){
-		returnJump_->Begin(MakeDepartureContext());
-	}
-
 	// ゴールの的の並走と弾との当たり判定
 	// プレイヤーがゴールのレールに乗っている間だけ、プレイヤーより先を並走させる(Edit中・開始演出中は出さない)
 	const bool isOnGoalRail = isGameplayActive && player_->IsOnRail() && railEditor_->IsGoalRail(railEditor_->GetActiveRailIndex());

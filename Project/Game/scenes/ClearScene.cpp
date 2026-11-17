@@ -33,7 +33,7 @@ void ClearScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommo
 	spriteCommon_ = spriteCommon;
 
 	// ランクは、GameScene が書き込んだ全ステージの合計から決める
-	// プレイ会用の設定では、結果がステージ3の分(的1つ)だけでほぼ C になるため、ランクをランダムに決めて、どのランクの演出も見られるようにする
+	// プレイ会用の設定では、結果がステージ3の分(ゴールの的だけで、普通の的は置いていない)だけになるため、ランクをランダムに決めて、どのランクの演出も見られるようにする
 	ClearResultUI::Rank rank = ClearResultUI::CalculateRank(StageResult::destroyedTargetCount,StageResult::totalTargetCount,StageResult::maxCombo);
 	if(StageInfo::isPlaySessionMode){
 		std::random_device randomDevice;

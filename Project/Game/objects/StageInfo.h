@@ -19,13 +19,13 @@ struct StageInfo{
 	// ステージごとに、ゴールの的を壊してクリアしたか(並びはステージの番号と同じ。ゲームオーバーからのコンティニューでは残す)
 	inline static std::array<bool,kStageCount> clearedStages = {};
 
-	// プレイ会用の設定か(ステージ3だけを遊べるようにし、的を1つ壊したらステージクリアにしてクリア画面へ移り、クリア画面をすぐ見られるようにする)
+	// プレイ会用の設定か(ステージ3だけを遊べるようにし、ゴールの的を壊したらクリア画面へ移り、クリア画面をすぐ見られるようにする)
 	// GameScene が調整項目(GameScene グループの playSessionMode)の値を毎フレーム書き込む
 	inline static bool isPlaySessionMode = false;
 	// プレイ会用の設定のときに遊べるステージ(左の辺のステージ3)
 	static constexpr int kPlaySessionStageIndex = 2;
 
-	// プレイ会用の設定で遊ぶステージか(的を1つ壊したらステージクリアにし、スタート台に着地したらクリア画面へ移る)
+	// プレイ会用の設定で遊ぶステージか(ゴールの的を壊して、大ジャンプでスタート台に着地したらクリア画面へ移る)
 	static bool IsPlaySessionStage(int stageIndex){
 		return isPlaySessionMode && stageIndex == kPlaySessionStageIndex;
 	}

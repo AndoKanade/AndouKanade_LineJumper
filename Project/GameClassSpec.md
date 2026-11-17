@@ -245,7 +245,7 @@ Game/
 | ゴールの的 | ゴールのレール（Rail Editor の「Goal Rail」を ON にしたレール。ステージ1は Rail 5）に乗ると、ゴールの的（GoalTarget）が現れてプレイヤーの先を並走する。ゴールのレールは終点でレールから外れず止まるため、壊すまで撃ち続けられる（ほかのレールの終点ではレールから外れて落ちる） |
 | ボス戦 | 最後のステージ（ステージ4）では、ゲートからのレールの終点で輪（ループするレール）へ自動で飛び移り、輪の中心のボス（Boss）の周りを回りながら撃つ。輪に乗った瞬間に照準がボスへ向く（`RailCamera::TurnAimToward()`）。輪に乗っている間だけボスが攻撃する。輪に乗っている間は、ゲートからのレールを出ていない状態（点線）にする。ボスを倒すと、体が震えて小さな破片を出し続け、1.2 秒後に大きく弾けて消えて「STAGE CLEAR!」を出し、倒してから 3.4 秒後に結果を書き込んでクリア画面へ移る。残機を減らしてやり直すときはボスの体力を残し（弾は消す）、Play に入り直したとき・R キー・Edit へ戻ったときに1形態目の満タンへ戻す |
 | プレイヤーの体力 | 最大 100 の連続した値。雑魚敵の弾は `enemyBulletDamage`、ボスの弾は種類ごとのダメージを受ける（同時に複数当たっても一番大きい 1 回分だけ）。最後にダメージを受けてから `hpRegenStartDelay` 秒たつと、1 秒あたり `hpRegenSpeed` ずつ戻る（プレイ可能な間だけ進む）。0 で残機が 1 つ減る |
-| クリア | ゴールの的の体力を 0 にして壊したらステージクリア。普通の的より派手な破片（`InkEffectManager::EmitGoalBreak()`）を出し、0.2 秒のヒットストップ・画面の揺れ・的を中心にした放射ブラーをかける。そのまま `ReturnJump` を始め、1.2 秒待つ間は破片・しぶきを 0.3 倍のスローにする。跳び上がった瞬間に「STAGE CLEAR!」を出す。スタート台に着地したら、ステージ1〜3なら `RestartFromReturnJump()` でスタート台の上から始め直し（次のステージのゲートを選べる）、最後のステージはゴールの的を置かず、ボスを倒すとクリア画面へ移る（的を全部壊すことはクリアの条件にしない）。プレイ会用の設定で遊ぶステージ（ステージ3）では、的を1つ壊しても `ReturnJump` を始め、着地したらクリア画面へ移る |
+| クリア | ゴールの的の体力を 0 にして壊したらステージクリア。普通の的より派手な破片（`InkEffectManager::EmitGoalBreak()`）を出し、0.2 秒のヒットストップ・画面の揺れ・的を中心にした放射ブラーをかける。そのまま `ReturnJump` を始め、1.2 秒待つ間は破片・しぶきを 0.3 倍のスローにする。跳び上がった瞬間に「STAGE CLEAR!」を出す。スタート台に着地したら、ステージ1〜3なら `RestartFromReturnJump()` でスタート台の上から始め直し（次のステージのゲートを選べる）、最後のステージはゴールの的を置かず、ボスを倒すとクリア画面へ移る（的を全部壊すことはクリアの条件にしない）。プレイ会用の設定で遊ぶステージ（ステージ3）では、着地したらクリア画面へ移る |
 | 復活の見せ方 | 落下リスタート・残機を減らしたやり直し・コンティニューで始めるときは、透明な体がだんだん元に戻る見せ方にする（`Player::StartReveal()`、0.8 秒）。暗転が明けてから進める。見せ方は Edit モードの「GameScene Debug」パネルの「Respawn Reveal」で、Stripes（細い横じまだけ見えている状態から、しまが太くなってすき間が埋まる）と Sweep（光る境界線が下から上へ通り、線より下だけ見える）から選ぶ。「Preview Respawn Reveal」でその場で確認できる。選んだものは調整項目 `respawnRevealStyle` に入り、Global Variables の Save で保存する（初期値は Stripes） |
 | やられ演出 | 残機が 0 になったら、すぐには切り替えず `StartDefeat()` を呼ぶ。自機が敵のインク（ピンク）になって弾け（`InkEffectManager::EmitDefeatBurst()`）、一瞬動きを止めて（0.15 秒）画面を揺らし、自機を中心に放射ブラーをかける。自機は描かず、操作・判定は止め、敵とインクの演出は 0.35 倍のスローで動かす。カメラはその場に止まる |
 | ゲームオーバー | やられ演出が始まってから 1.4 秒たったら（`UpdateDefeat()`）、暗いインクが垂れる演出（`InkDrip`）で GAMEOVER へ移る |
@@ -312,10 +312,10 @@ Game/
 
 ### ClearScene（`scenes/ClearScene.h/.cpp`）
 
-最後のステージのボスを倒したとき（プレイ会用の設定では、ステージ3で的を1つ壊してスタート台に着地したとき）に移る画面。
+最後のステージのボスを倒したとき（プレイ会用の設定では、ステージ3のゴールの的を壊してスタート台に着地したとき）に移る画面。
 
 - 結果の表示は `ClearResultUI` に任せる（ImGui を使わないため Release 構成でも表示される）。`StageResult` の全ステージの合計を渡す。
-- ランクは `ClearResultUI::CalculateRank()` で結果から決める。プレイ会用の設定（`StageInfo::isPlaySessionMode`）では、結果がステージ3の分だけでほぼ C になるため、S〜C からランダムに決める。
+- ランクは `ClearResultUI::CalculateRank()` で結果から決める。プレイ会用の設定（`StageInfo::isPlaySessionMode`）では、結果がステージ3の分だけになるため、S〜C からランダムに決める。
 - クリア画面へ切り替える演出が画面を覆っている間は、結果を出し始めない。
 - SPACE で、結果を出している途中なら飛ばしてすべて出し、出し終えて 0.5 秒たっていれば GAME へ戻る（タイトルから始まる）。
 
@@ -940,7 +940,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `GetStageLabel(stageIndex)` | エディターの一覧に出す名前（`Stage 1 (Front)` など） |
 | `ToStageNumber(stageIndex)` / `IsValidStageIndex(stageIndex)` | 画面に出す 1 始まりの番号 / 範囲内か |
 | `clearedStages` / `IsFinalStageUnlocked()` / `IsStageSelectable(stageIndex)` / `ResetProgress()` | ステージごとにクリアしたか（シーンをまたいで残る）/ 最後のステージに出られるか / そのステージのゲートを開けられるか（プレイ会用の設定ではステージ3だけ）/ クリアしたステージを忘れる |
-| `isPlaySessionMode` / `IsClosedForPlaySession(stageIndex)` / `IsPlaySessionStage(stageIndex)` | プレイ会用の設定か（GameScene が調整項目 `playSessionMode` を毎フレーム書き込む）/ プレイ会用の設定で閉じている正面・右のステージか / プレイ会用の設定で遊ぶステージ（ステージ3、`kPlaySessionStageIndex`）か。このステージでは的を1つ壊すとステージクリアにし、着地したらクリア画面へ移る |
+| `isPlaySessionMode` / `IsClosedForPlaySession(stageIndex)` / `IsPlaySessionStage(stageIndex)` | プレイ会用の設定か（GameScene が調整項目 `playSessionMode` を毎フレーム書き込む）/ プレイ会用の設定で閉じている正面・右のステージか / プレイ会用の設定で遊ぶステージ（ステージ3、`kPlaySessionStageIndex`）か。このステージでは、ゴールの的を壊して着地したらクリア画面へ移る |
 
 ### StageResult（`objects/StageResult.h`）
 
