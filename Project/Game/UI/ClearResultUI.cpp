@@ -2,8 +2,10 @@
 #include "Sprite.h"
 #include "SpriteCommon.h"
 #include "TextureManager.h"
+#include "SoundManager.h"
 #include "WinAPI.h"
 #include "Easing.h"
+#include "Title/StartSequence.h"
 #include <algorithm>
 #include <cmath>
 
@@ -33,6 +35,14 @@ namespace{
 		"resource/UI/clearRank/rankC.png",
 	};
 
+	// 効果音(仮素材。tools/generate_clear_se.py で生成する。本番の音は同じ名前のファイルに置き換える)
+	// 「GAME CLEAR!」が出るときのジングル・インクのしみが広がる音・数字が増えるたびの音・数え終わりの音・ランクのハンコを押す音
+	const std::string kJingleSe = "resource/music/se/clear_jingle.wav";
+	const std::string kSplatSe = "resource/music/se/clear_splat.wav";
+	const std::string kCountTickSe = "resource/music/se/clear_count_tick.wav";
+	const std::string kCountEndSe = "resource/music/se/clear_count_end.wav";
+	const std::string kRankStampSe = "resource/music/se/clear_rank_stamp.wav";
+
 	// 結果の行のしみの色(自分のインクの黄色と、少し濃い色。クリア画面へ切り替えるときの InkBurst と同じ色)
 	constexpr Vector4 kTargetSplatColor = {1.0f, 0.85f, 0.15f, 1.0f};
 	constexpr Vector4 kComboSplatColor = {0.95f, 0.62f, 0.1f, 1.0f};
@@ -56,6 +66,9 @@ void ClearResultUI::Initialize(SpriteCommon* spriteCommon,int destroyedCount,int
 	maxCombo_ = maxCombo;
 	rank_ = rank;
 	timer_ = 0.0f;
+	prevTimer_ = 0.0f;
+	shownTargetCount_ = 0;
+	shownCombo_ = 0;
 
 	TextureManager* textureManager = TextureManager::GetInstance();
 	textureManager->LoadTexture(kWhiteTexture);
@@ -70,6 +83,13 @@ void ClearResultUI::Initialize(SpriteCommon* spriteCommon,int destroyedCount,int
 	// ランクの文字は、決まったランクの画像だけを読み込む
 	const std::string& rankTexture = kRankTextures[static_cast<size_t>(rank_)];
 	textureManager->LoadTexture(rankTexture);
+
+	SoundManager* soundManager = SoundManager::GetInstance();
+	soundManager->SoundLoadFile(kJingleSe);
+	soundManager->SoundLoadFile(kSplatSe);
+	soundManager->SoundLoadFile(kCountTickSe);
+	soundManager->SoundLoadFile(kCountEndSe);
+	soundManager->SoundLoadFile(kRankStampSe);
 
 	auto createSprite = [spriteCommon](const std::string& texture,const Vector2& anchor){
 		auto sprite = std::make_unique<Sprite>();
@@ -113,6 +133,7 @@ void ClearResultUI::Initialize(SpriteCommon* spriteCommon,int destroyedCount,int
 
 // 表示の動きを進める
 void ClearResultUI::Update(float deltaTime){
+	prevTimer_ = timer_;
 	timer_ += deltaTime;
 	usedDigitCount_ = 0;
 
@@ -124,10 +145,16 @@ void ClearResultUI::Update(float deltaTime){
 	titleSprite_->SetPosition({screenWidth * kTitleCenterRate.x, screenHeight * kTitleCenterRate.y});
 	titleSprite_->SetSize({kTitleTextureSize.x * titleScale, kTitleTextureSize.y * titleScale});
 	titleSprite_->Update();
+	if(HasReached(kTitleStartTime)){
+		PlaySe(kJingleSe);
+	}
 
 	// 壊した的の数: しみを塗ってから、標的のアイコンと「壊した数/総数」を出し、壊した数を 0 から増やす
 	const Vector2 targetRowCenter = {screenWidth * kTargetRowCenterRate.x, screenHeight * kTargetRowCenterRate.y};
 	UpdateSplat(splatSprites_[kTargetSplatIndex].get(),targetRowCenter,kRowSplatSize,kTargetSplatAngle,kTargetSplatColor,kTargetSplatStartTime);
+	if(HasReached(kTargetSplatStartTime)){
+		PlaySe(kSplatSe);
+	}
 	{
 		const float alpha = GetProgress(kTargetCountStartTime,kContentFadeDuration);
 		const float popScale = GetCountEndPopScale(kTargetCountStartTime);
@@ -136,13 +163,26 @@ void ClearResultUI::Update(float deltaTime){
 		targetIcon_->SetSize({kTargetIconSize * popScale, kTargetIconSize * popScale});
 		targetIcon_->SetColor(color);
 		targetIcon_->Update();
-		const std::string text = std::to_string(GetCountUpValue(destroyedCount_,kTargetCountStartTime)) + "/" + std::to_string(totalCount_);
+		const int targetCount = GetCountUpValue(destroyedCount_,kTargetCountStartTime);
+		const std::string text = std::to_string(targetCount) + "/" + std::to_string(totalCount_);
 		LayoutText(text,{targetRowCenter.x + kTargetTextOffsetX, targetRowCenter.y},kResultCharHeight * popScale,color);
+
+		// 数字が増えるたびにチッと鳴らし(1フレームに何個増えても1回だけ)、数え終わった瞬間にジャンと鳴らす
+		if(targetCount != shownTargetCount_){
+			PlaySe(kCountTickSe);
+			shownTargetCount_ = targetCount;
+		}
+		if(HasReached(kTargetCountEndTime)){
+			PlaySe(kCountEndSe);
+		}
 	}
 
 	// 最大連鎖数: しみを塗ってから、吹き出しの中の「+連鎖数」を 0 から増やす
 	const Vector2 comboRowCenter = {screenWidth * kComboRowCenterRate.x, screenHeight * kComboRowCenterRate.y};
 	UpdateSplat(splatSprites_[kComboSplatIndex].get(),comboRowCenter,kRowSplatSize,kComboSplatAngle,kComboSplatColor,kComboSplatStartTime);
+	if(HasReached(kComboSplatStartTime)){
+		PlaySe(kSplatSe);
+	}
 	{
 		const float alpha = GetProgress(kComboCountStartTime,kContentFadeDuration);
 		const float popScale = GetCountEndPopScale(kComboCountStartTime);
@@ -151,12 +191,29 @@ void ClearResultUI::Update(float deltaTime){
 		comboBubble_->SetSize({kComboBubbleSize.x * popScale, kComboBubbleSize.y * popScale});
 		comboBubble_->SetColor(color);
 		comboBubble_->Update();
-		LayoutText("+" + std::to_string(GetCountUpValue(maxCombo_,kComboCountStartTime)),comboRowCenter,kResultCharHeight * popScale,color);
+		const int combo = GetCountUpValue(maxCombo_,kComboCountStartTime);
+		LayoutText("+" + std::to_string(combo),comboRowCenter,kResultCharHeight * popScale,color);
+
+		// 壊した的の数と同じく、増えるたびにチッ、数え終わった瞬間にジャンと鳴らす
+		if(combo != shownCombo_){
+			PlaySe(kCountTickSe);
+			shownCombo_ = combo;
+		}
+		if(HasReached(kComboCountEndTime)){
+			PlaySe(kCountEndSe);
+		}
 	}
 
 	// ランク: ランクの色のしみを塗ってから、文字を大きい状態から押しつけるように縮めて収め、衝撃で左右に揺らす
 	const Vector2 rankCenter = {screenWidth * kRankCenterRate.x, screenHeight * kRankCenterRate.y};
 	UpdateSplat(splatSprites_[kRankSplatIndex].get(),rankCenter,kRankSplatSize,kRankSplatAngle,kRankColors[static_cast<size_t>(rank_)],kRankSplatStartTime);
+	if(HasReached(kRankSplatStartTime)){
+		PlaySe(kSplatSe);
+	}
+	// ランクを押しつけ終えた瞬間に、ハンコの音を鳴らす
+	if(HasReached(kRankStampLandTime)){
+		PlaySe(kRankStampSe);
+	}
 	{
 		const float stampProgress = GetProgress(kRankStampStartTime,kStampDuration);
 		const float stampScale = Lerp(kStampStartScale,kProgressMax,Easing::EaseInCubic(stampProgress));
@@ -191,8 +248,16 @@ void ClearResultUI::Update(float deltaTime){
 }
 
 // 途中を飛ばして、すべての結果を出し終えた状態にする
+// 飛ばした間の効果音はまとめて鳴らさない(次の Update() は飛ばした後の時間から進むため、間の時間を迎えたことにならない)
 void ClearResultUI::Skip(){
+	// まだランクを押していなければ、飛ばしてもランクが決まったことが伝わるよう、ハンコの音だけ鳴らす
+	if(timer_ < kRankStampLandTime){
+		PlaySe(kRankStampSe);
+	}
 	timer_ = (std::max)(timer_,kFinishTime);
+	// 数字は一気に最後の数になるため、数字が増える音を鳴らさないよう、出した数も最後の数にしておく
+	shownTargetCount_ = destroyedCount_;
+	shownCombo_ = maxCombo_;
 }
 
 // すべての結果を出し終えたかどうか
@@ -294,6 +359,17 @@ float ClearResultUI::GetCountEndPopScale(float startTime) const{
 	}
 	const float popProgress = GetProgress(countEndTime,kCountEndPopDuration);
 	return kProgressMax + kCountEndPopScale * (kProgressMax - Easing::EaseOutCubic(popProgress));
+}
+
+// このフレームで、指定した時間を迎えたか
+// 前のフレームの時間以上・今の時間より前に入っていれば迎えたとする(時間が進まないフレームでは迎えたことにならない)
+bool ClearResultUI::HasReached(float eventTime) const{
+	return prevTimer_ <= eventTime && eventTime < timer_;
+}
+
+// 効果音を鳴らす
+void ClearResultUI::PlaySe(const std::string& path) const{
+	SoundManager::GetInstance()->PlayAudio(path,StartSequence::GetSeVolume());
 }
 
 // 数字の文字列を、数字用スプライトを並べて配置する

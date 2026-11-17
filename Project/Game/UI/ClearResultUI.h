@@ -75,6 +75,12 @@ private:
 	// 数え終わった瞬間に大きくして、だんだん元の大きさに戻す倍率を求める
 	float GetCountEndPopScale(float startTime) const;
 
+	// このフレームで、指定した時間を迎えたか(効果音を鳴らす瞬間を見つけるのに使う)
+	bool HasReached(float eventTime) const;
+
+	// 効果音を鳴らす(音量はタイトルの効果音と同じ調整項目を使う)
+	void PlaySe(const std::string& path) const;
+
 	/// <summary>
 	/// 数字の文字列を、数字用スプライトを並べて配置する(StageHUD と同じ数字の画像を使う)
 	/// </summary>
@@ -94,6 +100,11 @@ private:
 
 	// 表示を始めてからの経過時間(秒)
 	float timer_ = 0.0f;
+	// 前のフレームの経過時間(秒。このフレームで迎えた時間を見つけて、効果音を鳴らすのに使う)
+	float prevTimer_ = 0.0f;
+	// 前のフレームに出した、壊した的の数と連鎖数(増えたときに数字が増える音を鳴らすのに使う)
+	int shownTargetCount_ = 0;
+	int shownCombo_ = 0;
 
 	// 画面全体を塗る暗い下地(インクのしみを目立たせる)
 	std::unique_ptr<Sprite> backgroundSprite_;
@@ -138,9 +149,11 @@ private:
 	// 壊した的の数の行
 	static constexpr float kTargetSplatStartTime = kTitleStartTime + kTitleDuration + kTitleToRowInterval;
 	static constexpr float kTargetCountStartTime = kTargetSplatStartTime + kContentDelay;
+	static constexpr float kTargetCountEndTime = kTargetCountStartTime + kCountUpDuration;
 	// 最大連鎖数の行
 	static constexpr float kComboSplatStartTime = kTargetCountStartTime + kCountUpDuration + kRowInterval;
 	static constexpr float kComboCountStartTime = kComboSplatStartTime + kContentDelay;
+	static constexpr float kComboCountEndTime = kComboCountStartTime + kCountUpDuration;
 	// ランク(数え終わってから少し溜めて押す)
 	static constexpr float kRankPauseTime = 0.4f;
 	static constexpr float kRankSplatStartTime = kComboCountStartTime + kCountUpDuration + kRankPauseTime;
@@ -148,6 +161,8 @@ private:
 	// ランクを押しつけてくる時間と、押しつけた後に揺れる時間
 	static constexpr float kStampDuration = 0.25f;
 	static constexpr float kWobbleDuration = 0.45f;
+	// ランクを押しつけ終える(ハンコの音を鳴らす)時間
+	static constexpr float kRankStampLandTime = kRankStampStartTime + kStampDuration;
 	// すべてを出し終える時間
 	static constexpr float kFinishTime = kRankStampStartTime + kStampDuration + kWobbleDuration;
 	// すべてを出し終えてから、SPACE でタイトルへ戻れるようにするまでの間

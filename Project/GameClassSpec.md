@@ -317,7 +317,8 @@ Game/
 - 結果の表示は `ClearResultUI` に任せる（ImGui を使わないため Release 構成でも表示される）。`StageResult` の全ステージの合計を渡す。
 - ランクは `ClearResultUI::CalculateRank()` で結果から決める。プレイ会用の設定（`StageInfo::isPlaySessionMode`）では、結果がステージ3の分だけになるため、S〜C からランダムに決める。
 - クリア画面へ切り替える演出が画面を覆っている間は、結果を出し始めない。
-- SPACE で、結果を出している途中なら飛ばしてすべて出し、出し終えて 0.5 秒たっていれば GAME へ戻る（タイトルから始まる）。
+- SPACE で、結果を出している途中なら飛ばしてすべて出し、出し終えて 0.5 秒たっていれば決定音（`decide.mp3`）を鳴らして GAME へ戻る（タイトルから始まる）。
+- 効果音は `ClearResultUI` が鳴らす。「GAME CLEAR!」のジングル・しみが広がる音（3回）・数字が増えるたびのチッ・数え終わりのジャン・ランクのハンコ。どれも仮の音（`tools/generate_clear_se.py` で作る `resource/music/se/clear_*.wav`）で、音量は調整項目 `seVolume`。途中を飛ばしたときは、間の音はまとめて鳴らさず、まだならハンコの音だけ鳴らす。
 
 ### GameOverScene（`scenes/GameOverScene.h/.cpp`）
 

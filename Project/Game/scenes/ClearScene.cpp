@@ -3,6 +3,7 @@
 // エンジン/システム関連
 #include "Input.h"
 #include "SceneManager.h"
+#include "SoundManager.h"
 #include "SpriteCommon.h"
 
 // 結果を順に見せる表示
@@ -14,7 +15,16 @@
 // プレイ会用の設定か
 #include "objects/StageInfo.h"
 
+// 効果音の音量
+#include "Title/StartSequence.h"
+
 #include <random>
+
+// 定数定義 (ファイルパス)
+namespace{
+	// タイトルへ戻るときの決定音(タイトル画面・ESC の終了確認メニューと同じ音)
+	const std::string kDecideSePath = "resource/music/se/decide.mp3";
+}
 
 // コンストラクタ
 ClearScene::ClearScene() = default;
@@ -41,6 +51,9 @@ void ClearScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommo
 	// 結果を順に見せる表示(全ステージの合計と、決めたランクを渡す)
 	resultUI_ = std::make_unique<ClearResultUI>();
 	resultUI_->Initialize(spriteCommon_,StageResult::destroyedTargetCount,StageResult::totalTargetCount,StageResult::maxCombo,rank);
+
+	// タイトルへ戻るときの決定音
+	SoundManager::GetInstance()->SoundLoadFile(kDecideSePath);
 }
 
 // 終了処理
@@ -66,6 +79,7 @@ void ClearScene::Update(){
 			return;
 		}
 		if(resultUI_->CanReturnToTitle()){
+			SoundManager::GetInstance()->PlayAudio(kDecideSePath,StartSequence::GetSeVolume());
 			SceneManager::GetInstance()->ChangeScene("GAME");
 		}
 	}
