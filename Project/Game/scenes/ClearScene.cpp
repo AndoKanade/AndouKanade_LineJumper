@@ -3,28 +3,27 @@
 // エンジン/システム関連
 #include "Input.h"
 #include "SceneManager.h"
-#include "Sprite.h"
+#include "SoundManager.h"
 #include "SpriteCommon.h"
-#include "TextureManager.h"
-#include "WinAPI.h"
 
-// 操作説明
-#include "UI/HelpOverlay.h"
+// 結果を順に見せる表示
+#include "UI/ClearResultUI.h"
 
-// プレイの結果(GameSceneがクリア直前に書き込む)
+// プレイの結果(GameSceneがクリア直前に全ステージの合計を書き込む)
 #include "objects/StageResult.h"
 
-// ImGui (マクロ定義がある場合のみ)
-#ifdef USE_IMGUI
-#include "ImGuiManager.h"
-#endif
+// プレイ会用の設定か
+#include "objects/StageInfo.h"
 
-// 定数定義 (ファイルパスやパラメータ)
+// 効果音の音量
+#include "Title/StartSequence.h"
+
+#include <random>
+
+// 定数定義 (ファイルパス)
 namespace{
-	// 画面の名前(「GAME CLEAR!」)と操作の案内を描いた画像(仮素材。tools/generate_result_assets.py で生成する)
-	const std::string kTitleTexture = "resource/UI/clearTitle.png";
-	// 画面の名前の画像の大きさ(画像そのままの大きさで表示する)
-	constexpr Vector2 kTitleSpriteSize = {1024.0f, 320.0f};
+	// タイトルへ戻るときの決定音(タイトル画面・ESC の終了確認メニューと同じ音)
+	const std::string kDecideSePath = "resource/music/se/decide.mp3";
 }
 
 // コンストラクタ
@@ -40,23 +39,21 @@ void ClearScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommo
 	input_ = input;
 	spriteCommon_ = spriteCommon;
 
-	// --- リソースのロード ---
-	TextureManager::GetInstance()->LoadTexture(kTitleTexture);
+	// ランクは、GameScene が書き込んだ全ステージの合計から決める
+	// プレイ会用の設定では、結果がステージ3の分(ゴールの的だけで、普通の的は置いていない)だけになるため、ランクをランダムに決めて、どのランクの演出も見られるようにする
+	ClearResultUI::Rank rank = ClearResultUI::CalculateRank(StageResult::destroyedTargetCount,StageResult::totalTargetCount,StageResult::maxCombo);
+	if(StageInfo::isPlaySessionMode){
+		std::random_device randomDevice;
+		std::uniform_int_distribution<int> distribution(static_cast<int>(ClearResultUI::Rank::S),static_cast<int>(ClearResultUI::Rank::C));
+		rank = static_cast<ClearResultUI::Rank>(distribution(randomDevice));
+	}
 
-	// --- スプライト生成と設定 ---
-	// 画面の名前は画面の中央に置く(ImGui が無い Release 構成でも表示される)
-	titleSprite_ = std::make_unique<Sprite>();
-	titleSprite_->Initialize(spriteCommon_,kTitleTexture);
-	titleSprite_->SetAnchorPoint({0.5f, 0.5f}); // 中心を基準点にする
-	titleSprite_->SetSize(kTitleSpriteSize);
-	titleSprite_->SetPosition({
-		static_cast<float>(WinAPI::kClientWidth) * 0.5f,
-		static_cast<float>(WinAPI::kClientHeight) * 0.5f
-		});
+	// 結果を順に見せる表示(全ステージの合計と、決めたランクを渡す)
+	resultUI_ = std::make_unique<ClearResultUI>();
+	resultUI_->Initialize(spriteCommon_,StageResult::destroyedTargetCount,StageResult::totalTargetCount,StageResult::maxCombo,rank);
 
-	// 操作説明
-	helpOverlay_ = std::make_unique<HelpOverlay>();
-	helpOverlay_->Initialize(spriteCommon_);
+	// タイトルへ戻るときの決定音
+	SoundManager::GetInstance()->SoundLoadFile(kDecideSePath);
 }
 
 // 終了処理
@@ -66,45 +63,30 @@ void ClearScene::Finalize(){
 
 // 更新処理
 void ClearScene::Update(){
-	// スプライトの更新
-	if(titleSprite_){
-		titleSprite_->Update();
-	}
-
-	// 操作説明の開閉(H キー)。開いている間は SPACE でタイトルへ戻らないよう、以降の処理を止める
-	helpOverlay_->Update(input_,true);
-	if(helpOverlay_->IsOpen()){
+	// クリア画面へ切り替える演出が画面を覆っている間は、結果を出し始めない(出だしを見逃さないようにする)
+	if(SceneManager::GetInstance()->IsTransitioning()){
+		resultUI_->Update(0.0f);
 		return;
 	}
+	resultUI_->Update(kDeltaTime);
 
-	// "CLEAR"の文字表現(専用のフォント描画機能が無いため、ImGuiでテキスト表示する)
-#ifdef USE_IMGUI
-	{
-		ImGui::SetNextWindowPos({static_cast<float>(WinAPI::kClientWidth) * 0.5f - 100.0f, 80.0f});
-		ImGui::Begin("Clear",nullptr,ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
-		ImGui::Text("STAGE CLEAR!");
-		ImGui::Text("Targets: %d / %d",StageResult::destroyedTargetCount,StageResult::totalTargetCount);
-		ImGui::Text("Max Combo: %d",StageResult::maxCombo);
-		ImGui::Text("Press SPACE to return to Title");
-		ImGui::End();
-	}
-#endif
-
-	// シーン遷移 (スペースキーでタイトルへ)
+	// SPACE キー: 結果を出している途中なら飛ばしてすべて出し、出し終えて少したっていればタイトルへ戻る
+	// 出し終えた直後は押しても何もしない(飛ばした直後の連打で、結果を見ないまま戻らないようにする)
 	// タイトルはゲームシーン内の開始演出として表示するため、ゲームシーンを最初から始め直す
 	if(input_->TriggerKey(DIK_SPACE)){
-		SceneManager::GetInstance()->ChangeScene("GAME");
+		if(!resultUI_->IsFinished()){
+			resultUI_->Skip();
+			return;
+		}
+		if(resultUI_->CanReturnToTitle()){
+			SoundManager::GetInstance()->PlayAudio(kDecideSePath,StartSequence::GetSeVolume());
+			SceneManager::GetInstance()->ChangeScene("GAME");
+		}
 	}
 }
 
 // 描画処理
 void ClearScene::Draw(){
-	// 2Dスプライト描画
-	if(spriteCommon_ && titleSprite_){
-		spriteCommon_->Draw(); // 描画前処理
-		titleSprite_->Draw();
-	}
-
-	// 操作説明(閉じている間は左下の案内)を最前面に描画する
-	helpOverlay_->Draw();
+	// 結果の表示(描画前処理も含む)
+	resultUI_->Draw();
 }

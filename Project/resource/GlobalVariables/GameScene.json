@@ -16,7 +16,7 @@
         "fogDensity": 1.0,
         "goalTargetAheadDistance": 10.0,
         "goalTargetHeight": 1.5,
-        "goalTargetMaxHp": 20,
+        "goalTargetMaxHp": 12,
         "horizonFadeEnd": 95.0,
         "horizonFadeStart": 45.0,
         "mouseSensitivity": 0.00039999998989515007,

@@ -99,7 +99,7 @@ private:
 	float swayTimer_ = 0.0f;
 
 	// 体力の最大値の初期値(保存済みJSONがあればそちらが優先される)
-	static constexpr int kDefaultMaxHp = 20;
+	static constexpr int kDefaultMaxHp = 12;
 	// 体力の最大値として設定できる下限(0以下にすると現れた瞬間に壊れてしまうため)
 	static constexpr int kMinMaxHp = 1;
 	// プレイヤーより先を並走する距離の初期値(レールに沿った距離。保存済みJSONがあればそちらが優先される)

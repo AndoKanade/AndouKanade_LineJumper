@@ -9,7 +9,7 @@
 namespace{
 	// 説明の本体(操作方法と画面の流れ)
 	const std::string kHelpTexture = "resource/UI/help.png";
-	// プレイ会用の設定のときに出す説明の本体(画面の流れをステージ1だけにしたもの)
+	// プレイ会用の設定のときに出す説明の本体(画面の流れをステージ3だけにしたもの)
 	const std::string kPlaySessionHelpTexture = "resource/UI/helpPlaySession.png";
 	// 閉じている間に出す「H あそびかた」の案内
 	const std::string kHintTexture = "resource/UI/helpHint.png";
@@ -80,7 +80,7 @@ void HelpOverlay::Draw(){
 	spriteCommon_->Draw(); // 描画前処理
 
 	// 開いている間は説明だけを出し、閉じている間は案内だけを出す
-	// プレイ会用の設定のときは、ステージ1だけを遊ぶ流れの説明を出す
+	// プレイ会用の設定のときは、ステージ3だけを遊ぶ流れの説明を出す
 	if(isOpen_){
 		dimSprite_->Draw();
 		if(StageInfo::isPlaySessionMode){
