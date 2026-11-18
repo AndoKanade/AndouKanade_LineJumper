@@ -2,22 +2,30 @@
 
 // --- データ構造体 ---
 
+// 1粒分のデータ(ParticleManager.h の ParticleForGPU と並びを合わせる)
 struct Particle
 {
     float3 translate;
-    float padding1;
-
-    float3 scale;
     float lifeTime;
 
     float3 velocity;
     float currentTime;
 
+    float3 scale;
+    float gravity;
+
+    float3 startScale;
+    float drag;
+
+    float3 endScale;
+    uint particleType;
+
     float4 color;
+    float4 startColor;
+    float4 endColor;
 
     float2 uvOffset;
-    uint particleType;
-    float padding2;
+    float2 padding;
 };
 
 struct PerView

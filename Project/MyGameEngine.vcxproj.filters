@@ -662,6 +662,9 @@
     <ClInclude Include="Game\Editor\EditHistory.h">
       <Filter>ヘッダー ファイル\Game\Editor</Filter>
     </ClInclude>
+    <ClInclude Include="Game\Editor\EditorJson.h">
+      <Filter>ヘッダー ファイル\Game\Editor</Filter>
+    </ClInclude>
     <ClInclude Include="Game\Editor\EditorDocumentManager.h">
       <Filter>ヘッダー ファイル\Game\Editor</Filter>
     </ClInclude>

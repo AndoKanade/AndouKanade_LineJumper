@@ -4,6 +4,7 @@
 #include <map>
 #include <variant>
 #include <filesystem>
+#include <chrono>
 
 /// <summary>
 /// 汎用調整項目マネージャー(シングルトン)
@@ -76,6 +77,10 @@ private:
 
 	// グループ名→グループ
 	std::map<std::string, Group> datas_;
+
+	// ファイルの更新時刻はディスクに問い合わせるため1回に 0.3〜2ms ほどかかる。毎フレームではなく、この間隔ごとに調べる
+	static constexpr std::chrono::milliseconds kFileCheckInterval{500};
+	std::chrono::steady_clock::time_point lastFileCheckTime_{}; // 最後に更新時刻を調べた時刻
 
 	// 保存先ディレクトリ(resource配下の相対パス。LevelManagerと同じ流儀)
 	const std::string kDirectoryPath = "resource/GlobalVariables/";

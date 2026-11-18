@@ -299,9 +299,6 @@ void GameScene::Update(){
 		return;
 	}
 
-	// パーティクルの更新(発生タイミング・経過時間の進行。カメラ行列は描画時に反映する)
-	ParticleManager::GetInstance()->Update();
-
 	// 地面タイルの更新(霧のUVスクロールも行う)
 	ground_->Update(kDeltaTime);
 

@@ -1,6 +1,7 @@
 #include "RailEditor.h"
 #include "RailEditorInternal.h"
 #include "Obj3D.h"
+#include "EditorJson.h"
 #include "externals/json.hpp"
 #include <algorithm>
 #include <fstream>
@@ -17,6 +18,8 @@ namespace{
 	const std::string kRailSaveSubDir = "rail/";
 	const std::string kRailFileNamePrefix = "rail";
 	const std::string kRailFileExtension = ".json";
+	// 速さが数値でなかったときに使う、次の点への速さの倍率(全体の速さのまま進む)
+	constexpr float kFallbackControlPointSpeed = 1.0f;
 }
 
 // ステージとレールのインデックスから保存先ファイルパスを求める
@@ -38,9 +41,10 @@ bool RailEditor::SaveRailToFile(const Rail& rail,const std::string& filePath) co
 	nlohmann::json pointsJson = nlohmann::json::array();
 	for(const auto& cp : rail.controlPoints){
 		nlohmann::json pj;
-		pj["position"] = {cp.position.x, cp.position.y, cp.position.z};
-		pj["rotation"] = {cp.rotation.x, cp.rotation.y, cp.rotation.z};
-		pj["speed"] = cp.speed;
+		// NaN・無限大のまま保存すると null になり次に読めなくなるため、座標・向きは 0、速さは基準の倍率に置き換えて保存する
+		pj["position"] = EditorJson::WriteVector3(cp.position);
+		pj["rotation"] = EditorJson::WriteVector3(cp.rotation);
+		pj["speed"] = EditorJson::ToFinite(cp.speed,kFallbackControlPointSpeed);
 		// レール間分岐移動用のデータ
 		pj["branchTargetRailIndex"] = cp.branchTargetRailIndex;
 		pj["branchTargetPointIndex"] = cp.branchTargetPointIndex;
@@ -94,13 +98,10 @@ void RailEditor::LoadRailFromFile(Rail& rail,const std::string& filePath){
 	rail.controlPoints.clear();
 	for(const auto& pj : root["control_points"]){
 		ControlPoint cp{};
-		cp.position.x = pj["position"][0].get<float>();
-		cp.position.y = pj["position"][1].get<float>();
-		cp.position.z = pj["position"][2].get<float>();
-		cp.rotation.x = pj["rotation"][0].get<float>();
-		cp.rotation.y = pj["rotation"][1].get<float>();
-		cp.rotation.z = pj["rotation"][2].get<float>();
-		cp.speed = pj["speed"].get<float>();
+		// 数値でない(null など)ときは、止まらずに座標・向きは 0、速さは基準の倍率にする
+		cp.position = EditorJson::ReadVector3(pj["position"]);
+		cp.rotation = EditorJson::ReadVector3(pj["rotation"]);
+		cp.speed = EditorJson::ReadFloat(pj["speed"],kFallbackControlPointSpeed);
 		// レール間分岐移動用のデータ(旧フォーマットのJSONには無いため、value()で既定値-1を補う)
 		cp.branchTargetRailIndex = pj.value("branchTargetRailIndex",-1);
 		cp.branchTargetPointIndex = pj.value("branchTargetPointIndex",-1);

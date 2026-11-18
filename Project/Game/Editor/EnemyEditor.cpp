@@ -6,6 +6,7 @@
 #include "EditorWidgets.h"
 #include "EditorContext.h"
 #include "WinAPI.h"
+#include "EditorJson.h"
 #include "externals/json.hpp"
 #include <cmath>
 #include <cstdio>
@@ -485,8 +486,9 @@ void EnemyEditor::SaveToJson(){
 		nlohmann::json enemiesJson = nlohmann::json::array();
 		for(const auto& enemy : GetStageEnemies(stage)){
 			nlohmann::json ej;
-			ej["position"] = {enemy.position.x, enemy.position.y, enemy.position.z};
-			ej["patrolDirection"] = {enemy.patrolDirection.x, enemy.patrolDirection.y, enemy.patrolDirection.z};
+			// NaN・無限大のまま保存すると null になり次に読めなくなるため、座標は原点、往復方向は既定の向きに置き換えて保存する
+			ej["position"] = EditorJson::WriteVector3(enemy.position);
+			ej["patrolDirection"] = EditorJson::WriteVector3(enemy.patrolDirection,kDefaultPatrolDirection);
 			ej["maxHp"] = enemy.maxHp;
 			enemiesJson.push_back(ej);
 		}
@@ -552,15 +554,12 @@ bool EnemyEditor::LoadEnemiesFromFile(int stageIndex){
 	points.clear();
 	for(const auto& ej : root["enemies"]){
 		EnemyPoint point{};
-		point.position.x = ej["position"][0].get<float>();
-		point.position.y = ej["position"][1].get<float>();
-		point.position.z = ej["position"][2].get<float>();
+		// 座標が数値でない(null など)ときは、止まらずに原点に置く
+		point.position = EditorJson::ReadVector3(ej["position"]);
 
 		// 往復方向と体力は、古い保存データに項目が無くても読めるよう既定値で補う
 		if(ej.contains("patrolDirection") && ej["patrolDirection"].is_array()){
-			point.patrolDirection.x = ej["patrolDirection"][0].get<float>();
-			point.patrolDirection.y = ej["patrolDirection"][1].get<float>();
-			point.patrolDirection.z = ej["patrolDirection"][2].get<float>();
+			point.patrolDirection = EditorJson::ReadVector3(ej["patrolDirection"],kDefaultPatrolDirection);
 		} else{
 			point.patrolDirection = kDefaultPatrolDirection;
 		}

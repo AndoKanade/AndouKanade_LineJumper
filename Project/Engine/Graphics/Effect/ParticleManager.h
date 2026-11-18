@@ -41,21 +41,33 @@ struct Particle{
     float padding2;
 };
 
+// GPUで更新する1粒分のデータ(シェーダーの Particle 構造体と並びを合わせる)
 struct ParticleForGPU{
     Vector3 translate;
-    float padding1;
-
-    Vector3 scale;
     float lifeTime;
 
     Vector3 velocity;
     float currentTime;
 
+    // 今の大きさ(寿命に合わせて startScale から endScale へ変わる)
+    Vector3 scale;
+    // 下向きを負とする重力加速度(m/s^2)
+    float gravity;
+
+    Vector3 startScale;
+    // 空気抵抗の強さ(1秒あたりに速度が減る割合の指数)
+    float drag;
+
+    Vector3 endScale;
+    uint32_t particleType;
+
+    // 今の色(寿命に合わせて startColor から endColor へ変わる)
     Vector4 color;
+    Vector4 startColor;
+    Vector4 endColor;
 
     Vector2 uvOffset;
-    uint32_t particleType;
-    float padding2;
+    float padding[2];
 };
 
 struct PerView{
@@ -63,17 +75,56 @@ struct PerView{
     Matrix4x4 billboardMatrix;
 };
 
+/// <summary>
+/// パーティクルを出すときの設定
+/// </summary>
+struct ParticleEmitParams{
+    // 出す中心の座標
+    Vector3 position = {0.0f, 0.0f, 0.0f};
+    // 中心からこの半径の球の中にばらけて出す
+    float radius = 0.0f;
+    // 出す数
+    uint32_t count = 1;
+    // 寿命(秒)
+    float lifeTime = 1.0f;
+    // 基準の速度
+    Vector3 velocity = {0.0f, 0.0f, 0.0f};
+    // 基準の速度に足す、ばらばらの向きの速さの最大値
+    float velocitySpread = 0.0f;
+    // 出た瞬間と寿命が尽きる瞬間の大きさ(その間はなめらかに変わる)
+    Vector3 startScale = {1.0f, 1.0f, 1.0f};
+    Vector3 endScale = {1.0f, 1.0f, 1.0f};
+    // 出た瞬間と寿命が尽きる瞬間の色(その間はなめらかに変わる。アルファを 0 にすると消えていく)
+    Vector4 startColor = {1.0f, 1.0f, 1.0f, 1.0f};
+    Vector4 endColor = {1.0f, 1.0f, 1.0f, 0.0f};
+    // 下向きを負とする重力加速度(m/s^2)
+    float gravity = 0.0f;
+    // 空気抵抗の強さ(大きいほど早く止まる)
+    float drag = 0.0f;
+};
+
+// 1回分の発生要求(GPUへ渡す。シェーダーの EmitterSphere 構造体と並びを合わせる)
 struct EmitterSphere{
     Vector3 translate;
     float radius;
-    uint32_t count;
-    float frequency;
-    float frequencyTime;
-    uint32_t emit;
-    Vector4 color;
+
     Vector3 velocity;
+    float velocitySpread;
+
+    Vector3 startScale;
     float lifeTime;
-    uint32_t particleType;
+
+    Vector3 endScale;
+    float gravity;
+
+    Vector4 startColor;
+    Vector4 endColor;
+
+    uint32_t count;
+    float drag;
+    // 要求ごとに違うばらけ方にするための乱数の種(0〜1)
+    float seed;
+    float padding;
 };
 
 struct PerFrame{
@@ -95,9 +146,13 @@ struct ParticleGroup{
     uint32_t numInstance = 0;
 
     // エミッター関連
+    // 1フレームに何回でも出せるよう、発生要求を配列にためて描画のときにまとめてGPUで出す
+    static const uint32_t kMaxEmitRequests = 64;
     D3D12_RESOURCE_STATES currentState = D3D12_RESOURCE_STATE_COMMON;
-    Microsoft::WRL::ComPtr<ID3D12Resource> emitterResource;
-    EmitterSphere* emitterData = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12Resource> emitRequestResource;
+    EmitterSphere* emitRequestData = nullptr;
+    // このフレームにためた発生要求の数
+    uint32_t emitRequestCount = 0;
 
     Microsoft::WRL::ComPtr<ID3D12Resource> freeListIndexResource;
     uint32_t freeListIndexUavIndex;
@@ -137,7 +192,8 @@ public:
     // ライフサイクル
     void Initialize(DXCommon* dxCommon,SrvManager* srvManager);
     void Finalize();
-    void Update();
+    // このフレームに進める時間を渡す(0 を渡すと止まる。呼ばなかったフレームも止まる)
+    void Update(float deltaTime);
     void Draw(Camera* camera);
 
     // パーティクル操作
@@ -148,6 +204,9 @@ public:
 
     void Emit(const std::string& name,const Transform& emitterTransform,uint32_t count,
         const Vector4& color,const Vector3& velocity,float lifeTime);
+
+    // 設定をまとめて渡して出す(同じフレームに何回呼んでもすべて出る)
+    void Emit(const std::string& name,const ParticleEmitParams& params);
 
     void EmitShockwave(const Vector3& position);
     void EmitSpark(const Vector3& position);
@@ -203,4 +262,6 @@ private:
     PerView* perViewData_ = nullptr;
     Microsoft::WRL::ComPtr<ID3D12Resource> perFrameResource_;
     PerFrame* perFrameData_ = nullptr;
+    // Update() で受け取り、次の Draw() でGPUの更新に使う時間(使ったら 0 に戻し、Update() を呼ばないフレームは止める)
+    float pendingDeltaTime_ = 0.0f;
 };
