@@ -1,4 +1,5 @@
 #include "Enemy.h"
+#include "EnemyAttackState.h"
 #include "Obj3D.h"
 #include "Obj3dCommon.h"
 #include "ModelManager.h"
@@ -68,9 +69,9 @@ void Enemy::Reset(){
 	// 発射済みの弾をすべて未使用に戻し、発射間隔も初期化する
 	bulletPool_.Clear();
 
-	// 攻撃の種類も先頭(単発)に戻してから、その種類の発射間隔で待ち時間を初期化する
-	attackIndex_ = 0;
-	shotTimer_ = GetCurrentShotInterval();
+	// 攻撃の状態も先頭(単発)に戻してから、その攻撃の発射間隔で待ち時間を初期化する
+	attackState_ = std::make_unique<SingleShotAttackState>();
+	shotTimer_ = attackState_->GetShotInterval();
 }
 
 // 体力を減らす(撃破されたときtrueを返す)
@@ -140,19 +141,19 @@ void Enemy::Update(const Vector3& playerPosition,float deltaTime){
 
 	// 弾の発射処理
 	// プレイヤーを検知している間だけ、一定間隔でプレイヤーへ向けて撃つ
-	// 1回撃つごとに攻撃の種類を次へ進め、単発・3方向拡散・追尾弾を順番に使う
+	// 1回撃つごとに、今の攻撃の状態が決めた次の攻撃へ切り替え、単発・3方向拡散・追尾弾を順番に使う
 	if(isDetectingPlayer_){
 		shotTimer_ -= deltaTime;
 		if(shotTimer_ <= 0.0f){
 			FireCurrentAttack(playerPosition);
 
 			// 次の攻撃へ切り替え、その攻撃の発射間隔で待ち時間を設定する
-			attackIndex_ = (attackIndex_ + 1) % kAttackOrderCount;
-			shotTimer_ = GetCurrentShotInterval();
+			attackState_ = attackState_->CreateNext();
+			shotTimer_ = attackState_->GetShotInterval();
 		}
 	} else{
 		// 非検知中は撃たない。次に検知した直後に即撃ちされないよう、待ち時間を戻しておく
-		shotTimer_ = GetCurrentShotInterval();
+		shotTimer_ = attackState_->GetShotInterval();
 	}
 
 	// 向きの決定
@@ -189,7 +190,7 @@ void Enemy::Draw(){
 	bulletPool_.Draw();
 }
 
-// 現在の攻撃の種類に応じた発射処理を行う
+// 現在の攻撃の状態に発射を任せる
 void Enemy::FireCurrentAttack(const Vector3& playerPosition){
 	// 発射位置と、そこからプレイヤーへ向かう方向は全ての攻撃で共通なので先に求める
 	Vector3 spawnPosition = GetBulletSpawnPosition();
@@ -200,52 +201,8 @@ void Enemy::FireCurrentAttack(const Vector3& playerPosition){
 	}
 	Vector3 baseDirection = Normalize(toPlayer);
 
-	switch(kAttackOrder[attackIndex_]){
-	case AttackType::Spread3:
-	{
-		// プレイヤー方向を中心に、Y軸回転で左右へ角度をつけた弾を同時発射する
-		// 中央の弾を基準(添字kSpreadBulletCount / 2)として、そこからのずれ分だけ角度をつける
-		const int centerIndex = kSpreadBulletCount / 2;
-		for(int i = 0; i < kSpreadBulletCount; ++i){
-			float angle = static_cast<float>(i - centerIndex) * kSpreadAngle;
-
-			// Y軸回転でXZ平面上の向きだけを回す(上下の角度は中央の弾と同じにする)
-			float cosAngle = std::cos(angle);
-			float sinAngle = std::sin(angle);
-			Vector3 direction = {
-				baseDirection.x * cosAngle + baseDirection.z * sinAngle,
-				baseDirection.y,
-				-baseDirection.x * sinAngle + baseDirection.z * cosAngle
-			};
-
-			bulletPool_.Fire(spawnPosition,direction,kBulletSpeed,false);
-		}
-		break;
-	}
-	case AttackType::Homing:
-		// 発射後もプレイヤーを追い続ける弾を1発だけ撃つ
-		bulletPool_.Fire(spawnPosition,baseDirection,kHomingBulletSpeed,true);
-		break;
-
-	case AttackType::Single:
-	default:
-		// 発射した瞬間のプレイヤー位置へ向かって直進する弾を1発撃つ
-		bulletPool_.Fire(spawnPosition,baseDirection,kBulletSpeed,false);
-		break;
-	}
-}
-
-// 現在の攻撃の種類に応じた発射間隔(秒)を取得する
-float Enemy::GetCurrentShotInterval() const{
-	switch(kAttackOrder[attackIndex_]){
-	case AttackType::Spread3:
-		return kSpreadShotInterval;
-	case AttackType::Homing:
-		return kHomingShotInterval;
-	case AttackType::Single:
-	default:
-		return kShotInterval;
-	}
+	// 撃ち方(単発・3方向拡散・追尾弾)は今の攻撃の状態が決める
+	attackState_->Fire(bulletPool_,spawnPosition,baseDirection);
 }
 
 // 弾の発射位置(敵の中心より少し上=胸の高さ)を取得する

@@ -356,20 +356,20 @@ GameScene が直接触るのは StartSequence・DepartureDirector・ReturnJump �
 
 ### StartSequence（`Title/StartSequence.h/.cpp`）
 
-開始演出の段階を管理する。
+開始演出の段階を管理する。段階は State パターンで、段階ごとのクラス（`Title/StartSequenceState.h/.cpp`。`StartSequence::State` を継承した、StartSequence の中で宣言したクラス）に分けてある。StartSequence は今の段階を1つだけ持ち、更新（`Update`）・描画（`Draw3D` / `Draw2D`）・外からの知らせ（`OnBoarded` / `OnDepartureBegan`）・問い合わせ（`IsPlayable()` など）を今の段階に任せる。次の段階へ進むかは段階自身が判定し、進むときは次の段階を戻り値で返す。段階に入った瞬間の処理（効果音・カメラワークの開始など）は `Enter()` に書く。StartSequence.cpp と StartSequenceState.cpp で共有する定数は `Title/StartSequenceInternal.h` にある。
 
-#### 段階（Phase）
+#### 段階（状態クラス）
 
 | 段階 | 内容 | 次の段階へ進む条件 |
 | --- | --- | --- |
-| `None` | 何もしない（Edit モード中） | `Start()` が呼ばれる |
-| `Title` | プレイヤーを正面から映し、カメラを左右にゆっくり揺らす。タイトルロゴ（3D モデル）と PRESS SPACE を表示する | SPACE を押す |
-| `CameraTurn` | カメラがプレイヤーの背後へ回り込む。タイトル表示は回り込みの進行に合わせて薄くなる | 回り込みが終わる |
-| `Standby` | スタート台の上を動ける（出発ゲートは閉じている）。ゲートの前の目印に立つと「SPACE 出発する」を表示する | 目印の上で SPACE を押す |
-| `GateOpen` | ゲートのカウントダウン（3・2・1）でランプを1段ずつ点け、0 で遮断棒を上げる。ゲートを映すカメラ（GateCameraDirector）で寄る。プレイヤーは動けない | ゲートが開ききる。ゲートを開け始めた瞬間に始める出発の演出なら、すぐ `Departure` へ |
-| `Boarding` | また動けるようにする。開いたゲートをくぐってレールの始点へ歩くと乗る（出発台を使う演出なら、出発台の手前の線を越えると `Departure` へ） | `NotifyBoarded()` / `BeginDeparture()` が呼ばれる |
-| `Departure` | 出発の演出でレールへ向かっている（プレイヤーは動けない） | `NotifyBoarded()` が呼ばれる |
-| `Playing` | プレイ中。「GO!」を出す | なし |
+| `IdleState` | 何もしない（Edit モード中） | `Start()` が呼ばれる |
+| `TitleState` | プレイヤーを正面から映し、カメラを左右にゆっくり揺らす。タイトルロゴ（3D モデル）と PRESS SPACE を表示する | SPACE を押す |
+| `CameraTurnState` | カメラがプレイヤーの背後へ回り込む。タイトル表示は回り込みの進行に合わせて薄くなる | 回り込みが終わる |
+| `StandbyState` | スタート台の上を動ける（出発ゲートは閉じている）。ゲートの前の目印に立つと「SPACE 出発する」を表示する | 目印の上で SPACE を押す |
+| `GateOpenState` | ゲートのカウントダウン（3・2・1）でランプを1段ずつ点け、0 で遮断棒を上げる。ゲートを映すカメラ（GateCameraDirector）で寄る。プレイヤーは動けない | ゲートが開ききる。ゲートを開け始めた瞬間に始める出発の演出なら、すぐ `DepartureState` へ |
+| `BoardingState` | また動けるようにする。開いたゲートをくぐってレールの始点へ歩くと乗る（出発台を使う演出なら、出発台の手前の線を越えると `DepartureState` へ） | `NotifyBoarded()` / `BeginDeparture()` が呼ばれる |
+| `DepartureState` | 出発の演出でレールへ向かっている（プレイヤーは動けない） | `NotifyBoarded()` が呼ばれる |
+| `PlayingState` | プレイ中。「GO!」を出す | なし |
 
 #### 関数
 
@@ -589,7 +589,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | 見た目 | `EnemyBot/enemyBot.obj`（4本脚・一つ目・頭に砲台のロボット、赤色）、スケール 0.4 |
 | 往復移動 | 基準座標を中心に、往復方向へ片側 5.0 まで、速度 3.0 で往復する |
 | 検知 | プレイヤーとの距離が 25.0 以内なら検知中とし、プレイヤーの方を向く。検知していない間は進行方向を向く |
-| 攻撃 | 検知中だけ撃つ。1 回撃つごとに、単発 → 3 方向拡散 → 追尾弾 の順で切り替える |
+| 攻撃 | 検知中だけ撃つ。1 回撃つごとに、単発 → 3 方向拡散 → 追尾弾 の順で切り替える。撃ち方は State パターンで、攻撃ごとのクラス（`objects/EnemyAttackState.h/.cpp`。`EnemyAttackState` を継承）に任せる。各攻撃は撃ち方（`Fire()`）・発射間隔（`GetShotInterval()`）・次の攻撃（`CreateNext()`）を持つ |
 | 体力 | 最大値は配置エディターで敵ごとに設定する（下限 1）。0 になると撃破され、描画されなくなる |
 | 撃破後 | 発射済みの弾は消えずに飛び続ける |
 
@@ -597,9 +597,9 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 
 | 種類 | 内容 | 弾速 | 発射間隔 |
 | --- | --- | --- | --- |
-| 単発（Single） | 発射した瞬間のプレイヤー方向へ直進する | 18.0 | 1.2 秒 |
-| 3 方向拡散（Spread3） | プレイヤー方向を中心に、左右へ約 12° ずつ開いた 3 発を同時に撃つ | 18.0 | 2.0 秒 |
-| 追尾弾（Homing） | 発射後も毎フレーム、プレイヤー方向へ少しずつ向きを変える | 12.0 | 2.5 秒 |
+| 単発（`SingleShotAttackState`） | 発射した瞬間のプレイヤー方向へ直進する | 18.0 | 1.2 秒 |
+| 3 方向拡散（`SpreadShotAttackState`） | プレイヤー方向を中心に、左右へ約 12° ずつ開いた 3 発を同時に撃つ | 18.0 | 2.0 秒 |
+| 追尾弾（`HomingShotAttackState`） | 発射後も毎フレーム、プレイヤー方向へ少しずつ向きを変える | 12.0 | 2.5 秒 |
 
 - 弾（赤色）は初期化時に 16 発まとめて生成し、使い回す。寿命は 4 秒。弾の移動・追尾・寿命・当たり判定・描画は EnemyBulletPool に任せている（ボスと共用）。
 - 弾は敵の中心より 0.5 上から発射する。
@@ -622,6 +622,19 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 ### Player（`objects/Player.h/.cpp`）
 
 プレイヤー。スタート台の上では WASD・ジャンプで自由に動き、レールに乗ると自動で進む（レール上では WASD で動けず、射撃に専念させる）。体力を持つ。
+
+移動は State パターンで、状態ごとのクラス（`objects/PlayerState.h/.cpp`。`Player::State` を継承した、Player の中で宣言したクラス）に分けてある。Player は今の状態を1つだけ持ち、`UpdateMovement()` の中身（ジャンプ・WASD 移動・着地判定）を今の状態に任せる。次の状態へ移るかは状態自身が判定し、移るときは次の状態を戻り値で返す。
+
+| 状態 | 内容 | 次の状態 |
+| --- | --- | --- |
+| `RailRunState` | レールの上を足を着けて進む | SPACE で `RailHopState`、A / D（輪では W / S も）+ SPACE で並走レールがあれば `RailSwitchState` |
+| `RailHopState` | レールに沿って進みながらその場で跳ねる（跳ねている高さを持つ） | レールの高さまで戻ったら `RailRunState`（そのフレームの SPACE も受け付ける） |
+| `RailSwitchState` | 並走レール・終点で飛び移る先のレールへ 0.4 秒かけて山なりに寄せる（寄せ始めのずれを持つ） | 寄せ終わったら `RailRunState` |
+| `PlatformState` | スタート台の上を歩く（端から落ちないよう押し戻す） | SPACE・台の端から出たら `FallState`、台と重なったレールの上まで歩いたら `RailRunState` |
+| `FallState` | レールの外でジャンプ・落下する（ゴール以外のレールの終点から飛び出したときもこの状態） | 台の上面に着地したら `PlatformState`、レールに着地したら `RailRunState` |
+
+- `PlatformState` と `FallState` は、WASD 移動・重力・着地判定を共通の `OffRailState` にまとめてある。
+- 跳ねている高さ・飛び移り中のずれは、今の状態が `GetRailOffset()` で返し、`UpdateBasePose()` でレール上の位置に足す。
 
 #### 仕様
 

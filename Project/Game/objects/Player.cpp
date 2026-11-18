@@ -1,4 +1,5 @@
 #include "Player.h"
+#include "PlayerState.h"
 #include "Obj3D.h"
 #include "Obj3dCommon.h"
 #include "ModelManager.h"
@@ -24,7 +25,8 @@ namespace{
 	const char* kHpRegenSpeedKey = "hpRegenSpeed";
 }
 
-Player::Player() = default;
+// 最初はレールの上を走っている状態から始める(Reset() と同じ)
+Player::Player() : state_(std::make_unique<RailRunState>()){}
 Player::~Player() = default;
 
 // 初期化処理
@@ -54,18 +56,12 @@ void Player::Reset(){
 	railT_ = 0.0f;
 	isRailFinished_ = false; // レール終端フラグもリセットする
 
-	// オンレール/オフレールの状態もリセットし、必ずオンレールから開始する
-	isOnRail_ = true;
+	// 移動の状態もリセットし、必ずレールの上を走っている状態から開始する
+	// (レール上でのジャンプ・並走レールへの乗り換えの途中の値は状態クラスが持つため、状態を作り直すと消える)
+	ChangeState(std::make_unique<RailRunState>());
 	freeVelocityY_ = 0.0f;
 	freeVelocityXZ_ = {0.0f, 0.0f, 0.0f};
-	isOnPlatform_ = false;
 
-	// レール上でのジャンプ・並走レールへの乗り換えの途中状態も消す
-	isRailHopping_ = false;
-	railHopHeight_ = 0.0f;
-	railHopVelocityY_ = 0.0f;
-	isSwitchingRail_ = false;
-	railSwitchTimer_ = 0.0f;
 	// 終点で外れたレールも覚えていない状態に戻す
 	endedRailIndex_ = -1;
 
@@ -88,8 +84,7 @@ void Player::Reset(){
 // スタート台の上に立たせ、オフレールの状態から始める
 // 台の上ではWASDで自由に動け、台と重なったレールの始点へ歩いて乗るとレールを進み始める
 void Player::StartOnPlatform(const Vector3& startPosition,const Vector3& startRotation){
-	isOnRail_ = false;
-	isOnPlatform_ = true;
+	ChangeState(std::make_unique<PlatformState>());
 	freePosition_ = startPosition;
 	freeVelocityY_ = 0.0f;
 	freeVelocityXZ_ = {0.0f, 0.0f, 0.0f};
@@ -102,16 +97,32 @@ void Player::StartOnPlatform(const Vector3& startPosition,const Vector3& startRo
 void Player::BoardRailStart(float startT){
 	railT_ = startT;
 	isRailFinished_ = false;
-	isOnRail_ = true;
-	isOnPlatform_ = false;
+	ChangeState(std::make_unique<RailRunState>());
 	freeVelocityY_ = 0.0f;
 	freeVelocityXZ_ = {0.0f, 0.0f, 0.0f};
-	isRailHopping_ = false;
-	railHopHeight_ = 0.0f;
-	railHopVelocityY_ = 0.0f;
-	isSwitchingRail_ = false;
-	railSwitchTimer_ = 0.0f;
 	endedRailIndex_ = -1;
+}
+
+// 移動の状態を切り替える
+void Player::ChangeState(std::unique_ptr<State> nextState){
+	if(nextState){
+		state_ = std::move(nextState);
+	}
+}
+
+// オンレール中かどうか
+bool Player::IsOnRail() const{
+	return state_->IsOnRail();
+}
+
+// 足がレールに着いているかどうか
+bool Player::IsGroundedOnRail() const{
+	return state_->IsGroundedOnRail();
+}
+
+// ゴールのレールの終点に着いて止まったかどうか
+bool Player::HasReachedGoal() const{
+	return IsOnRail() && isRailFinished_;
 }
 
 // 出発の演出中に、プレイヤーの表示を演出側で決めた位置・向き・大きさにする
@@ -138,7 +149,7 @@ void Player::StartRailBoost(float rate,float duration){
 // Edit中・開始演出中・オフレール中はその位置で静止させる
 // 終端に到達したらループさせず、その場で停止させる(ループするレールだけは、終端から始点へ回って進み続ける)
 void Player::UpdateRailProgress(RailEditor* railEditor,bool isGameplayActive,float deltaTime){
-	if(!railEditor || !isGameplayActive || !isOnRail_ || isRailFinished_){
+	if(!railEditor || !isGameplayActive || !IsOnRail() || isRailFinished_){
 		return;
 	}
 
@@ -184,27 +195,22 @@ void Player::UpdateRailProgress(RailEditor* railEditor,bool isGameplayActive,flo
 		int transferRailIndex = -1;
 		float transferT = 0.0f;
 		if(railEditor->FindEndTransfer(railEditor->GetActiveRailIndex(),transferRailIndex,transferT)){
-			const Vector3 endPosition = railEditor->GetPositionOnRail(railT_);
+			// 跳ねている途中に終点へ着いたときも見た目の位置が跳ばないよう、今のずれ(跳ねている高さなど)も含めた位置から寄せる
+			const Vector3 endPosition = railEditor->GetPositionOnRail(railT_) + state_->GetRailOffset();
 			railEditor->SwitchActiveRail(transferRailIndex);
 			railT_ = transferT;
 			isRailFinished_ = false;
-			railSwitchStartOffset_ = endPosition - railEditor->GetPositionOnRail(railT_);
-			railSwitchTimer_ = 0.0f;
-			isSwitchingRail_ = true;
+			ChangeState(std::make_unique<RailSwitchState>(endPosition - railEditor->GetPositionOnRail(railT_)));
 			return;
 		}
 
 		// ゴールのレール以外は、終点に着いたらレールから外れ、進んでいた勢いのまま前へジャンプさせる(どのレールにも乗れずに落ちたらリスタートになる)
 		// その場で真下に落としたり別の場所へ移したりすると不具合に見えるため、レールの続きのように前へ飛ばす
-		// 跳ねている途中・飛び移っている途中の状態を残すと、離れた直後に同じレールへ着地し直してしまうため、ここで消しておく
+		// 跳ねている途中・飛び移っている途中の状態を残すと、離れた直後に同じレールへ着地し直してしまうため、落下の状態へ切り替えて消す
 		// 上り坂で終わるレールでは、外れた位置が終点の少し手前のレールより上になり、そこへ着地し直してしまうため、外れたレールを覚えて着地先から外す
 		if(!railEditor->IsGoalRail(railEditor->GetActiveRailIndex())){
 			endedRailIndex_ = railEditor->GetActiveRailIndex();
-			isOnRail_ = false;
-			isRailHopping_ = false;
-			railHopHeight_ = 0.0f;
-			railHopVelocityY_ = 0.0f;
-			isSwitchingRail_ = false;
+			ChangeState(std::make_unique<FallState>());
 			freePosition_ = railEditor->GetPositionOnRail(railT_);
 			freeBaseRotation_ = railEditor->GetRotationOnRail(railT_);
 
@@ -218,31 +224,18 @@ void Player::UpdateRailProgress(RailEditor* railEditor,bool isGameplayActive,flo
 
 // 基準位置・基準向きの計算
 // オフレール中は、直前フレームで更新した自由移動座標(freePosition_)とジャンプ時に固定した向き(freeBaseRotation_)を基準にする
-// オンレール中にジャンプ・並走レールへの乗り換えをしている間は、レール上の位置に浮き上がりとずれを加える
+// オンレール中にジャンプ・並走レールへの乗り換えをしている間は、レール上の位置に今の状態のずれ(跳ねている高さ・飛び移り中のずれと山なりの高さ)を加える
 void Player::UpdateBasePose(const RailEditor* railEditor){
 	if(!railEditor){
 		return;
 	}
 
-	Vector3 railPos = railEditor->GetPositionOnRail(railT_);
-	Vector3 railRot = railEditor->GetRotationOnRail(railT_);
+	const Vector3 railPos = railEditor->GetPositionOnRail(railT_) + state_->GetRailOffset();
+	const Vector3 railRot = railEditor->GetRotationOnRail(railT_);
 
-	// レール上で跳ねている高さを加える(レールの坂に合わせて上下しつつ跳ねる)
-	railPos.y += railHopHeight_;
-
-	if(isSwitchingRail_){
-		const float progress = railSwitchTimer_ / kRailSwitchDuration;
-
-		// 乗り換え先レールの上を進みながら、乗り換え前の位置からのずれを減らしていき乗り換え先へ寄せる
-		// 勢いよく飛び出して乗り換え先の上でゆっくり収まるよう、減速するイージングを使う
-		railPos += railSwitchStartOffset_ * (1.0f - Easing::EaseOutCubic(progress));
-
-		// 飛び移っている間は山なりに浮かせる(始まりと終わりで0、真ん中で最も高くなる)
-		railPos.y += kRailSwitchArcHeight * kParabolaPeakScale * progress * (1.0f - progress);
-	}
-
-	basePosition_ = isOnRail_?railPos:freePosition_;
-	baseRotation_ = isOnRail_?railRot:freeBaseRotation_;
+	const bool isOnRail = IsOnRail();
+	basePosition_ = isOnRail?railPos:freePosition_;
+	baseRotation_ = isOnRail?railRot:freeBaseRotation_;
 }
 
 // 表示位置の計算とモデルの行列更新
@@ -349,163 +342,25 @@ void Player::TakeContinuousDamage(float damagePerSecond,float deltaTime){
 }
 
 // プレイヤーの自立(ジャンプ+WASD移動)
-// オンレール中はWASDで自由に動かさず、レールに沿った進行(UpdateRailProgress)を続けたまま、
-// その場でのジャンプと並走レールへの乗り換えだけを行う(参考にしたスプラトゥーンのレールと同じく、レール上では射撃に専念させる)
-// オフレール中(スタート台の上やそこから飛び降りた後)はWASDでの水平移動と重力・ジャンプ初速による垂直移動を行い、
-// レール座標によるオンレール判定を使って着地先レールへ乗る
+// ジャンプ・WASD移動・着地判定は今の移動の状態に任せ、次の状態が返ってきたら切り替える
+// (レール上ではその場でのジャンプと並走レールへの乗り換えだけ、レールの外ではWASD移動と重力・着地判定を行う)
 bool Player::UpdateMovement(Input* input,RailEditor* railEditor,const StartPlatform* startPlatform,const Vector3& cameraForward,const Vector3& cameraRight,float groundHeight,float deltaTime){
 	if(!input || !railEditor){
 		return false;
 	}
 
-	if(isOnRail_){
-		// 跳ねている高さ・飛び移りの経過時間を進める
-		UpdateRailJump(deltaTime);
-
-		// 足がレールに着いているときだけジャンプキー(SPACE)を受け付ける(空中での連続ジャンプ・飛び移り中の再入力を防ぐ)
-		// タイトルのスタートもSPACEだが、押した瞬間はまだプレイ可能になっていないためジャンプしない
-		if(!isRailHopping_ && !isSwitchingRail_ && input->TriggerKey(DIK_SPACE)){
-			// A/Dを押しながらジャンプしたときは、その方向に並走しているレールがあれば飛び移る
-			Vector3 rightXZ = Normalize(Vector3{cameraRight.x, 0.0f, cameraRight.z});
-			Vector3 sideDir = {0.0f, 0.0f, 0.0f};
-			if(input->PushKey(DIK_D)) sideDir += rightXZ;
-			if(input->PushKey(DIK_A)) sideDir += -rightXZ;
-
-			// ループするレールの上では、輪の中心(ボス)を見ていると隣の輪が左右ではなく前後に来るため、W/Sでも飛び移れるようにする
-			if(railEditor->IsLoopRail(railEditor->GetActiveRailIndex())){
-				Vector3 forwardXZ = Normalize(Vector3{cameraForward.x, 0.0f, cameraForward.z});
-				if(input->PushKey(DIK_W)) sideDir += forwardXZ;
-				if(input->PushKey(DIK_S)) sideDir += -forwardXZ;
-			}
-
-			// A/D同時押しで打ち消し合ったときや、押した方向にレールがないときは、その場で跳ねるジャンプにする
-			if(Length(sideDir) > 0.0f && TrySwitchToSideRail(railEditor,Normalize(sideDir))){
-				return false;
-			}
-
-			// レールからは離れず、レールに沿って進みながら上へ跳ねる
-			isRailHopping_ = true;
-			railHopVelocityY_ = kJumpSpeed;
-		}
-		return false;
-	}
-
-	// 移動前の高さを覚えておく(この後の着地判定でレールの高さを跨いだ瞬間を検出するのに使う)
-	const float previousPositionY = freePosition_.y;
-
-	// スタート台の上に立っている間は、レール上と同じくSPACEでジャンプする
-	if(isOnPlatform_ && input->TriggerKey(DIK_SPACE)){
-		isOnPlatform_ = false;
-		freeVelocityY_ = kJumpSpeed;
-	}
-
-	// オフレール中はカメラ向き基準(XZ平面)でWASD移動する
-	Vector3 forwardXZ = Normalize(Vector3{cameraForward.x, 0.0f, cameraForward.z});
-	Vector3 rightXZ = Normalize(Vector3{cameraRight.x, 0.0f, cameraRight.z});
-
-	Vector3 moveDir = {0.0f, 0.0f, 0.0f};
-	if(input->PushKey(DIK_W)) moveDir += forwardXZ;
-	if(input->PushKey(DIK_S)) moveDir += -forwardXZ;
-	if(input->PushKey(DIK_D)) moveDir += rightXZ;
-	if(input->PushKey(DIK_A)) moveDir += -rightXZ;
-	moveDir = Normalize(moveDir);
-
-	freePosition_ += moveDir * kMoveSpeed * deltaTime;
-	// レールの終点から飛び出した勢いで、着地するか落ちきるまで前へ進み続ける
-	freePosition_ += freeVelocityXZ_ * deltaTime;
-
-	// スタート台の出発ゲートが閉じている間は、ゲートより先へ進めない(ジャンプで飛び越えることもできない)
-	if(startPlatform){
-		freePosition_ = startPlatform->ClampBehindClosedGate(freePosition_);
-
-		// 台の上に立って歩いている間は、端から落ちないよう台の範囲内に押し戻す
-		// ジャンプ中は押し戻さないため、自分から飛び降りることはできる
-		if(isOnPlatform_){
-			freePosition_ = startPlatform->ClampInsideTop(freePosition_);
-		}
-	}
-
-	// 重力を適用してY方向の速度を更新し、位置に反映する
-	freeVelocityY_ -= kGravity * deltaTime;
-	freePosition_.y += freeVelocityY_ * deltaTime;
-
-	// 落下中のみ着地判定を行う(上昇中に離脱直後の位置へ即座に再着地しないようにする)
-	if(freeVelocityY_ > 0.0f){
-		return false;
-	}
-
-	// スタート台の上面を落下で跨いだら、上面に立たせる
-	// 台の上を歩いている間も重力で少し沈むため、毎フレームここで上面に戻して立たせ続ける
-	// 台の端から外へ出たときは範囲外になり、そのまま落ちる
-	isOnPlatform_ = false;
-	if(startPlatform && startPlatform->IsInsideTop(freePosition_)){
-		const float topHeight = startPlatform->GetTopHeight();
-		if(previousPositionY >= topHeight && freePosition_.y <= topHeight){
-			freePosition_.y = topHeight;
-			freeVelocityY_ = 0.0f;
-			freeVelocityXZ_ = {0.0f, 0.0f, 0.0f};
-			isOnPlatform_ = true;
-		}
-	}
-
-	// 終点で外れて落ちている間は、外れたレールには着地させない
-	RailEditor::NearestRailResult nearest = railEditor->FindNearestRail(freePosition_,endedRailIndex_);
-	// 距離1つ(球状の判定)だとレールの横や上にいるだけで乗ってしまうため、
-	// 「水平方向でレールの真上にいる」ことと「落下でレールの高さを跨いだ」ことの両方を条件にする
-	if(nearest.railIndex >= 0){
-		// 水平方向(XZ平面)だけで見た、レール最近傍点までの距離
-		Vector3 horizontalDiff = {freePosition_.x - nearest.position.x, 0.0f, freePosition_.z - nearest.position.z};
-		bool isAboveRail = Length(horizontalDiff) <= kOnRailHorizontalThreshold;
-
-		// 前フレームはレールより上にいて、今フレームでレールの高さ以下まで落ちた瞬間だけ着地とみなす
-		bool crossedRailHeight = (previousPositionY > nearest.position.y) && (freePosition_.y <= nearest.position.y);
-
-		// スタート台の上ではレールと同じ高さを歩くため高さを跨がない。台と重なったレールの真上まで歩いたら乗せる
-		bool walkedOntoRail = isOnPlatform_ && std::abs(freePosition_.y - nearest.position.y) <= kPlatformBoardHeightRange;
-
-		if(isAboveRail && (crossedRailHeight || walkedOntoRail)){
-			railEditor->SwitchActiveRail(nearest.railIndex);
-			railT_ = nearest.t;
-			isRailFinished_ = false; // 着地先レールを最後まで進めるようにする
-			endedRailIndex_ = -1;
-			isOnRail_ = true;
-			isOnPlatform_ = false;
-			freeVelocityY_ = 0.0f;
-			freeVelocityXZ_ = {0.0f, 0.0f, 0.0f};
-		}
-	}
+	MoveContext context;
+	context.input = input;
+	context.railEditor = railEditor;
+	context.startPlatform = startPlatform;
+	context.cameraForward = cameraForward;
+	context.cameraRight = cameraRight;
+	context.deltaTime = deltaTime;
+	ChangeState(state_->UpdateMovement(*this,context));
 
 	// レールから落ちたときのリスタート
 	// どのレールにも乗れないまま、地面の高さまで落ちたらリスタートが必要であることを呼び出し側へ伝える
-	return !isOnRail_ && freePosition_.y <= groundHeight;
-}
-
-// 押した方向のすぐ横を並走しているレールへ、飛び移る動きを付けて乗り換える
-// 今のレール以外で最も近いレールを探し、「近い」「押した方向の真横にある」「高さが近い」をすべて満たすときだけ乗り換える
-// 乗り換え自体はすぐに行い、見た目の位置だけを乗り換え前の位置から乗り換え先へ山なりに寄せていく
-bool Player::TrySwitchToSideRail(RailEditor* railEditor,const Vector3& sideDirXZ){
-	RailEditor::NearestRailResult nearest;
-	Vector3 toRailXZ;
-	if(!FindSideRailInReach(railEditor,nearest,toRailXZ)){
-		return false;
-	}
-
-	// 押した方向の真横にあるか(前後にずれた位置のレールには乗り換えない)
-	if(Dot(Normalize(toRailXZ),sideDirXZ) < kSideRailDirectionThreshold){
-		return false;
-	}
-
-	// 乗り換え先レールの最近傍点からそのまま進行を続ける
-	// 飛び移っている間も乗り換え先レールに沿って進めることで、勢いを保ったまま横へ移る動きにする
-	railEditor->SwitchActiveRail(nearest.railIndex);
-	railT_ = nearest.t;
-	isRailFinished_ = false; // 乗り換え先レールを最後まで進めるようにする
-
-	// 乗り換え前の位置(足がレールに着いているときだけ乗り換えるため、基準位置がそのままレール上の位置)からのずれを覚えて、飛び移る動きを始める
-	railSwitchStartOffset_ = basePosition_ - nearest.position;
-	railSwitchTimer_ = 0.0f;
-	isSwitchingRail_ = true;
-	return true;
+	return !IsOnRail() && freePosition_.y <= groundHeight;
 }
 
 // 今のレール以外で最も近いレールが、飛び移れる近さと高さにあるかを調べる
@@ -546,32 +401,6 @@ int Player::FindSideRailDirection(const RailEditor* railEditor,const Vector3& ca
 		return -1;
 	}
 	return 0;
-}
-
-// レール上でのジャンプ(その場で跳ねる)と、並走レールへ飛び移る動きを進める
-// レールに沿った進行はUpdateRailProgressで続けているため、ここでは高さと経過時間だけを扱う
-void Player::UpdateRailJump(float deltaTime){
-	if(isRailHopping_){
-		// 重力を適用してY方向の速度を更新し、跳ねている高さに反映する
-		railHopVelocityY_ -= kGravity * deltaTime;
-		railHopHeight_ += railHopVelocityY_ * deltaTime;
-
-		// レールの高さまで戻ったら着地させる(レールから外れることはないため、必ず同じレールに着地する)
-		if(railHopHeight_ <= 0.0f){
-			railHopHeight_ = 0.0f;
-			railHopVelocityY_ = 0.0f;
-			isRailHopping_ = false;
-		}
-	}
-
-	if(isSwitchingRail_){
-		// 決めた時間が経ったら乗り換え先レールの上に着地させる(このときずれと山なりの高さはちょうど0になる)
-		railSwitchTimer_ += deltaTime;
-		if(railSwitchTimer_ >= kRailSwitchDuration){
-			railSwitchTimer_ = kRailSwitchDuration;
-			isSwitchingRail_ = false;
-		}
-	}
 }
 
 // 描画処理

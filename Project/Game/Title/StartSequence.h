@@ -21,21 +21,12 @@ class StartPlatform;
 /// 開いたゲートをくぐってレールに乗ると、GameScene から NotifyBoarded() で知らされ、「GO!」でプレイが始まる。
 /// 出発の演出(スーパージャンプなど)を使うときは、ゲートの先の出発台で BeginDeparture() が呼ばれ、演出がレールへ乗せ終えたら NotifyBoarded() が呼ばれる。
 /// ゲートのカウントダウンに合わせて飛び乗る演出では、ゲートを開け始めた瞬間に BeginDeparture() が呼ばれる。
+///
+/// 各段階(タイトル → 回り込み → 準備 → ゲートを開ける → 乗り込み待ち → 出発の演出 → プレイ中)は、State を継承した状態クラス(StartSequenceState.h)に分けてある。
+/// このクラスは今の段階を1つだけ持ち、更新・描画・問い合わせへの答えを今の段階に任せる。次の段階へ進むかは段階自身が判定する。
 /// </summary>
 class StartSequence{
 public:
-	// 開始演出の段階
-	enum class Phase{
-		None,       // 演出を行っていない(Editモード中)
-		Title,      // タイトル表示中(スタート入力待ち)
-		CameraTurn, // カメラがプレイヤーの背後へ回り込み中
-		Standby,    // スタート台の上を自由に動ける(出発ゲートは閉じている。ゲートの前で SPACE を押すと開く)
-		GateOpen,   // 出発ゲートを開けている最中(プレイヤーは動けない)
-		Boarding,   // 出発ゲートが開き、自分で歩いてレールへ乗り込む(または出発台へ向かう)のを待っている
-		Departure,  // 出発の演出でレールへ向かっている最中(プレイヤーは動けない)
-		Playing,    // プレイ中
-	};
-
 	StartSequence();
 	~StartSequence();
 
@@ -78,10 +69,10 @@ public:
 	bool IsGateOpenTriggered() const{ return isGateOpenTriggered_; }
 
 	// 出発ゲートを開けている最中か
-	bool IsOpeningGate() const{ return phase_ == Phase::GateOpen; }
+	bool IsOpeningGate() const;
 
 	// 出発の演出でレールへ向かっている最中か(撃てないため照準を出さないのに使う)
-	bool IsDeparting() const{ return phase_ == Phase::Departure; }
+	bool IsDeparting() const;
 
 	/// <summary>
 	/// タイトルロゴをプレイヤーの位置・向きに合わせて配置する(IsControllingCamera() が true の間に使う)
@@ -97,19 +88,19 @@ public:
 	void Draw2D();
 
 	// レール進行・操作・射撃などのゲーム処理を動かしてよいか
-	bool IsPlayable() const{ return phase_ == Phase::Playing; }
+	bool IsPlayable() const;
 
 	// カメラを演出側で動かしている最中か
-	bool IsControllingCamera() const{ return phase_ == Phase::Title || phase_ == Phase::CameraTurn; }
+	bool IsControllingCamera() const;
 
 	// スタート台の上を自由に動ける段階か(出発ゲートを開けている間は動けない)
-	bool IsPlayerMovable() const{ return phase_ == Phase::Standby || phase_ == Phase::Boarding; }
+	bool IsPlayerMovable() const;
 
 	// 出発ゲートが開き、レールへ乗り込むのを待っている段階か
-	bool IsBoarding() const{ return phase_ == Phase::Boarding; }
+	bool IsBoarding() const;
 
 	// プレイが始まる前の演出中か(タイトルからレールに乗り込むまで。照準を出さないのに使う)
-	bool IsIntroRunning() const{ return phase_ != Phase::None && phase_ != Phase::Playing; }
+	bool IsIntroRunning() const;
 
 	// タイトル中にプレイヤーをその場で跳ねさせる高さ(描画位置にだけ足す。跳ねていないときは0)
 	float GetPlayerHopHeight() const;
@@ -139,13 +130,34 @@ public:
 	static float GetSeVolume();
 
 private:
+	// 段階(状態)の基底クラスと、段階ごとの状態クラス(定義は StartSequenceState.h)
+	// このクラスの中で宣言し、各段階からこのクラスの演出・表示を直接動かせるようにする
+	class State;
+	class IdleState;
+	class TitleState;
+	class CameraTurnState;
+	class StandbyState;
+	class GateOpenState;
+	class BoardingState;
+	class DepartureState;
+	class PlayingState;
+
 	// Start()・StartFromStandby()で共通の、始める前の状態に戻す処理(演出の経過・表示を戻し、出発ゲートを閉じて台のインクを消す)
 	void ResetForStart();
+
+	/// <summary>
+	/// 段階を切り替え、新しい段階の始まりの処理(State::Enter)を呼ぶ
+	/// </summary>
+	/// <param name="nextState">切り替え先の段階(nullptr のときは切り替えない)</param>
+	void ChangeState(std::unique_ptr<State> nextState);
+
+	// 「GO!」を出し、合わせて効果音を鳴らす(レールに乗り込んでプレイを始めるとき用)
+	void BeginPlayWithGo();
 
 	Input* input_ = nullptr;
 
 	// 現在の段階
-	Phase phase_ = Phase::None;
+	std::unique_ptr<State> state_;
 
 	// タイトル中・回り込み中のカメラワーク
 	TitleCameraDirector cameraDirector_;

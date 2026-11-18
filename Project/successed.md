@@ -2022,3 +2022,32 @@ Visual Studio でのビルド・画面での確認はしていない。変更し
 - ボスのモデル・文字の画像は仮素材。音は鳴らしていない。
 - ボスの体力・攻撃の間隔・弾の速さ・ダメージは、最初に置いた値のまま。
 - ボスの体力の見せ方は、ユーザーが別の表現を考えている。決まったら作り直す。
+
+---
+
+## 2026-11-18
+
+### State パターンの適用（課題 01_03 の再提出）
+
+エンジン層とアプリ層の、enum・bool フラグと switch / if で分けていた処理を、共通の基底クラスを持つ状態クラスへ分けて委譲するようにした。動きは変えていない（下の「動きの違い」の 2 点だけ）。
+
+| 層 | 状態を持つクラス | 状態クラス（ファイル） | 前の書き方 |
+| --- | --- | --- | --- |
+| エンジン | `Application`（`Engine/Framework`） | `PostEffectState` と `SelectedPostEffectState` / `GlitchPostEffectState` / `RadialBlurPostEffectState` / `DissolvePostEffectState`（`Engine/Graphics/Effect/PostEffectState.h/.cpp`） | `currentPPType_` と `isDissolving_` / `isGlitchActive_` / `isRadialBlurActive_` のフラグ・タイマー |
+| アプリ | `Player` | `Player::State` と `RailRunState` / `RailHopState` / `RailSwitchState` / `PlatformState` / `FallState`（共通部分は `OffRailState`）（`Game/objects/PlayerState.h/.cpp`） | `isOnRail_` / `isRailHopping_` / `isSwitchingRail_` / `isOnPlatform_` と if / else |
+| アプリ | `StartSequence` | `StartSequence::State` と `IdleState` / `TitleState` / `CameraTurnState` / `StandbyState` / `GateOpenState` / `BoardingState` / `DepartureState` / `PlayingState`（`Game/Title/StartSequenceState.h/.cpp`） | `enum class Phase` と switch |
+| アプリ | `Enemy` | `EnemyAttackState` と `SingleShotAttackState` / `SpreadShotAttackState` / `HomingShotAttackState`（`Game/objects/EnemyAttackState.h/.cpp`） | `enum class AttackType` と switch |
+
+- どれも、持ち主は今の状態を `std::unique_ptr` で1つだけ持ち、処理を今の状態に任せる。次の状態へ移るかは状態自身が判定し、次の状態を戻り値で返す（持ち主が切り替える）。実行中の状態を自分で消さないようにするため。
+- Player・StartSequence の状態クラスは、持ち主のクラスの中で宣言した入れ子のクラスにして、持ち主の位置・演出などを直接動かせるようにした。
+- StartSequence.cpp と StartSequenceState.cpp で使う定数は `Game/Title/StartSequenceInternal.h` に移した。
+- 新しいファイルは `MyGameEngine.vcxproj` / `.filters` に足した。
+
+#### 動きの違い
+
+- 終点で自動で飛び移るレールで、跳ねている途中に終点へ着いたとき、前は跳ねと飛び移りが同時に進んでいた。今は、跳ねている高さも含めた位置から飛び移り先へ寄せる（見た目の位置は跳ばない）。
+- ポストプロセスのデバッグ UI でディゾルブの「Start Animation」を押したとき、種類も Dissolve にする（前は種類を変えずに閾値だけ動かしていた。UI では Dissolve を選んでいるときしかボタンが出ないため、見た目は同じ）。
+
+### ビルド確認
+
+- この環境（Linux）には DirectX・MSVC が無いため、変更したファイルを、DirectX などのヘッダーを置き換えた仮のヘッダーで g++ / clang++ の構文チェックにかけた（`Application.cpp` は ImGui・DirectX を多く使うため対象外）。Visual Studio でのビルド・起動しての確認はまだしていない。
