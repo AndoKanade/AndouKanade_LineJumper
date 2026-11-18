@@ -8,6 +8,7 @@
 // クラスの前方宣言
 class Obj3D;
 class Obj3dCommon;
+class EnemyAttackState;
 
 /// <summary>
 /// 雑魚敵
@@ -15,6 +16,7 @@ class Obj3dCommon;
 /// 指定された基準座標を中心に、決められた方向へ一定距離を往復する固定パターンで移動する。
 /// プレイヤーが検知範囲内に入るとそちらを向き、弾が当たると撃破される。
 /// 検知中は一定間隔でプレイヤーへ向けて弾を発射する。
+/// 弾の撃ち方は今の攻撃の状態(EnemyAttackState を継承したクラス)に任せ、撃つたびに状態が決めた次の攻撃へ切り替える。
 /// </summary>
 class Enemy{
 public:
@@ -83,17 +85,8 @@ public:
 	Model::BoundingSphere GetHitSphere() const;
 
 private:
-	// 検知中はこの種類を順番に切り替えながら撃つことで、攻撃パターンに変化をつける
-	enum class AttackType{
-		Single,  // 単発: 発射した瞬間のプレイヤー方向へ直進する
-		Spread3, // 3方向拡散: プレイヤー方向を中心に、左右へ角度をつけた弾を同時発射する
-		Homing,  // 追尾弾: 発射後もプレイヤー方向へ少しずつ向きを変え続ける
-	};
-
-	// 現在の攻撃の種類に応じた発射処理を行う
+	// 現在の攻撃の状態に発射を任せる(発射位置とプレイヤーへの向きはすべての攻撃で共通のため、ここで求めて渡す)
 	void FireCurrentAttack(const Vector3& playerPosition);
-	// 現在の攻撃の種類に応じた発射間隔(秒)を取得する
-	float GetCurrentShotInterval() const;
 	// 弾の発射位置(敵の胸の高さ)を取得する
 	Vector3 GetBulletSpawnPosition() const;
 
@@ -103,8 +96,8 @@ private:
 	EnemyBulletPool bulletPool_;   // 使い回す弾(移動・追尾・寿命・当たり判定・描画を任せる。ボスと共用のクラス)
 	float shotTimer_ = 0.0f;       // 次の発射までの残り時間(秒)
 
-	// 現在使用している攻撃の種類(kAttackOrderの何番目かを指す)
-	size_t attackIndex_ = 0;
+	// 現在の攻撃の状態(撃ち方と発射間隔を持つ。撃つたびに状態が決めた次の攻撃へ切り替える)
+	std::unique_ptr<EnemyAttackState> attackState_;
 
 	Vector3 basePosition_ = {0.0f, 0.0f, 0.0f};    // 往復移動の中心座標
 	Vector3 patrolDirection_ = {1.0f, 0.0f, 0.0f}; // 往復移動の方向(正規化済み)
@@ -137,10 +130,6 @@ private:
 
 	// 同時に存在できる弾の最大数(この数だけ初期化時に生成して使い回す)
 	static constexpr size_t kMaxBulletCount = 16;
-	// 単発の発射間隔(秒)
-	static constexpr float kShotInterval = 1.2f;
-	// 単発・3方向拡散ショットの弾の移動速度(1秒あたりの移動量)
-	static constexpr float kBulletSpeed = 18.0f;
 	// 弾が消滅するまでの生存時間(秒)
 	static constexpr float kBulletLifeTime = 4.0f;
 	// 弾の表示スケール
@@ -148,26 +137,6 @@ private:
 	// 弾の発射位置を敵の足元より上へずらす量(胸の高さから撃っているように見せる)
 	static constexpr float kBulletSpawnUpOffset = 0.5f;
 
-	// 攻撃を切り替える順番の要素数
-	static constexpr size_t kAttackOrderCount = 3;
-	// 攻撃を切り替える順番(1回撃つごとに次の要素へ進み、末尾まで来たら先頭へ戻る)
-	static constexpr AttackType kAttackOrder[kAttackOrderCount] = {
-		AttackType::Single,
-		AttackType::Spread3,
-		AttackType::Homing
-	};
-
-	// 3方向拡散ショットで同時に発射する弾数(左右対称にするため奇数にする)
-	static constexpr int kSpreadBulletCount = 3;
-	// 3方向拡散ショットで隣の弾との間につける角度(ラジアン、約12度)
-	static constexpr float kSpreadAngle = 0.21f;
-	// 3方向拡散ショットの発射間隔(秒)。単発より弾数が多いため長めにする
-	static constexpr float kSpreadShotInterval = 2.0f;
-
-	// 追尾弾の移動速度(1秒あたりの移動量)。避けられる余地を残すため通常弾より遅くする
-	static constexpr float kHomingBulletSpeed = 12.0f;
-	// 追尾弾が1秒あたりにプレイヤー方向へ向きを補正する割合(大きいほど急に曲がる)
+	// 追尾弾が1秒あたりにプレイヤー方向へ向きを補正する割合(大きいほど急に曲がる。弾の使い回しに渡す)
 	static constexpr float kHomingTurnRate = 1.5f;
-	// 追尾弾の発射間隔(秒)。避けにくい攻撃なので最も長めにする
-	static constexpr float kHomingShotInterval = 2.5f;
 };

@@ -19,6 +19,9 @@ class StartPlatform;
 /// レール上でジャンプするとレールに沿って進みながらその場で跳ね、A/Dを押しながらジャンプすると並走しているレールへ飛び移る。
 /// スタート台から落下中にレールの真上でレールの高さを跨ぐと、そのレールに乗る。
 /// 体力を持ち、敵弾が当たると減る(被弾後は一定時間無敵)。
+///
+/// レール走行・レール上で跳ねる・並走レールへ飛び移る・スタート台の上を歩く・ジャンプ/落下の各状態は、
+/// State を継承した状態クラス(PlayerState.h)に分けてある。このクラスは今の状態を1つだけ持ち、移動の処理を今の状態に任せる。
 /// </summary>
 class Player{
 public:
@@ -140,15 +143,16 @@ public:
 	Vector3 GetMuzzlePosition() const{ return {position_.x, position_.y + kMuzzleHeight, position_.z}; }
 
 	// ゴールのレールの終点に着いて止まったかどうか(オンレール中に終端まで進んだらtrue。ゴール以外のレールは終点でレールから外れるためtrueにならない)
-	bool HasReachedGoal() const{ return isOnRail_ && isRailFinished_; }
+	bool HasReachedGoal() const;
 	// 体力が尽きたかどうか
 	bool IsDead() const{ return hp_ <= 0.0f; }
 
 	// デバッグ表示用の取得
 	float GetRailT() const{ return railT_; }
-	bool IsOnRail() const{ return isOnRail_; }
+	// オンレール中かどうか(今の移動の状態が答える)
+	bool IsOnRail() const;
 	// 足がレールに着いているかどうか(オンレール中で、跳ねている途中でも並走レールへ飛び移っている途中でもないときtrue)
-	bool IsGroundedOnRail() const{ return isOnRail_ && !isRailHopping_ && !isSwitchingRail_; }
+	bool IsGroundedOnRail() const;
 
 	/// <summary>
 	/// 今のレールから飛び移れる並走レールが、左右どちらにあるかを求める(A/D+SPACE の案内を出すのに使う)
@@ -174,13 +178,31 @@ public:
 	static constexpr float kOnRailHorizontalThreshold = RailEditor::kTubeRadius + kFootHalfWidth;
 
 private:
+	// 移動の状態の基底クラスと、状態ごとのクラス(定義は PlayerState.h)
+	// このクラスの中で宣言し、各状態からプレイヤーの位置・速度・レールの進行度を直接動かせるようにする
+	class State;
+	class RailRunState;
+	class RailHopState;
+	class RailSwitchState;
+	class OffRailState;
+	class PlatformState;
+	class FallState;
+
+	// 移動の状態に渡す、1フレーム分の入力と周りの情報
+	struct MoveContext{
+		Input* input = nullptr;                      // 入力
+		RailEditor* railEditor = nullptr;            // 着地先・乗り換え先を探すレール
+		const StartPlatform* startPlatform = nullptr; // 上に立てるスタート台
+		Vector3 cameraForward = {0.0f, 0.0f, 0.0f};  // カメラの前方ベクトル(WASD移動の基準)
+		Vector3 cameraRight = {0.0f, 0.0f, 0.0f};    // カメラの右方向ベクトル(WASD移動・飛び移る向きの基準)
+		float deltaTime = 0.0f;                      // 経過時間(秒)
+	};
+
 	/// <summary>
-	/// 押した方向のすぐ横を並走しているレールへ、飛び移る動きを付けて乗り換える
+	/// 移動の状態を切り替える
 	/// </summary>
-	/// <param name="railEditor">乗り換え先を探すレール</param>
-	/// <param name="sideDirXZ">乗り換えたい方向(XZ平面の正規化ベクトル)</param>
-	/// <returns>乗り換えられたときtrue</returns>
-	bool TrySwitchToSideRail(RailEditor* railEditor,const Vector3& sideDirXZ);
+	/// <param name="nextState">切り替え先の状態(nullptr のときは切り替えない)</param>
+	void ChangeState(std::unique_ptr<State> nextState);
 
 	/// <summary>
 	/// 今のレール以外で最も近いレールが、飛び移れる近さと高さにあるかを調べる(向きは調べない)
@@ -190,12 +212,6 @@ private:
 	/// <param name="outToRailXZ">水平方向(XZ平面)で見た、そのレールの最近傍点までの向きと距離(正規化していない)</param>
 	/// <returns>飛び移れる近さと高さにあれば true</returns>
 	bool FindSideRailInReach(const RailEditor* railEditor,RailEditor::NearestRailResult& outNearest,Vector3& outToRailXZ) const;
-
-	/// <summary>
-	/// レール上でのジャンプ(その場で跳ねる)と、並走レールへ飛び移る動きを進める
-	/// </summary>
-	/// <param name="deltaTime">経過時間(秒)</param>
-	void UpdateRailJump(float deltaTime);
 
 	// 描画用の3Dオブジェクト(三人称視点用のプレイヤーのモデル)
 	std::unique_ptr<Obj3D> obj_;
@@ -210,25 +226,9 @@ private:
 	// 終点に着いてレールから外れたレールのインデックス(-1: なし)。落ちている間はこのレールに着地させない
 	int endedRailIndex_ = -1;
 
-	// レール座標によるオンレール判定
-	// レール上でのジャンプ・並走レールへの乗り換え中もオンレールのままにし、レールに沿った進行を止めない
-	bool isOnRail_ = true;
-
-	// レール上でのジャンプ用の状態
-	// レール上でジャンプして跳ねている途中か(跳ねている間は次のジャンプを受け付けない)
-	bool isRailHopping_ = false;
-	// レール上の位置から浮き上がっている高さ
-	float railHopHeight_ = 0.0f;
-	// レール上で跳ねているときのY方向の速度
-	float railHopVelocityY_ = 0.0f;
-
-	// 並走レールへ飛び移る動きの状態
-	// 並走レールへ飛び移っている途中か(飛び移っている間は次のジャンプを受け付けない)
-	bool isSwitchingRail_ = false;
-	// 飛び移り始めてからの経過時間(秒)
-	float railSwitchTimer_ = 0.0f;
-	// 飛び移り始めた瞬間の、乗り換え先レール上の位置から見た乗り換え前の位置のずれ(これを0まで減らして乗り換え先へ寄せる)
-	Vector3 railSwitchStartOffset_ = {0.0f, 0.0f, 0.0f};
+	// 今の移動の状態(レール走行・跳ねる・飛び移る・台の上を歩く・ジャンプ/落下)
+	// 跳ねている高さ・飛び移りの経過時間など、その状態の間だけ使う値は状態クラスが持つ
+	std::unique_ptr<State> state_;
 
 	// プレイヤーの自立(ジャンプ+WASD移動)用の状態
 	// オフレール中の基準座標(オンレール中のレール上の座標に相当する、カメラ・プレイヤーの共通の基準点)
@@ -239,8 +239,6 @@ private:
 	Vector3 freeVelocityXZ_ = {0.0f, 0.0f, 0.0f};
 	// オフレール中の基準向き(レールを離れた瞬間の向きを固定して保持する)
 	Vector3 freeBaseRotation_ = {0.0f, 0.0f, 0.0f};
-	// スタート台の上に立っているか(立っている間はジャンプでき、重なったレールへ歩いて乗れる)
-	bool isOnPlatform_ = false;
 
 	// カメラ・プレイヤーの共通の基準位置と基準向き(UpdateBasePose()で求める)
 	Vector3 basePosition_ = {0.0f, 0.0f, 0.0f};

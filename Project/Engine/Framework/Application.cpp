@@ -45,6 +45,8 @@ void Application::Initialize(){
 	// 2. ポストプロセス関連のリソース初期化
 	postProcess_ = std::make_unique<PostProcess>();
 	postProcess_->Initialize(dxCommon_.get());
+	// 最初は通常の表示(ポストプロセスをかけない種類)をかけ続ける状態から始める
+	ChangePostEffectState(std::make_unique<SelectedPostEffectState>(PostProcess::Type::PostProcess));
 
 	renderTexture_ = std::make_unique<RenderTexture>();
 
@@ -118,45 +120,16 @@ void Application::Update(){
 	// 1. 基底クラスの更新
 	Framework::Update();
 
-	// 2. Dissolveアニメーション処理
-	if(isDissolving_){
-		dissolveTimer_ += 1.0f / 60.0f;
-		float threshold = dissolveTimer_ / kDissolveDuration;
-
-		if(threshold >= 1.0f){
-			threshold = 1.0f;
-			isDissolving_ = false;
-		}
-		postProcess_->SetDissolveThreshold(threshold);
+	// 2. ポストエフェクトの動作モード(状態)の更新
+	// ディゾルブ・グリッチ・放射ブラーの進め方と終わりの判定は今の状態に任せ、次の状態が返ってきたら切り替える
+	if(std::unique_ptr<PostEffectState> nextState = postEffectState_->Update(postProcess_.get(),kFrameDeltaTime)){
+		ChangePostEffectState(std::move(nextState));
 	}
 
-	// 3. グリッチ演出タイマー更新
-	if(isGlitchActive_){
-		glitchTimer_ -= 1.0f / 60.0f;
-		if(glitchTimer_ <= 0.0f){
-			isGlitchActive_ = false;
-			currentPPType_ = PostProcess::Type::PostProcess;
-		}
-	}
-
-	// 4. Random用時間更新処理
+	// 3. Random用時間更新処理
 	static float time = 0.0f;
-	time += 1.0f / 60.0f;
+	time += kFrameDeltaTime;
 	postProcess_->SetRandomTime(time);
-
-	// 5. 放射ブラー演出の更新
-	// 残り時間の割合の2乗で強さを下げ、かけた瞬間に強く、素早く消えるようにする
-	if(isRadialBlurActive_){
-		radialBlurTimer_ += kFrameDeltaTime;
-		float progress = radialBlurTimer_ / radialBlurDuration_;
-		if(progress >= 1.0f){
-			isRadialBlurActive_ = false;
-			currentPPType_ = PostProcess::Type::PostProcess;
-		} else{
-			float remainRate = 1.0f - progress;
-			postProcess_->SetRadialBlurWidth(radialBlurStartWidth_ * remainRate * remainRate);
-		}
-	}
 }
 
 // -------------------------------------------------
@@ -235,14 +208,16 @@ void Application::Draw(){
 	}
 
 	// 3. ポストプロセス用テクスチャ切り替え (Dissolve対応)
+	// 描く種類は今のポストエフェクトの状態から受け取る
+	const PostProcess::Type currentType = postEffectState_->GetType();
 	D3D12_GPU_DESCRIPTOR_HANDLE secondarySRV = dxCommon_->GetDepthSrvHandleGpu();
-	if(currentPPType_ == PostProcess::Type::Dissolve){
+	if(currentType == PostProcess::Type::Dissolve){
 		secondarySRV = TextureManager::GetInstance()->GetSrvHandleGPU(currentMaskPath_);
 	}
 
 	// ポストプロセスの実行
 	// ほかのポストプロセスをかけていない間は、体力の表現をかける(放射ブラーなどの一瞬の演出は、終われば体力の表現に戻る)
-	PostProcess::Type drawType = currentPPType_;
+	PostProcess::Type drawType = currentType;
 	if(drawType == PostProcess::Type::PostProcess && isDamageEffectVisible_){
 		drawType = PostProcess::Type::DamageInk;
 	}
@@ -280,36 +255,43 @@ void Application::ShowPostProcessUI(){
 	}
 
 	const char* typeNames[] = {"Default", "BoxFilter", "Grayscale", "Vignette", "GaussianBlur", "LuminanceOutline", "DepthOutline", "RadialBlur", "Dissolve", "Random", "Glitch", "DamageInk"};
-	int currentIdx = static_cast<int>(currentPPType_);
+	PostProcess::Type currentType = postEffectState_->GetType();
+	int currentIdx = static_cast<int>(currentType);
 
+	// 選んだ種類をかけ続ける状態へ切り替える
 	if(ImGui::Combo("Filter Type",&currentIdx,typeNames,IM_ARRAYSIZE(typeNames))){
-		currentPPType_ = static_cast<PostProcess::Type>(currentIdx);
+		currentType = static_cast<PostProcess::Type>(currentIdx);
+		SetCurrentPPType(currentType);
 	}
 
 	ImGui::Separator();
 
 	// 各フィルターごとの詳細設定UI
-	if(currentPPType_ == PostProcess::Type::Vignette){
+	if(currentType == PostProcess::Type::Vignette){
 		static float intensity = 0.5f,scale = 0.8f;
 		if(ImGui::DragFloat("Intensity",&intensity,0.01f,0.0f,1.0f)) postProcess_->SetVignetteIntensity(intensity);
 		if(ImGui::DragFloat("Scale",&scale,0.01f,0.0f,2.0f)) postProcess_->SetVignetteScale(scale);
-	} else if(currentPPType_ == PostProcess::Type::BoxFilter || currentPPType_ == PostProcess::Type::GaussianBlur){
+	} else if(currentType == PostProcess::Type::BoxFilter || currentType == PostProcess::Type::GaussianBlur){
 		static int k = 1;
-		if(ImGui::SliderInt((currentPPType_ == PostProcess::Type::BoxFilter)?"Kernel Size":"Blur Strength",&k,0,10)){
+		if(ImGui::SliderInt((currentType == PostProcess::Type::BoxFilter)?"Kernel Size":"Blur Strength",&k,0,10)){
 			postProcess_->SetKernelSize(k);
 		}
-	} else if(currentPPType_ == PostProcess::Type::RadialBlur){
+	} else if(currentType == PostProcess::Type::RadialBlur){
 		static float center[2] = {0.5f, 0.5f},width = 0.01f;
 		if(ImGui::DragFloat2("Center",center,0.01f,0.0f,1.0f)) postProcess_->SetRadialBlurCenter({center[0], center[1]});
 		if(ImGui::DragFloat("Width",&width,0.001f,0.0f,0.1f)) postProcess_->SetRadialBlurWidth(width);
-	} else if(currentPPType_ == PostProcess::Type::Dissolve){
+	} else if(currentType == PostProcess::Type::Dissolve){
 		static float threshold = 0.0f,edgeWidth = 0.03f,edgeColor[3] = {1.0f, 0.4f, 0.3f};
-		if(isDissolving_) threshold = dissolveTimer_ / kDissolveDuration;
+		// 画面を消していく状態の間は、その状態の今の閾値をスライダーに出す
+		if(const DissolvePostEffectState* dissolveState = dynamic_cast<const DissolvePostEffectState*>(postEffectState_.get())){
+			threshold = dissolveState->GetThreshold();
+		}
 
 		if(ImGui::SliderFloat("Threshold",&threshold,0.0f,1.0f)) postProcess_->SetDissolveThreshold(threshold);
-		if(ImGui::Button("Start Animation")){ isDissolving_ = true; dissolveTimer_ = 0.0f; }
+		if(ImGui::Button("Start Animation")){ StartDissolveAnimation(); }
 		ImGui::SameLine();
-		if(ImGui::Button("Reset")){ isDissolving_ = false; dissolveTimer_ = 0.0f; postProcess_->SetDissolveThreshold(0.0f); }
+		// 消していく途中でも止め、消えていない画面のままディゾルブをかけ続ける状態に戻す
+		if(ImGui::Button("Reset")){ SetCurrentPPType(PostProcess::Type::Dissolve); postProcess_->SetDissolveThreshold(0.0f); }
 
 		if(ImGui::SliderFloat("Edge Width",&edgeWidth,0.0f,0.2f)) postProcess_->SetDissolveEdgeWidth(edgeWidth);
 		if(ImGui::ColorEdit3("Edge Color",edgeColor)) postProcess_->SetDissolveEdgeColor({edgeColor[0], edgeColor[1], edgeColor[2]});
@@ -317,7 +299,7 @@ void Application::ShowPostProcessUI(){
 		const char* masks[] = {"resource/noise0.png", "resource/noise1.png"};
 		static int currentMaskIndex = 0;
 		if(ImGui::Combo("Select Mask",&currentMaskIndex,masks,IM_ARRAYSIZE(masks))) currentMaskPath_ = masks[currentMaskIndex];
-	} else if(currentPPType_ == PostProcess::Type::Glitch){
+	} else if(currentType == PostProcess::Type::Glitch){
 		static float intensity = 0.5f;
 		if(ImGui::DragFloat("Intensity",&intensity,0.01f,0.0f,1.0f)) postProcess_->SetRandomIntensity(intensity);
 	}
@@ -325,20 +307,28 @@ void Application::ShowPostProcessUI(){
 #endif
 }
 
+// -------------------------------------------------
+// ポストエフェクトの動作モード(状態)の切り替え
+// -------------------------------------------------
+void Application::ChangePostEffectState(std::unique_ptr<PostEffectState> nextState){
+	postEffectState_ = std::move(nextState);
+	postEffectState_->Enter(postProcess_.get());
+}
+
+void Application::SetCurrentPPType(PostProcess::Type type){
+	ChangePostEffectState(std::make_unique<SelectedPostEffectState>(type));
+}
+
+void Application::StartDissolveAnimation(){
+	ChangePostEffectState(std::make_unique<DissolvePostEffectState>());
+}
+
 void Application::TriggerGlitch(){
-	currentPPType_ = PostProcess::Type::Glitch;
-	isGlitchActive_ = true;
-	glitchTimer_ = kGlitchDuration;
+	ChangePostEffectState(std::make_unique<GlitchPostEffectState>());
 }
 
 void Application::TriggerRadialBlur(const Vector2& center,float width,float duration){
-	currentPPType_ = PostProcess::Type::RadialBlur;
-	isRadialBlurActive_ = true;
-	radialBlurTimer_ = 0.0f;
-	radialBlurDuration_ = duration;
-	radialBlurStartWidth_ = width;
-	postProcess_->SetRadialBlurCenter(center);
-	postProcess_->SetRadialBlurWidth(width);
+	ChangePostEffectState(std::make_unique<RadialBlurPostEffectState>(center,width,duration));
 }
 
 void Application::SetDamageEffect(float amount,float flash){

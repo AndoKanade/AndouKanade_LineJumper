@@ -150,7 +150,7 @@
 - GPU-Based Validation は Debug だけで有効（Development はデバッグレイヤーのみ、Release はどちらもなし）。描画がおかしい・落ちるときは Debug で動かして出力ウィンドウを確認する。
 - 使われていない物が残っている：RailEditor の分岐設定（UI と `rail*.json` の `branchTargetRailIndex` / `branchTargetPointIndex`）、`StartSequence::IsIntroRunning()`、`GameScene.json` の `aimSpeed`・`aimYawLimit`・`noseOffset`（どのクラスも登録していない古い項目）。
 - ImGui のデバッグウィンドウ名が `"Rail Branch Debug"` のまま（分岐は使っていない）。Play 中も常に出ていて、右側のパネルに重なる。
-- 放射ブラーが終わると、ポストエフェクトの種類を Default に戻す（`Application::Update()`）。ImGui で別の種類を選んでいても戻ってしまう。
+- 放射ブラーが終わると、ポストエフェクトの種類を Default に戻す（`RadialBlurPostEffectState::Update()`）。ImGui で別の種類を選んでいても戻ってしまう。
 - **ステージ4が重い**：Development で、輪を回っているだけで 38〜44 FPS だった（2026-11-16、ユーザーの環境）。1 フレームを 1/60 秒として進めているため、全体が遅く見える。ボスの被弾の火花を消しても変わらなかった。ステージ1との比較・Edit モードでの値をまだ取っておらず、原因は分かっていない（「Rail Branch Debug」ウィンドウの一番上に FPS を出してある）。
 - 使わなくなった調整項目は無いが、`GameScene.json` を Save すると、今回足した項目（`playerMaxHp`・`hpRegenStartDelay`・`hpRegenSpeed`・`enemyBulletDamage`）が書き足される。
 - Release 構成で動かしての確認はまだしていない（ビルドが通ることだけ確認済み）。2026-11-16 のボス戦は Debug でビルドし、Development で起動して確認した。

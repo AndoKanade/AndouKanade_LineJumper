@@ -3,6 +3,7 @@
 #include "SceneManager.h"
 #include "RenderTexture.h"
 #include "PostProcess.h"
+#include "PostEffectState.h"
 #include <memory>
 #include <string>
 
@@ -64,8 +65,11 @@ public:
 	/// </summary>
 	void ShowPostProcessUI();
 
-	void SetCurrentPPType(PostProcess::Type type){ currentPPType_ = type; }
-	void StartDissolveAnimation(){ isDissolving_ = true; dissolveTimer_ = 0.0f; }
+	// 指定した種類のポストプロセスをかけ続ける状態へ切り替える
+	void SetCurrentPPType(PostProcess::Type type);
+	// ディゾルブで画面を消していく状態へ切り替える
+	void StartDissolveAnimation();
+	// グリッチを一瞬だけかける状態へ切り替える
 	void TriggerGlitch();
 
 	/// <summary>
@@ -92,30 +96,23 @@ protected:
 	bool UpdateQuitRequest() override;
 
 private:
+	/// <summary>
+	/// ポストエフェクトの動作モード(状態)を切り替え、新しい状態の始まりの値をポストプロセスに書き込む
+	/// </summary>
+	/// <param name="nextState">切り替え先の状態</param>
+	void ChangePostEffectState(std::unique_ptr<PostEffectState> nextState);
+
 	// --- 静的メンバ変数 ---
 	static Application* instance_;
 
 	// --- ポストプロセス関連リソース ---
 	std::unique_ptr<RenderTexture> renderTexture_;
 	std::unique_ptr<PostProcess> postProcess_;
-	PostProcess::Type currentPPType_ = PostProcess::Type::PostProcess;
 	std::string currentMaskPath_;
 
-	// --- Dissolveアニメーション用管理 ---
-	bool isDissolving_ = false;           // アニメーション中フラグ
-	float dissolveTimer_ = 0.0f;          // 経過時間
-	const float kDissolveDuration = 2.0f; // 合計時間（秒）
-
-	// --- グリッチ演出用管理 ---
-	bool isGlitchActive_ = false;         // グリッチ演出中フラグ
-	float glitchTimer_ = 0.0f;            // 残り時間タイマー
-	const float kGlitchDuration = 0.15f;  // 演出時間（秒）
-
-	// --- 放射ブラー演出用管理 ---
-	bool isRadialBlurActive_ = false;     // 演出中フラグ
-	float radialBlurTimer_ = 0.0f;        // 経過時間
-	float radialBlurDuration_ = 0.0f;     // ブラーが消えるまでの時間（秒）
-	float radialBlurStartWidth_ = 0.0f;   // かけ始めのブラーの強さ
+	// --- ポストエフェクトの動作モード(状態) ---
+	// 描く種類と、グリッチ・放射ブラー・ディゾルブの進め方は今の状態に任せる(Stateパターン)
+	std::unique_ptr<PostEffectState> postEffectState_;
 
 	// --- 体力の表現用管理 ---
 	bool isDamageEffectVisible_ = false;  // 体力の表現をかけるか(減り具合か色づきが 0 より大きい間)
