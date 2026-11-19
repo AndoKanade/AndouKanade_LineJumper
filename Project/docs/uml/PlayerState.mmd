@@ -1,0 +1,92 @@
+---
+title: プレイヤーの移動の状態（State パターン）
+---
+classDiagram
+    direction TB
+
+    class Player {
+        -unique_ptr~State~ state_
+        -float railT_
+        -Vector3 freePosition_
+        -float freeVelocityY_
+        +UpdateMovement(Input*, RailEditor*, const StartPlatform*, const Vector3&, const Vector3&, float, float) bool
+        +IsOnRail() bool
+        +IsGroundedOnRail() bool
+        -ChangeState(unique_ptr~State~) void
+    }
+
+    class State["Player::State"] {
+        <<abstract>>
+        +UpdateMovement(Player&, const MoveContext&) unique_ptr~State~*
+        +IsOnRail() bool*
+        +IsGroundedOnRail() bool
+        +GetRailOffset() Vector3
+    }
+
+    class RailRunState["Player::RailRunState"] {
+        +UpdateMovement(Player&, const MoveContext&) unique_ptr~State~
+        +IsOnRail() bool
+        +IsGroundedOnRail() bool
+        +HandleJumpInput(Player&, const MoveContext&) unique_ptr~State~$
+        -TrySwitchToSideRail(Player&, RailEditor*, const Vector3&) unique_ptr~State~$
+    }
+
+    class RailHopState["Player::RailHopState"] {
+        -float hopHeight_
+        -float hopVelocityY_
+        +UpdateMovement(Player&, const MoveContext&) unique_ptr~State~
+        +IsOnRail() bool
+        +GetRailOffset() Vector3
+    }
+
+    class RailSwitchState["Player::RailSwitchState"] {
+        -Vector3 startOffset_
+        -float timer_
+        +RailSwitchState(const Vector3&)
+        +UpdateMovement(Player&, const MoveContext&) unique_ptr~State~
+        +IsOnRail() bool
+        +GetRailOffset() Vector3
+    }
+
+    class OffRailState["Player::OffRailState"] {
+        <<abstract>>
+        +IsOnRail() bool
+        #UpdateFreeMovement(Player&, const MoveContext&, bool) FreeMoveResult$
+    }
+
+    class PlatformState["Player::PlatformState"] {
+        +UpdateMovement(Player&, const MoveContext&) unique_ptr~State~
+    }
+
+    class FallState["Player::FallState"] {
+        +UpdateMovement(Player&, const MoveContext&) unique_ptr~State~
+    }
+
+    class MoveContext["Player::MoveContext"] {
+        <<struct>>
+        +Input* input
+        +RailEditor* railEditor
+        +const StartPlatform* startPlatform
+        +Vector3 cameraForward
+        +Vector3 cameraRight
+        +float deltaTime
+    }
+
+    class Input
+    class RailEditor
+    class StartPlatform
+
+    Player *-- State : 今の状態を1つだけ所有する（unique_ptr）
+    State <|-- RailRunState
+    State <|-- RailHopState
+    State <|-- RailSwitchState
+    State <|-- OffRailState
+    OffRailState <|-- PlatformState
+    OffRailState <|-- FallState
+
+    State ..> MoveContext : 受け取る
+    MoveContext o-- Input : 借りて使う（delete しない）
+    MoveContext o-- RailEditor : 借りて使う（delete しない）
+    MoveContext o-- StartPlatform : 借りて使う（delete しない）
+
+    note for State "状態自身が次の状態を UpdateMovement() の戻り値で返し、<br>Player は ChangeState() でその状態へ切り替える<br>（nullptr のときは今の状態を続ける）"
