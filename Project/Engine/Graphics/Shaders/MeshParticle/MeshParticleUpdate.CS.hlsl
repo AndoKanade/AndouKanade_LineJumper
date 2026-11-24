@@ -88,6 +88,12 @@ MeshParticleInstance MakeInstance(MeshParticle particle, KindParams kind)
     float32_t3 scale = float32_t3(particle.baseScale, particle.baseScale, particle.baseScale);
     float32_t3 rotate = particle.rotate;
 
+    // 火花のように、寿命に合わせて出たときの色から決まった色へ変えていく
+    if (kind.changesColor != 0)
+    {
+        color = lerp(particle.color, kind.endColor, lifeRate);
+    }
+
     if (kind.expandsAndFades != 0)
     {
         // 閃光のように、一気に広がりながら透明になって消える
@@ -164,8 +170,10 @@ void main(uint32_t3 dispatchId : SV_DispatchThreadID)
         return;
     }
 
-    // 種類ごとの重力を速度に加えてから位置を進める
+    // 種類ごとの重力を速度に加え、空気抵抗で減速させてから位置を進める
+    // 空気抵抗は時間の刻みが変わっても同じ減り方になるよう指数で減らす
     particle.velocity.y -= kind.gravity * deltaTime;
+    particle.velocity *= exp(-kind.drag * deltaTime);
     float32_t3 previousPosition = particle.position;
     particle.position += particle.velocity * deltaTime;
     particle.rotate += particle.angularVelocity * deltaTime;

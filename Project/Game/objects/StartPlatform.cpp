@@ -291,6 +291,12 @@ Vector3 StartPlatform::GetBarrierCenter(int stageIndex) const{
 	return ToWorld({0.0f, kBarrierHeight * kHalf, -kBarrierDistances[index]});
 }
 
+// 指定したステージの壁の色
+Vector4 StartPlatform::GetBarrierColor(int stageIndex) const{
+	const int index = std::clamp(stageIndex,0,kBarrierCount - 1);
+	return kBarrierColors[index];
+}
+
 // 指定したゲートを開けられるか
 // 最後のステージは、ほかのステージをすべてクリアしていても、壁を壊す演出で壁が壊れるまでは開けられない
 bool StartPlatform::IsGateSelectable(int gateIndex) const{

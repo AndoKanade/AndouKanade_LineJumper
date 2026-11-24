@@ -11,6 +11,7 @@ class Input;
 class Obj3D;
 class Obj3dCommon;
 class StartPlatform;
+class InkEffectManager;
 
 /// <summary>
 /// プレイヤー
@@ -34,6 +35,9 @@ public:
 	/// <param name="objCommon">3Dオブジェクト共通設定</param>
 	/// <param name="paramGroup">調整項目を登録するGlobalVariablesのグループ名</param>
 	void Initialize(Obj3dCommon* objCommon,const std::string& paramGroup);
+
+	// 被弾したときの火花を出す演出を設定する(設定しなければ火花を出さない)
+	void SetInkEffect(InkEffectManager* inkEffect){ inkEffect_ = inkEffect; }
 
 	// レール先頭・オンレール・体力満タンの初期状態に戻す
 	void Reset();
@@ -215,6 +219,8 @@ private:
 
 	// 描画用の3Dオブジェクト(三人称視点用のプレイヤーのモデル)
 	std::unique_ptr<Obj3D> obj_;
+	// 被弾したときの火花を出す演出(GameScene が持つものを借りる)
+	InkEffectManager* inkEffect_ = nullptr;
 
 	// 調整項目を登録したGlobalVariablesのグループ名
 	std::string paramGroup_;
@@ -229,6 +235,9 @@ private:
 	// 今の移動の状態(レール走行・跳ねる・飛び移る・台の上を歩く・ジャンプ/落下)
 	// 跳ねている高さ・飛び移りの経過時間など、その状態の間だけ使う値は状態クラスが持つ
 	std::unique_ptr<State> state_;
+	// このフレームにレール・スタート台へ着地し、まだ着地のしぶきを出していないか
+	// (着地は移動の状態が決め、しぶきは足元の位置が決まる UpdateTransform() で出す)
+	bool isLandingPending_ = false;
 
 	// プレイヤーの自立(ジャンプ+WASD移動)用の状態
 	// オフレール中の基準座標(オンレール中のレール上の座標に相当する、カメラ・プレイヤーの共通の基準点)

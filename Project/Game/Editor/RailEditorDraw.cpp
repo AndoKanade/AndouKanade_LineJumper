@@ -642,6 +642,37 @@ void RailEditor::UpdateRailLocks(const std::vector<bool>& lockedRails,float grow
 	}
 }
 
+// 出てから管を伸ばしている最中のレールの、伸びている先端の位置を求める
+// 伸ばした長さを含む輪と輪の間の区間を探し、その区間の中での割合から進行度を求めて、曲線の上の位置にする
+// (管の輪は進行度を等分した位置に置いているため、区間の番号と割合から進行度がそのまま求まる)
+bool RailEditor::GetGrowingTubeTip(int railIndex,Vector3& outPosition) const{
+	if(railIndex < 0 || railIndex >= static_cast<int>(rails_.size())){
+		return false;
+	}
+	const Rail& rail = rails_[railIndex];
+	// 区間を作るには輪が2つ以上いる
+	constexpr size_t kMinRingCount = 2;
+	if(rail.isLocked || rail.unlockGrownLength >= kFullyGrownLength || rail.tubeRingDistances.size() < kMinRingCount){
+		return false;
+	}
+
+	const std::vector<float>& ringDistances = rail.tubeRingDistances;
+	const size_t segmentCount = ringDistances.size() - 1;
+	// 伸ばした長さより先にある最初の輪を区間の終わりにする(始点・終点の外に出ないよう、1〜区間数に収める)
+	const size_t segmentEnd = std::clamp(static_cast<size_t>(std::upper_bound(ringDistances.begin(),ringDistances.end(),rail.unlockGrownLength) - ringDistances.begin()),static_cast<size_t>(1),segmentCount);
+	const size_t segmentStart = segmentEnd - 1;
+	const float segmentLength = ringDistances[segmentEnd] - ringDistances[segmentStart];
+	const float rateInSegment = (segmentLength > 0.0f)?std::clamp((rail.unlockGrownLength - ringDistances[segmentStart]) / segmentLength,0.0f,1.0f):0.0f;
+	const float t = (static_cast<float>(segmentStart) + rateInSegment) / static_cast<float>(segmentCount);
+	outPosition = ComputePositionOnRail(GetCurvePoints(rail),t);
+	return true;
+}
+
+// まだ塗っていないレールの管の色
+Vector4 RailEditor::GetUnpaintedRailColor(){
+	return kUnpaintedRailColor;
+}
+
 // 管を伸ばす演出を飛ばして、出ていないレールをすぐに反映する
 void RailEditor::ResetRailLocks(const std::vector<bool>& lockedRails){
 	ResetStageRailLocks(stageIndex_,lockedRails);

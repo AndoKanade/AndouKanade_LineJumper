@@ -9,6 +9,7 @@
 class Obj3D;
 class Obj3dCommon;
 class EnemyAttackState;
+class InkEffectManager;
 
 /// <summary>
 /// 雑魚敵
@@ -64,6 +65,8 @@ public:
 	void SetPatrolDirection(const Vector3& patrolDirection);
 	// 体力の最大値を設定する(現在の体力が最大値を超える場合は最大値に合わせる)
 	void SetMaxHp(int maxHp);
+	// 撃った弾から垂れるインクの粒(軌跡)を出す演出を設定する(設定しなければ軌跡を出さない)
+	void SetInkEffect(InkEffectManager* inkEffect){ bulletPool_.SetInkEffect(inkEffect); }
 
 	/// <summary>
 	/// 発射済みの弾とプレイヤーの当たり判定を行い、命中した弾を消滅させる

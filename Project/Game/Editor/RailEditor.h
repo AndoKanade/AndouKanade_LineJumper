@@ -153,6 +153,16 @@ public:
 	// 管を伸ばす演出を飛ばして、出ていないレールをすぐに反映する(リスタート・チェックポイントからのやり直しで使う)
 	void ResetRailLocks(const std::vector<bool>& lockedRails);
 	/// <summary>
+	/// 今のステージの指定したレールが、出てから管を伸ばしている最中なら、伸びている先端の位置を求める
+	/// (鍵の的を壊して出たレールに沿って、先端からしぶきを出すのに使う)
+	/// </summary>
+	/// <param name="railIndex">調べるレール</param>
+	/// <param name="outPosition">伸びている先端の位置</param>
+	/// <returns>管を伸ばしている最中なら true(出ていない・伸ばしきった・管を作っていないときは false)</returns>
+	bool GetGrowingTubeTip(int railIndex,Vector3& outPosition) const;
+	// まだ塗っていないレールの管の色を取得(伸びている先端のしぶきを、レールと同じ色にするのに使う)
+	static Vector4 GetUnpaintedRailColor();
+	/// <summary>
 	/// 指定ステージのレールに、出ていないレールをすぐに反映する
 	/// Play中は今のステージ以外のレールもスタート台から見えるよう描くため、そのステージの鍵の的から求めた出方を渡してもらう
 	/// </summary>

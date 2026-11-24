@@ -114,6 +114,8 @@ public:
 
 	// 指定したステージの壁の中心の座標(壁を映すカメラの注目する位置と、壊れたときに破片を飛ばす位置に使う)
 	Vector3 GetBarrierCenter(int stageIndex) const;
+	// 指定したステージの壁の色(壊れたときに、壁と同じ色の破片を飛ばすのに使う)
+	Vector4 GetBarrierColor(int stageIndex) const;
 
 	/// <summary>
 	/// 台の上面の中央を原点にした、台の向きでの座標をワールド座標に変換する(台を映すカメラの位置決めに使う)

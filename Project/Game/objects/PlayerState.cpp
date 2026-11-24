@@ -88,6 +88,7 @@ std::unique_ptr<Player::State> Player::RailHopState::UpdateMovement(Player& owne
 
 	// レールの高さまで戻ったら着地させる(レールから外れることはないため、必ず同じレールに着地する)
 	// 着地したフレームからジャンプを受け付ける
+	owner.isLandingPending_ = true;
 	std::unique_ptr<State> jumpState = RailRunState::HandleJumpInput(owner,context);
 	return jumpState?std::move(jumpState):std::make_unique<RailRunState>();
 }
@@ -106,6 +107,7 @@ std::unique_ptr<Player::State> Player::RailSwitchState::UpdateMovement(Player& o
 	timer_ = kRailSwitchDuration;
 
 	// 着地したフレームからジャンプを受け付ける
+	owner.isLandingPending_ = true;
 	std::unique_ptr<State> jumpState = RailRunState::HandleJumpInput(owner,context);
 	return jumpState?std::move(jumpState):std::make_unique<RailRunState>();
 }
@@ -241,11 +243,14 @@ std::unique_ptr<Player::State> Player::PlatformState::UpdateMovement(Player& own
 // -------------------------------------------------
 
 // 空中では台の端で押し戻さず、スタート台の上面かレールに着地したらその状態へ移る
+// (台の上を歩いてレールに乗ったときは着地ではないため、着地の演出はここで着地したときだけ出す)
 std::unique_ptr<Player::State> Player::FallState::UpdateMovement(Player& owner,const MoveContext& context){
 	switch(UpdateFreeMovement(owner,context,false)){
 	case FreeMoveResult::OnRail:
+		owner.isLandingPending_ = true;
 		return std::make_unique<RailRunState>();
 	case FreeMoveResult::OnPlatform:
+		owner.isLandingPending_ = true;
 		return std::make_unique<PlatformState>();
 	case FreeMoveResult::Airborne:
 	default:

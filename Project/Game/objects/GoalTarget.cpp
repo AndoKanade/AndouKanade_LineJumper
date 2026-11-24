@@ -6,7 +6,7 @@
 #include "CameraManager.h"
 #include "Camera.h"
 #include "GlobalVariables.h"
-#include "ParticleManager.h"
+#include "InkEffectManager.h"
 #include "Editor/RailEditor.h"
 #include <algorithm>
 #include <cmath>
@@ -94,7 +94,13 @@ void GoalTarget::Update(const RailEditor* railEditor,float playerRailT,bool isOn
 	const Model::BoundingSphere hitSphere = GetHitSphere();
 	while(hp_ > 0 && bullets.CheckHit(hitSphere)){
 		hp_ -= bullets.GetDamage();
-		ParticleManager::GetInstance()->EmitSpark(position_);
+		// インクのしぶきは、的の模様の面(カメラへ向けている)からカメラの方へ跳ねさせる(重なっていて向きが定まらないときは真上へ跳ねさせる)
+		const Vector3 toCamera = cameraPosition - position_;
+		const Vector3 splashDirection = (Length(toCamera) >= kMinFaceDistance)?Normalize(toCamera):kWorldUp;
+		if(inkEffect_){
+			inkEffect_->EmitSpark(position_);
+			inkEffect_->EmitHitSplash(position_,splashDirection);
+		}
 	}
 	if(hp_ <= 0){
 		hp_ = 0;

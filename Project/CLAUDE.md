@@ -80,10 +80,9 @@
   - クリアしたステージのゲートの前の床をインクで塗るようにした（`StartPlatform::PaintClearedGateFloors()`。台のインクを消すたびに塗り直す）。
   - 後ろの通路に、ステージ1〜3の壁を手前から1枚ずつ立てた（色はステージごとに違う）。立っている壁より奥へは歩けない。最後のステージのゲートは、壁がすべて壊れるまで開けられない。
   - ステージ1〜3をクリアして大ジャンプで着地すると、カメラが通路の壁へ向き、そのステージの壁が壊れてから戻る（`BarrierBreakCutscene`。回す 0.5 秒 → 壊す 1 秒 → 戻す 0.5 秒。調整項目 `barrierTurnDuration` / `barrierBreakDuration` / `barrierReturnDuration`）。SPACE で飛ばせる。
-  - プレイ会用の設定を足した（調整項目 `GameScene` グループの `playSessionMode`。初期値は OFF）。ON のときは次のようになる。
-    - 開けられるのは左（ステージ3）のゲートだけ（2026-11-17 にステージ1から変えた。`StageInfo::kPlaySessionStageIndex`）。正面・右のゲートの前に来ると「いまは遊べないよ!!」の画像を出す（`StageLockedNotice`、`resource/UI/stageLocked.png`、`tools/generate_stage_locked_notice.py`）。
-    - ステージ3でゴールの的を壊すと、大ジャンプでスタート台へ戻り、着地したらクリア画面へ移る（クリア画面をすぐ見られるようにするため。2026-11-17）。ステージ3の普通の的は消した（ゴールの的だけ）。結果はステージ3の分だけになるため、ランクは S〜C からランダムに決める（`ClearScene::Initialize()`）。
-    - H キーの操作説明も、画面の流れをステージ3だけにしたもの（`resource/UI/helpPlaySession.png`）を出す。
+  - プレイ会用の設定を足した（調整項目 `GameScene` グループの `playSessionMode`。初期値は OFF）。ON のときは、開けられるのが正面（ステージ1）のゲートだけになる（`StageInfo::kPlaySessionStageIndex`。2026-11-24 にステージ3から戻した）。ほかのゲートの前に来ると「いまは遊べないよ!!」の画像を出す（`StageLockedNotice`、`resource/UI/stageLocked.png`、`tools/generate_stage_locked_notice.py`）。
+    - それ以外の流れは OFF のときと同じ（2026-11-24 に、ステージ3をクリアしたらクリア画面へ移る・ランクをランダムに決める・H キーでプレイ会用の操作説明を出す、をやめた）。ステージ1をクリアすると大ジャンプでスタート台へ戻り、通路の壁が壊れ、またステージ1を選べる。クリア画面へは移らない。
+    - `resource/UI/helpPlaySession.png` は、今はどこからも使っていない。ステージ3の的はゴールの的だけのまま。
     - プレイ会では、Global Variables パネルで `playSessionMode` を ON にして Save するか、`resource/GlobalVariables/GameScene.json` の `playSessionMode` を `true` にしたものを使う。提出用は OFF に戻す。
   - 場面ごとに画面の上へ操作の案内を1つずつ出すようにした（仮。`TutorialHints`、画像は `tools/generate_tutorial_hints.py`）。「WASD で移動・マウスで見回す（2m 歩いたら消える）→ 左クリックで試し撃ち（5 発撃ったら消える）→ ゲートの前で SPACE（ゲートを開けたら消える）→ レールで的を撃つ（的を1つ壊すか 6 秒で消える）」の順。タイトルから始め直すと最初から出し、落ちてやり直しても出し直さない。ゴールの的の案内は、見てから足すか決める。
   - 鍵の的を壊して出たレールへ飛び移れるとき、そのレールがある側の画面の端に「A + SPACE」「D + SPACE」を点滅させて出すようにした（`RailSwitchPrompt`、画像は `tools/generate_rail_switch_prompt.py`）。左右は飛び移る処理と同じ判定（`Player::FindSideRailDirection()`）で求める。一度乗った鍵のレールには出さない。最初にこの案内を出したときだけ、飛び移るまで（最大 3 秒）レールを進む・敵・弾・的・しぶきを 0.25 倍の速さにする（カメラとキーの入力は通常の速さ。タイトルから始め直すまでもう一度はしない）。
@@ -154,7 +153,8 @@
 - GPU-Based Validation は Debug だけで有効（Development はデバッグレイヤーのみ、Release はどちらもなし）。描画がおかしい・落ちるときは Debug で動かして出力ウィンドウを確認する。
   - Development は実行ライブラリにデバッグ版（`/MTd`）を使うため、コンパイラーが `_DEBUG` を自動で定義する。Debug だけで動かす処理は `#ifdef _DEBUG` ではなく `#if defined(_DEBUG) && !defined(DEVELOPMENT_BUILD)` で分ける（`DEVELOPMENT_BUILD` は Development だけで定義している）。
   - 2026-11-18 まで、これに気づかず Development でも GPU-Based Validation が有効になっていて、全体が 35〜50 FPS に落ち、初めて使うシェーダー（インクを塗る・火花・ポストエフェクト）で 150〜230ms 止まっていた。直した後はステージ4のボス戦まで約 55 FPS で、初めて使ったときの止まりも出ない。
-- パーティクル（`ParticleManager`）：1 フレームに何回でも出せる（グループごとに最大 64 回）。重力・空気抵抗・大きさと色の変化を `ParticleEmitParams` で指定できる。進める時間は `Update(deltaTime)` で渡し、インクのしぶきと同じ速さ（ヒットストップ・スロー）で進む。火花（`EmitSpark`）の値（`ParticleManager.cpp` の `kSpark*`）は遊んで決めた値ではない。`EmitSmoke` などの Spark 以外の関数は、グループを作っていないため呼んでも何も出ない。
+- パーティクルは `MeshParticleSystem` の1つだけ（2026-11-24 に `ParticleManager`・`ParticleEmitter`・`Shaders/Particle/` を消した）。被弾の火花も `InkEffectManager` の種類の1つ（`EmitSpark`。Player・GoalTarget・Boss・EnemyManager は `SetInkEffect()` で GameScene の `InkEffectManager` を借りる）。種類は最大 5（`kMaxKinds`。`MeshParticle.hlsli` と合わせる）で、今は5つとも使っている（しぶき・破片・閃光・火花・ボスの予備動作の光の粒）。
+  - 火花は、前の板ポリゴン＋加算合成から、球のモデル＋通常の半透明の合成（ライティングなし）に変わった。値（`InkEffectManager.h` の `kSpark*`）は前と同じで、遊んで決めた値ではない。
 - シーンが切り替わったときの読み込みで 0.4〜0.6 秒止まる（ゲームへ戻ったときは、レールの管を作る 40ms も入る）。暗転の演出の裏で起きていれば問題ない。
 - ウィンドウのメッセージの処理（`WinAPI::ProcessMessage()`）が、ときどき 10〜28ms かかる（1 フレーム遅れる程度）。霧のタイル（`Ground::DrawFog()`）は 1 枚ずつ描いていて、重いフレームでは 5〜12ms かかる。
 - 使われていない物が残っている：RailEditor の分岐設定（UI と `rail*.json` の `branchTargetRailIndex` / `branchTargetPointIndex`）、`StartSequence::IsIntroRunning()`、`GameScene.json` の `aimSpeed`・`aimYawLimit`・`noseOffset`（どのクラスも登録していない古い項目）。
