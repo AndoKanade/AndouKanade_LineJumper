@@ -1,6 +1,6 @@
 # 3Dレールシューティング 開発ドキュメント
 
-最終更新: 2026-11-16
+最終更新: 2026-11-18
 
 ---
 
@@ -53,7 +53,8 @@
 - 一緒に作ったもの：ループするレール（Rail Editor の「Loop Rail」）、終点で自動で飛び移るレール（「End Transfer Rail」）、敵の弾の使い回しの共用（`EnemyBulletPool`）、プレイヤーの体力制（最大 100、時間とともに回復）。
 
 #### 6. JSONホットリロード機能（一部対応・優先度低）
-- GlobalVariables による調整項目（resource/GlobalVariables/GameScene.json / Title.json）は、実行中の ImGui 編集と外部ファイル書き換えの反映に対応済み。
+- GlobalVariables による調整項目（resource/GlobalVariables/GameScene.json / Title.json）は、実行中の ImGui 編集と外部ファイル書き換えの反映に対応済み。外部ファイルの更新時刻は 0.5 秒ごとに調べる（毎フレーム調べると 1〜2ms かかっていたため。2026-11-18）。
+- レール・的・敵の配置データは、NaN・無限大を保存すると JSON に `null` と書かれて次に起動できなくなるため、保存・読み込みのときに座標・向きは 0、レールの速さは 1.0 に置き換える（`Game/Editor/EditorJson.h`。置き換えたら出力ウィンドウに `EditorJson:` と出す）。NaN が入る原因（2026-11-18 にステージ1の最初の的の座標が NaN で保存された）は分かっていない。
 - レール・的・敵の配置データは各エディターの Save / Load ボタン（または Save All・Ctrl+S）による手動操作のため、自動反映は未対応。
 
 #### 9. スタート台の4辺からステージを出す（仕組みは完了）
@@ -103,7 +104,6 @@
 2. スタート台を試し撃ち場にする（照準の上下の可動範囲 0.5 ラジアンのままだと足元の床を撃ちにくい）。
 3. 敵の足場ブロック（敵を出すステージ用）。
 4. 当たったときの演出・サウンド（効果音の素材を `resource/music/se/` に置いてから）。
-5. ステージ4の重さを調べる（下の 3.2 を参照）。
 
 ---
 
@@ -146,12 +146,20 @@
 - `resource/music/se/` の `catapult_preview.mp3` は、今はどこからも鳴らしていない（`cancel.mp3`・`move.mp3` は ESC の終了確認メニューで鳴らす）。
 
 **実装品質・パフォーマンス**
-- インクのしぶき・破片（`InkEffectManager`）は、1 個ずつ別の Obj3D で描いていて描画命令が多い。レールの管（Play 中は 2026-10-24、Edit 中の曲線・着地範囲は 2026-10-28）は 1 本のモデルにまとめて軽くした（`RailEditor::AppendTubeMesh`）ので、重くなったら同じやり方かインスタンシングで描く。
+- インクのしぶき・破片・閃光（`InkEffectManager`）は、GPU で動かして種類ごとに1回の命令で描く（`MeshParticleSystem`、シェーダーは `Engine/Graphics/Shaders/MeshParticle/`。2026-11-24）。出し方（数・速さ・ばらつき）は今までどおり `InkEffectManager` で決める。
+  - 種類ごとのモデルは `InkEffectManager.cpp` の先頭の表（パス・大きさを揃える倍率・原点をずらす量）で決める。配布モデルから差し替えるときはそこだけを書き換える。しぶきは飛ぶ向きにモデルの +Z を向けて伸ばす。
+  - 見た目を Obj3D と同じにするため、`MeshParticle.PS.hlsl` のライティングは `Object3d.PS.hlsl` と同じ式にしている。Obj3D のライティングを変えたら、こちらも合わせて変える。
+  - 台に落ちたしぶきは、GPU で「台の上面の高さを上から下へ横切った」ものを見つけて次のフレームに CPU へ返し、`StartPlatform::TryLandInk()` で塗れたら消す。そのため、塗られるのは今までより1フレーム遅く、その1フレームは台の上面のすぐ下にいる（ほとんど台に隠れる）。調べられるのは水平な面1枚だけ。
+  - レールの管（Play 中は 2026-10-24、Edit 中の曲線・着地範囲は 2026-10-28）は 1 本のモデルにまとめて軽くした（`RailEditor::AppendTubeMesh`）。
 - GPU-Based Validation は Debug だけで有効（Development はデバッグレイヤーのみ、Release はどちらもなし）。描画がおかしい・落ちるときは Debug で動かして出力ウィンドウを確認する。
+  - Development は実行ライブラリにデバッグ版（`/MTd`）を使うため、コンパイラーが `_DEBUG` を自動で定義する。Debug だけで動かす処理は `#ifdef _DEBUG` ではなく `#if defined(_DEBUG) && !defined(DEVELOPMENT_BUILD)` で分ける（`DEVELOPMENT_BUILD` は Development だけで定義している）。
+  - 2026-11-18 まで、これに気づかず Development でも GPU-Based Validation が有効になっていて、全体が 35〜50 FPS に落ち、初めて使うシェーダー（インクを塗る・火花・ポストエフェクト）で 150〜230ms 止まっていた。直した後はステージ4のボス戦まで約 55 FPS で、初めて使ったときの止まりも出ない。
+- パーティクル（`ParticleManager`）：1 フレームに何回でも出せる（グループごとに最大 64 回）。重力・空気抵抗・大きさと色の変化を `ParticleEmitParams` で指定できる。進める時間は `Update(deltaTime)` で渡し、インクのしぶきと同じ速さ（ヒットストップ・スロー）で進む。火花（`EmitSpark`）の値（`ParticleManager.cpp` の `kSpark*`）は遊んで決めた値ではない。`EmitSmoke` などの Spark 以外の関数は、グループを作っていないため呼んでも何も出ない。
+- シーンが切り替わったときの読み込みで 0.4〜0.6 秒止まる（ゲームへ戻ったときは、レールの管を作る 40ms も入る）。暗転の演出の裏で起きていれば問題ない。
+- ウィンドウのメッセージの処理（`WinAPI::ProcessMessage()`）が、ときどき 10〜28ms かかる（1 フレーム遅れる程度）。霧のタイル（`Ground::DrawFog()`）は 1 枚ずつ描いていて、重いフレームでは 5〜12ms かかる。
 - 使われていない物が残っている：RailEditor の分岐設定（UI と `rail*.json` の `branchTargetRailIndex` / `branchTargetPointIndex`）、`StartSequence::IsIntroRunning()`、`GameScene.json` の `aimSpeed`・`aimYawLimit`・`noseOffset`（どのクラスも登録していない古い項目）。
 - ImGui のデバッグウィンドウ名が `"Rail Branch Debug"` のまま（分岐は使っていない）。Play 中も常に出ていて、右側のパネルに重なる。
 - 放射ブラーが終わると、ポストエフェクトの種類を Default に戻す（`RadialBlurPostEffectState::Update()`）。ImGui で別の種類を選んでいても戻ってしまう。
-- **ステージ4が重い**：Development で、輪を回っているだけで 38〜44 FPS だった（2026-11-16、ユーザーの環境）。1 フレームを 1/60 秒として進めているため、全体が遅く見える。ボスの被弾の火花を消しても変わらなかった。ステージ1との比較・Edit モードでの値をまだ取っておらず、原因は分かっていない（「Rail Branch Debug」ウィンドウの一番上に FPS を出してある）。
 - 使わなくなった調整項目は無いが、`GameScene.json` を Save すると、今回足した項目（`playerMaxHp`・`hpRegenStartDelay`・`hpRegenSpeed`・`enemyBulletDamage`）が書き足される。
 - Release 構成で動かしての確認はまだしていない（ビルドが通ることだけ確認済み）。2026-11-16 のボス戦は Debug でビルドし、Development で起動して確認した。
 

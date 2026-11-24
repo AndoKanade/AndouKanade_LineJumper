@@ -58,7 +58,8 @@ public:
 	const Vector3& GetScale() const{ return transform.scale; }
 	const Vector3& GetRotate() const{ return transform.rotate; }
 	const Vector3& GetTranslate() const{ return transform.translate; }
-	const Matrix4x4& GetWorldMatrix() const{ return transformationMatrixData->World; }
+	// GPUへ渡すバッファ(CPUから読むのがとても遅い)ではなく、CPU側に持っている値を返す
+	const Matrix4x4& GetWorldMatrix() const{ return worldMatrix_; }
 	Model* GetModel() const{ return model; }
 	Model::Material* GetMaterial() const{ return materialData; }
 	Skeleton& GetSkeleton(){ return skeleton_; }
@@ -81,6 +82,10 @@ private:
 	// 行列用
 	Microsoft::WRL::ComPtr<ID3D12Resource> transformationMatrixResource;
 	TransformationMatrix* transformationMatrixData = nullptr;
+	// ワールド行列のCPU側の控え
+	// transformationMatrixData は GPU へ渡すための UPLOAD ヒープで、CPU から読むとキャッシュが効かずとても遅いため、
+	// 読むときは必ずこちらを使い、transformationMatrixData へは書き込むだけにする
+	Matrix4x4 worldMatrix_ = MakeIdentity4x4();
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> materialResource;
 	Model::Material* materialData = nullptr;

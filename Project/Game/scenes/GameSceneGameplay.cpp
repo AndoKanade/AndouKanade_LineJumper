@@ -26,6 +26,7 @@
 #include "objects/Boss.h"
 #include "objects/EnemyManager.h"
 #include "objects/InkEffectManager.h"
+#include "ParticleManager.h"
 #include "objects/ComboCounter.h"
 #include "objects/ContinuePoint.h"
 #include "objects/StageInfo.h"
@@ -592,7 +593,10 @@ void GameScene::UpdateGameplay(){
 		// ボスを倒してクリア画面へ移るまでの間も、同じようにゆっくり飛び散らせる
 		inkTimeScale = kGoalBreakTimeScale;
 	}
-	inkEffect_->Update(screenImpact_->IsHitStopping()?0.0f:worldDeltaTime * inkTimeScale);
+	const float effectUpdateDeltaTime = screenImpact_->IsHitStopping()?0.0f:worldDeltaTime * inkTimeScale;
+	inkEffect_->Update(effectUpdateDeltaTime);
+	// 火花などのパーティクルも、インクのしぶきと同じ速さで進める(ヒットストップ・スロー・やられ演出に合わせる。カメラ行列は描画時に反映する)
+	ParticleManager::GetInstance()->Update(effectUpdateDeltaTime);
 
 	// スピード線はレールを進んでいる間だけ出す
 	speedLines_->Update(isRidingRail,kDeltaTime);

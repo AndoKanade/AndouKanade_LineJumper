@@ -1,20 +1,22 @@
 #pragma once
 
 #include "MyMath.h"
+#include "MeshParticleSystem.h"
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <random>
 #include <vector>
 
 // 前方宣言
-class Obj3D;
 class Obj3dCommon;
 
 /// <summary>
 /// インクのしぶき・的の破片・撃破時の閃光の演出
-/// 毎回生成するとメモリ確保が重くなるため、起動時に決まった数だけ生成して使い回す。
-/// 空きが無いときは一番古いものを上書きする。
+/// 出し方(数・速さ・ばらつき)をここで決め、動かすのと描くのは GPU のパーティクル(MeshParticleSystem)で行う。
+/// 種類ごとに決まった数だけ使い回し、空きが無いときは一番古いものを上書きする。
 /// インクのしぶきは、着地を調べる処理(SetLandingHandler)を渡すと、面に着いたところにインクを塗って消える。
+/// 種類ごとのモデルは InkEffectManager.cpp の先頭の表で決めている(配布モデルから差し替えるときはそこを書き換える)。
 /// </summary>
 class InkEffectManager{
 public:
@@ -27,14 +29,20 @@ public:
 	InkEffectManager();
 	~InkEffectManager();
 
-	// 初期化処理(モデルの読み込みと、使い回す3Dオブジェクトの生成)
+	// 初期化処理(モデルの読み込みと、GPU のパーティクルの生成)
 	void Initialize(Obj3dCommon* objCommon);
 
 	// 出ている演出をすべて消す
 	void Reset();
 
-	// しぶきの着地を調べる処理を設定する(設定しなければ、しぶきは何にも着かずに寿命まで飛ぶ)
-	void SetLandingHandler(LandingHandler handler){ landingHandler_ = std::move(handler); }
+	/// <summary>
+	/// しぶきの着地を調べる処理を設定する(設定しなければ、しぶきは何にも着かずに寿命まで飛ぶ)
+	/// しぶきは GPU で動かしているため、surfaceHeight の高さを上から下へ横切ったしぶきだけを handler で調べる
+	/// (調べられるのは水平な面1枚だけ。横切ったフレームの次のフレームに調べる)
+	/// </summary>
+	/// <param name="surfaceHeight">着地を調べる面の高さ</param>
+	/// <param name="handler">着地を調べる処理</param>
+	void SetLandingHandler(float surfaceHeight,LandingHandler handler);
 
 	/// <summary>
 	/// 的を壊したときの演出(破片・インクのしぶき・閃光)
@@ -86,32 +94,17 @@ public:
 	void Draw();
 
 private:
-	// 演出1つ分の種類(動き方と見た目が変わる)
-	enum class Kind{
+	// 演出1つ分の種類(動き方と見た目が変わる。MeshParticleSystem に渡す種類の番号と同じ並び)
+	enum class Kind : uint32_t{
 		Droplet, // インクのしぶき(重力で落ち、飛ぶ向きに伸びる)
 		Shard,   // 的の破片(重力で落ち、回転する)
 		Flash,   // 撃破時の閃光(その場で広がって消える)
 	};
+	// 種類の数
+	static constexpr size_t kKindCount = 3;
 
-	// 演出1つ分
-	struct Piece{
-		std::unique_ptr<Obj3D> obj;
-		Kind kind = Kind::Droplet;
-		Vector3 position = {0.0f, 0.0f, 0.0f};
-		Vector3 velocity = {0.0f, 0.0f, 0.0f};
-		Vector3 rotate = {0.0f, 0.0f, 0.0f};
-		Vector3 angularVelocity = {0.0f, 0.0f, 0.0f};
-		Vector4 color = {1.0f, 1.0f, 1.0f, 1.0f};
-		float baseScale = 1.0f;
-		float lifeTime = 0.0f;
-		float maxLifeTime = 1.0f;
-		bool isAlive = false;
-		// 面に着いたときにインクを塗るか(やられ演出のしぶきだけ塗らない)
-		bool paintsOnLanding = true;
-	};
-
-	// 使い回し用の配列から次に使う1つを取り出す(一番古いものから順に上書きする)
-	Piece& Spawn(std::vector<Piece>& pool,size_t& nextIndex);
+	// 1つ出す(一番古いものから順に上書きする)
+	void Spawn(Kind kind,const MeshParticleSystem::SpawnDesc& desc);
 
 	// 指定した範囲の乱数を返す
 	float RandomRange(float min,float max);
@@ -119,20 +112,8 @@ private:
 	// 各軸が -1〜1 の乱数のベクトルを返す
 	Vector3 RandomVector();
 
-	// 1つ分の行列と色を更新する
-	void UpdatePieceTransform(Piece& piece);
-
-	// インクのしぶき(球モデル)
-	std::vector<Piece> droplets_;
-	// 的の破片(三角柱モデル)
-	std::vector<Piece> shards_;
-	// 撃破時の閃光(球モデル)
-	std::vector<Piece> flashes_;
-
-	// 次に使う要素の番号
-	size_t nextDroplet_ = 0;
-	size_t nextShard_ = 0;
-	size_t nextFlash_ = 0;
+	// しぶき・破片・閃光を動かして描く GPU のパーティクル
+	std::unique_ptr<MeshParticleSystem> particles_;
 
 	// 飛び散り方のばらつきに使う乱数
 	std::mt19937 randomEngine_;
@@ -141,9 +122,9 @@ private:
 	LandingHandler landingHandler_;
 
 	// 使い回す個数
-	static constexpr size_t kDropletCount = 160;
-	static constexpr size_t kShardCount = 48;
-	static constexpr size_t kFlashCount = 8;
+	static constexpr uint32_t kDropletCount = 160;
+	static constexpr uint32_t kShardCount = 48;
+	static constexpr uint32_t kFlashCount = 8;
 
 	// しぶき・破片に掛ける重力加速度(1秒あたりの下方向への速度変化量)
 	static constexpr float kDropletGravity = 12.0f;

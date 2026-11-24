@@ -51,7 +51,9 @@ void DXCommon::InitDevice(){
 	ComPtr<ID3D12Debug1> debugController = nullptr;
 	if(SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)))){
 		debugController->EnableDebugLayer();
-#ifdef _DEBUG
+		// Development も実行ライブラリにデバッグ版(/MTd)を使っており、/MTd にするとコンパイラーが _DEBUG を自動で定義する
+		// _DEBUG だけで分けると Development でも有効になってしまうため、Development だけで定義する DEVELOPMENT_BUILD で除く
+#if defined(_DEBUG) && !defined(DEVELOPMENT_BUILD)
 		// シェーダー実行中のリソースアクセスの間違いをGPU側で調べる(Debugのみ)
 		// シェーダーに確認処理を書き足して描画のたびに調べるため、描画命令が多いと大きく重くなる
 		// Developmentでは普段の作業の軽さを優先して使わず、描画がおかしいときはDebugで確認する

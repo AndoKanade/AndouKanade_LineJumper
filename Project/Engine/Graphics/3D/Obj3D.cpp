@@ -74,6 +74,7 @@ void Obj3D::Update(){
 
     // 3. GPUバッファ更新
     // WVPはカメラ行列の更新(シーン更新の後)が終わってから合成するため、Draw()で求める
+    worldMatrix_ = worldMatrix;
     transformationMatrixData->World = worldMatrix;
     transformationMatrixData->WorldInverseTranspose = Transpose(Inverse(worldMatrix));
 
@@ -105,9 +106,10 @@ void Obj3D::Draw(){
 
     // カメラ合成 (WVP)
     // Update()の時点ではカメラ行列が前フレームのままのため、カメラ更新後の描画時に合成して1フレームの遅れを防ぐ
-    Matrix4x4 worldViewProjectionMatrix = transformationMatrixData->World;
+    // ワールド行列はGPUへ渡すバッファから読まず、CPU側の控えから読む(バッファから読むととても遅い)
+    Matrix4x4 worldViewProjectionMatrix = worldMatrix_;
     if(Camera* cameraPtr = camera?camera:object3dCommon->GetDefaultCamera()){
-        worldViewProjectionMatrix = Multiply(transformationMatrixData->World,cameraPtr->GetViewProjectionMatrix());
+        worldViewProjectionMatrix = Multiply(worldMatrix_,cameraPtr->GetViewProjectionMatrix());
     }
     transformationMatrixData->WVP = worldViewProjectionMatrix;
 
@@ -169,7 +171,7 @@ Model::BoundingSphere Obj3D::GetWorldBoundingSphere() const{
     }
 
     const Model::BoundingSphere& localSphere = model->GetBoundingSphere();
-    const Matrix4x4& world = transformationMatrixData->World;
+    const Matrix4x4& world = worldMatrix_;
 
     // 中心座標をワールド行列で変換する(行ベクトル × 行列の順で掛ける)
     const Vector3& c = localSphere.center;

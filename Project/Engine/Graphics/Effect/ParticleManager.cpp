@@ -8,6 +8,34 @@
 
 using namespace Microsoft::WRL;
 
+namespace{
+    // 色と大きさだけを指定する Emit() で使う、発生範囲の半径と速さのばらつき
+    constexpr float kSimpleEmitRadius = 1.0f;
+    constexpr float kSimpleEmitVelocitySpread = 1.0f;
+    // 寿命が尽きる瞬間の色のアルファ(だんだん透明にして消す)
+    constexpr float kFadeOutAlpha = 0.0f;
+
+    // 発生要求ごとの乱数の種の範囲
+    constexpr float kSeedMin = 0.0f;
+    constexpr float kSeedMax = 1.0f;
+
+    // 更新のコンピュートシェーダーの1グループのスレッド数(UpdateParticle.CS.hlsl の numthreads と合わせる)
+    constexpr uint32_t kUpdateThreadGroupSize = 256;
+
+    // 被弾・撃破の火花(四方へ速く飛び散り、重力で落ちながら空気抵抗で減速し、小さくなって消える)
+    constexpr uint32_t kSparkCount = 20;
+    constexpr float kSparkLifeTime = 0.45f;
+    constexpr float kSparkRadius = 0.1f;
+    constexpr float kSparkSpeed = 8.0f;
+    constexpr float kSparkGravity = -15.0f;
+    constexpr float kSparkDrag = 3.0f;
+    constexpr Vector3 kSparkStartScale = {0.25f, 0.25f, 0.25f};
+    constexpr Vector3 kSparkEndScale = {0.0f, 0.0f, 0.0f};
+    // 出た瞬間は明るい黄色、消える前は赤みがかった橙にする
+    constexpr Vector4 kSparkStartColor = {1.0f, 0.8f, 0.3f, 1.0f};
+    constexpr Vector4 kSparkEndColor = {1.0f, 0.3f, 0.0f, 0.0f};
+}
+
 ParticleManager* ParticleManager::GetInstance(){
     static ParticleManager instance;
     return &instance;
@@ -53,6 +81,7 @@ void ParticleManager::Finalize(){
         group->freeListResource.Reset();
         group->indexStagingResource.Reset();
         group->listStagingResource.Reset();
+        group->emitRequestResource.Reset();
     }
     particleGroups_.clear();
 
@@ -256,48 +285,26 @@ void ParticleManager::CreateParticleGroup(const std::string& name,const std::str
     barriers[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     commandList->ResourceBarrier(2,barriers);
 
-    // エミッター用リソースの生成と初期化
-    size_t emitterSize = (sizeof(EmitterSphere) + 0xff) & ~0xff;
-    group->emitterResource = dxCommon_->CreateBufferResource(emitterSize);
-    group->emitterResource->Map(0,nullptr,reinterpret_cast<void**>(&group->emitterData));
-
-    group->emitterData->count = 10;
-    group->emitterData->frequency = 0.5f;
-    group->emitterData->frequencyTime = 0.0f;
-    group->emitterData->translate = {0.0f, 0.0f, 0.0f};
-    group->emitterData->radius = 1.0f;
-    group->emitterData->emit = 0;
+    // 発生要求をためる配列の生成(CPUから書き込み、GPUからは StructuredBuffer として読む)
+    // GPUの処理はフレームごとに待ってから次のフレームを書くため、1つのバッファを毎フレーム書き直して使える
+    group->emitRequestResource = dxCommon_->CreateBufferResource(sizeof(EmitterSphere) * ParticleGroup::kMaxEmitRequests);
+    group->emitRequestResource->Map(0,nullptr,reinterpret_cast<void**>(&group->emitRequestData));
+    group->emitRequestCount = 0;
 
     group->currentState = D3D12_RESOURCE_STATE_COMMON;
 
     particleGroups_.insert(std::make_pair(name,std::move(group)));
 }
 
-void ParticleManager::Update(){
-    const float kDeltaTime = 1.0f / 60.0f;
-
-    // 全パーティクルグループの更新
+void ParticleManager::Update(float deltaTime){
+    // 全パーティクルグループの描画数を設定する
     for(auto& [name,group] : particleGroups_){
-        if(group->emitterData){
-            group->emitterData->emit = 0;
-        }
-
-        if(group->emitterData){
-            group->emitterData->frequencyTime += kDeltaTime;
-            if(group->emitterData->frequency <= group->emitterData->frequencyTime){
-                group->emitterData->frequencyTime -= group->emitterData->frequency;
-            }
-        }
-
         group->numInstance = group->kNumMaxInstance;
     }
 
-    // 定数バッファの更新
-    // カメラ行列(perViewData_)はカメラ更新後の値を使うため、Draw()で書き込む
-    if(perFrameData_){
-        perFrameData_->deltaTime = kDeltaTime;
-        perFrameData_->time += kDeltaTime;
-    }
+    // 進める時間は、GPUの更新を記録する Draw() で定数バッファへ書き込む
+    // カメラ行列(perViewData_)もカメラ更新後の値を使うため、Draw()で書き込む
+    pendingDeltaTime_ = deltaTime;
 }
 
 void ParticleManager::Draw(Camera* camera){
@@ -317,6 +324,14 @@ void ParticleManager::Draw(Camera* camera){
         perViewData_->billboardMatrix = billboardMatrix;
     }
 
+    // このフレームに進める時間を書き込み、使い終えたら 0 に戻す
+    // (ヘルプを開いている間など Update() を呼ばないフレームは、パーティクルを止めたままにする)
+    if(perFrameData_){
+        perFrameData_->deltaTime = pendingDeltaTime_;
+        perFrameData_->time += pendingDeltaTime_;
+    }
+    pendingDeltaTime_ = 0.0f;
+
     for(auto& [name,group] : particleGroups_){
         if(group->numInstance == 0) continue;
 
@@ -331,22 +346,27 @@ void ParticleManager::Draw(Camera* camera){
         group->currentState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
         // エミット用コンピュートシェーダーの実行
-        if(group->emitterResource && group->emitterData->emit == 1){
+        // このフレームにためた発生要求を1要求1スレッドでまとめて出す
+        if(group->emitRequestCount > 0){
             commandList->SetComputeRootSignature(emitComputeRootSignature_.Get());
             commandList->SetPipelineState(emitComputePipelineState_.Get());
 
             commandList->SetComputeRootDescriptorTable(0,srvManager_->GetGPUDescriptorHandle(group->instancingUavIndex));
             commandList->SetComputeRootDescriptorTable(1,srvManager_->GetGPUDescriptorHandle(group->freeListIndexUavIndex));
             commandList->SetComputeRootDescriptorTable(2,srvManager_->GetGPUDescriptorHandle(group->freeListUavIndex));
-            commandList->SetComputeRootConstantBufferView(3,group->emitterResource->GetGPUVirtualAddress());
-            commandList->SetComputeRootConstantBufferView(4,perFrameResource_->GetGPUVirtualAddress());
+            commandList->SetComputeRootShaderResourceView(3,group->emitRequestResource->GetGPUVirtualAddress());
 
-            commandList->Dispatch(1,1,1);
+            // EmitParticle.CS.hlsl は numthreads(1,1,1) のため、要求の数だけグループを並べる
+            commandList->Dispatch(group->emitRequestCount,1,1);
 
+            // 出した粒とフリーリストの書き込みを、更新のコンピュートシェーダーより先に終わらせる
             D3D12_RESOURCE_BARRIER barrierUAV{};
             barrierUAV.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-            barrierUAV.UAV.pResource = group->instancingResource.Get();
+            barrierUAV.UAV.pResource = nullptr;
             commandList->ResourceBarrier(1,&barrierUAV);
+
+            // 記録し終えたので、次のフレームの発生要求を最初からためる
+            group->emitRequestCount = 0;
         }
 
         // 更新用コンピュートシェーダーの実行
@@ -356,8 +376,9 @@ void ParticleManager::Draw(Camera* camera){
         commandList->SetComputeRootDescriptorTable(0,srvManager_->GetGPUDescriptorHandle(group->instancingUavIndex));
         commandList->SetComputeRootDescriptorTable(1,srvManager_->GetGPUDescriptorHandle(group->freeListIndexUavIndex));
         commandList->SetComputeRootDescriptorTable(2,srvManager_->GetGPUDescriptorHandle(group->freeListUavIndex));
+        commandList->SetComputeRootConstantBufferView(3,perFrameResource_->GetGPUVirtualAddress());
 
-        uint32_t groupCount = (group->kNumMaxInstance + 255) / 256;
+        uint32_t groupCount = (group->kNumMaxInstance + kUpdateThreadGroupSize - 1) / kUpdateThreadGroupSize;
         commandList->Dispatch(groupCount,1,1);
 
         // UAVからSRVへの状態遷移バリア
@@ -424,15 +445,49 @@ Particle ParticleManager::MakeNewParticle(const Vector3& translate){
 }
 
 void ParticleManager::Emit(const std::string& name,const Transform& emitterTransform,uint32_t count,const Vector4& color,const Vector3& velocity,float lifeTime){
-    if(!particleGroups_.contains(name)) return;
-    auto& group = particleGroups_[name];
+    // 大きさは変えず、色はそのままでだんだん透明にして消す
+    ParticleEmitParams params;
+    params.position = emitterTransform.translate;
+    params.radius = kSimpleEmitRadius;
+    params.count = count;
+    params.lifeTime = lifeTime;
+    params.velocity = velocity;
+    params.velocitySpread = kSimpleEmitVelocitySpread;
+    params.startScale = emitterTransform.scale;
+    params.endScale = emitterTransform.scale;
+    params.startColor = color;
+    params.endColor = {color.x, color.y, color.z, kFadeOutAlpha};
+    Emit(name,params);
+}
 
-    group->emitterData->translate = emitterTransform.translate;
-    group->emitterData->count = count;
-    group->emitterData->emit = 1;
-    group->emitterData->color = color;
-    group->emitterData->velocity = velocity;
-    group->emitterData->lifeTime = lifeTime;
+void ParticleManager::Emit(const std::string& name,const ParticleEmitParams& params){
+    auto it = particleGroups_.find(name);
+    if(it == particleGroups_.end()) return;
+    ParticleGroup* group = it->second.get();
+
+    // 1粒も出ない要求と、寿命が無く出た瞬間から更新されない(空きに戻らない)粒は出さない
+    if(params.count == 0 || params.lifeTime <= 0.0f) return;
+    // 1フレームにためられる数を超えた分は出さない
+    if(group->emitRequestCount >= ParticleGroup::kMaxEmitRequests) return;
+
+    std::uniform_real_distribution<float> distSeed(kSeedMin,kSeedMax);
+
+    EmitterSphere& request = group->emitRequestData[group->emitRequestCount];
+    request.translate = params.position;
+    request.radius = params.radius;
+    request.velocity = params.velocity;
+    request.velocitySpread = params.velocitySpread;
+    request.startScale = params.startScale;
+    request.lifeTime = params.lifeTime;
+    request.endScale = params.endScale;
+    request.gravity = params.gravity;
+    request.startColor = params.startColor;
+    request.endColor = params.endColor;
+    request.count = params.count;
+    request.drag = params.drag;
+    request.seed = distSeed(randomEngine_);
+    request.padding = 0.0f;
+    ++group->emitRequestCount;
 }
 
 void ParticleManager::CreateGraphicsPipeline(){
@@ -628,7 +683,7 @@ void ParticleManager::CreateComputePipeline(){
     uavRange2.NumDescriptors = 1;
     uavRange2.BaseShaderRegister = 2;
 
-    D3D12_ROOT_PARAMETER param[3] = {};
+    D3D12_ROOT_PARAMETER param[4] = {};
     param[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
     param[0].DescriptorTable.NumDescriptorRanges = 1;
     param[0].DescriptorTable.pDescriptorRanges = &uavRange0;
@@ -644,7 +699,12 @@ void ParticleManager::CreateComputePipeline(){
     param[2].DescriptorTable.pDescriptorRanges = &uavRange2;
     param[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-    D3D12_ROOT_SIGNATURE_DESC desc = {3, param, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE};
+    // 進める時間(PerFrame)
+    param[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    param[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    param[3].Descriptor.ShaderRegister = 0;
+
+    D3D12_ROOT_SIGNATURE_DESC desc = {_countof(param), param, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE};
     ComPtr<ID3DBlob> sig,err;
     hr = D3D12SerializeRootSignature(&desc,D3D_ROOT_SIGNATURE_VERSION_1,&sig,&err);
     hr = dxCommon_->GetDevice()->CreateRootSignature(0,sig->GetBufferPointer(),sig->GetBufferSize(),IID_PPV_ARGS(&computeRootSignature_));
@@ -654,7 +714,7 @@ void ParticleManager::CreateComputePipeline(){
     hr = dxCommon_->GetDevice()->CreateComputePipelineState(&psoDesc,IID_PPV_ARGS(&computePipelineState_));
     assert(SUCCEEDED(hr));
 
-    D3D12_ROOT_PARAMETER rootParametersEmit[5] = {};
+    D3D12_ROOT_PARAMETER rootParametersEmit[4] = {};
     rootParametersEmit[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
     rootParametersEmit[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     rootParametersEmit[0].DescriptorTable.NumDescriptorRanges = 1;
@@ -670,13 +730,10 @@ void ParticleManager::CreateComputePipeline(){
     rootParametersEmit[2].DescriptorTable.NumDescriptorRanges = 1;
     rootParametersEmit[2].DescriptorTable.pDescriptorRanges = &uavRange2;
 
-    rootParametersEmit[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    // このフレームの発生要求の配列(StructuredBuffer をディスクリプタを使わずアドレスで渡す)
+    rootParametersEmit[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
     rootParametersEmit[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     rootParametersEmit[3].Descriptor.ShaderRegister = 0;
-
-    rootParametersEmit[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-    rootParametersEmit[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-    rootParametersEmit[4].Descriptor.ShaderRegister = 1;
 
     D3D12_ROOT_SIGNATURE_DESC descriptionRootSignatureEmit{};
     descriptionRootSignatureEmit.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
@@ -709,12 +766,20 @@ void ParticleManager::EmitShockwave(const Vector3& pos){
 }
 
 void ParticleManager::EmitSpark(const Vector3& position){
-    Transform transform;
-    transform.translate = position;
-    transform.scale = {0.05f, 0.05f, 0.05f};
-    transform.rotate = {0.0f, 0.0f, 0.0f};
+    ParticleEmitParams params;
+    params.position = position;
+    params.radius = kSparkRadius;
+    params.count = kSparkCount;
+    params.lifeTime = kSparkLifeTime;
+    params.velocitySpread = kSparkSpeed;
+    params.startScale = kSparkStartScale;
+    params.endScale = kSparkEndScale;
+    params.startColor = kSparkStartColor;
+    params.endColor = kSparkEndColor;
+    params.gravity = kSparkGravity;
+    params.drag = kSparkDrag;
 
-    ParticleManager::GetInstance()->Emit("Spark",transform,20,{1.0f, 0.5f, 0.0f, 1.0f},{0.0f, 0.0f, 0.0f},0.5f);
+    ParticleManager::GetInstance()->Emit("Spark",params);
 }
 
 void ParticleManager::EmitSmoke(const Vector3& position){

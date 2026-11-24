@@ -349,6 +349,13 @@ void GlobalVariables::SaveFile(const std::string& groupName){
 
 // デバッグ時のみ:各グループのJSONの更新時刻を監視し、変わっていたら読み直す
 void GlobalVariables::CheckFileUpdate(){
+	// 前に調べてから決まった間隔がたっていなければ調べない(外部で書き換えてから反映されるまで最大でこの間隔だけ遅れる)
+	const auto now = std::chrono::steady_clock::now();
+	if(now - lastFileCheckTime_ < kFileCheckInterval){
+		return;
+	}
+	lastFileCheckTime_ = now;
+
 	for(auto& [groupName, group] : datas_){
 		std::string filePath = kDirectoryPath + groupName + ".json";
 
