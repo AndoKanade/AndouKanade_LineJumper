@@ -5,7 +5,7 @@
 #include "ModelManager.h"
 #include "CameraManager.h"
 #include "Camera.h"
-#include "ParticleManager.h"
+#include "InkEffectManager.h"
 #include "GlobalVariables.h"
 #include "Input.h"
 #include "Editor/RailEditor.h"
@@ -61,6 +61,8 @@ void Player::Reset(){
 	ChangeState(std::make_unique<RailRunState>());
 	freeVelocityY_ = 0.0f;
 	freeVelocityXZ_ = {0.0f, 0.0f, 0.0f};
+	// やり直す前の着地のしぶきは出さない
+	isLandingPending_ = false;
 
 	// 終点で外れたレールも覚えていない状態に戻す
 	endedRailIndex_ = -1;
@@ -244,6 +246,14 @@ void Player::UpdateBasePose(const RailEditor* railEditor){
 void Player::UpdateTransform(const Vector3& cameraRotation,float hopHeight){
 	position_ = basePosition_;
 
+	// レール・スタート台へ着地したフレームは、足元から輪の形にインクのしぶきを広げて着地の衝撃を見せる
+	if(isLandingPending_){
+		isLandingPending_ = false;
+		if(inkEffect_){
+			inkEffect_->EmitLandingRing(position_);
+		}
+	}
+
 	if(!obj_){
 		return;
 	}
@@ -326,7 +336,9 @@ void Player::TakeDamage(float damage){
 	regenTimer_ = 0.0f;
 
 	// 被弾位置に火花パーティクルを発生させ、当たったことを見た目で分かるようにする
-	ParticleManager::GetInstance()->EmitSpark(position_);
+	if(inkEffect_){
+		inkEffect_->EmitSpark(position_);
+	}
 }
 
 // 時間に応じて減り続けるダメージを受ける

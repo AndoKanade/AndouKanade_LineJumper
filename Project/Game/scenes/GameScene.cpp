@@ -1,7 +1,6 @@
 #include "GameScene.h"
 #include "GameSceneInternal.h"
 #include "CameraManager.h"
-#include "ParticleManager.h"
 #include "TextureManager.h"
 #include "Skybox.h"
 #include "SkyboxCommon.h"
@@ -71,12 +70,7 @@ namespace{
 	// プレイ用カメラの初期位置
 	constexpr Vector3 kDefaultCameraPosition = {0.0f, 0.0f, -30.0f};
 
-	// 撃破演出(パーティクル)に使用するテクスチャパス
-	const std::string kHitParticleTexture = "resource/circle.png";
-	// ParticleManager::EmitSpark()が内部で使用するグループ名と合わせる必要がある
-	const char* kHitParticleGroupName = "Spark";
-
-	// プレイ会用の設定にするかの調整項目名と初期値(ON にすると、ステージ3だけを遊べ、ゴールの的を壊したらクリア画面へ移る)
+	// プレイ会用の設定にするかの調整項目名と初期値(ON にすると、ステージ1だけを遊べる。それ以外の流れは OFF のときと同じ)
 	const char* kPlaySessionModeKey = "playSessionMode";
 	constexpr bool kDefaultPlaySessionMode = false;
 	// Play中に、遠くのレール・スタート台・的・敵などを空の色に溶け込ませ始める距離・溶け込みきる距離の調整項目名と初期値(カメラからの距離)
@@ -207,6 +201,12 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 		inkEffect_->EmitInkSplash(landedPosition,kWorldUp,kBulletLandSplashCount);
 		return true;
 	});
+	// 弾が当たったとき・プレイヤーが被弾したときの火花も、同じ GPU のパーティクルで出す
+	player_->SetInkEffect(inkEffect_.get());
+	goalTarget_->SetInkEffect(inkEffect_.get());
+	boss_->SetInkEffect(inkEffect_.get());
+	enemyManager_->SetInkEffect(inkEffect_.get());
+	bulletManager_->SetInkEffect(inkEffect_.get());
 
 	// 的を続けて壊したときの連鎖数
 	comboCounter_ = std::make_unique<ComboCounter>();
@@ -247,10 +247,6 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// H キーで開く操作説明(操作方法と画面の流れ)
 	helpOverlay_ = std::make_unique<HelpOverlay>();
 	helpOverlay_->Initialize(spriteCommon_);
-
-	// 的の撃破時に発生させる火花パーティクルのグループを事前に生成しておく
-	TextureManager::GetInstance()->LoadTexture(kHitParticleTexture);
-	ParticleManager::GetInstance()->CreateParticleGroup(kHitParticleGroupName,kHitParticleTexture);
 
 	// ステージ開始演出の生成(Playに入った瞬間にタイトルから始める)
 	startSequence_ = std::make_unique<StartSequence>();
@@ -515,11 +511,6 @@ void GameScene::Draw(){
 
 	// 雲の上の霧を描画(半透明なので、奥にあるオブジェクトが透けて見えるよう3Dオブジェクトの最後に描く)
 	ground_->DrawFog();
-
-	// 撃破演出パーティクルの描画(3Dオブジェクトの後、2Dレティクルの前に描画する)
-	if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
-		ParticleManager::GetInstance()->Draw(activeCamera);
-	}
 
 	// 画面中央固定のレティクルを描画
 	// タイトル中・カメラの回り込み中・出発の演出でレールへ向かっている間は撃てないため表示しない

@@ -2,7 +2,7 @@
 // どれも MeshParticleSystem.cpp の同じ名前の構造体と並びを合わせる
 
 // 同時に使える種類の数の上限(MeshParticleSystem.h の kMaxKinds と合わせる)
-static const uint32_t kMaxKinds = 4;
+static const uint32_t kMaxKinds = 5;
 
 // 1つ分の状態(コンピュートシェーダーで毎フレーム進める)
 struct MeshParticle
@@ -79,6 +79,13 @@ struct KindParams
     // モデルの頂点に足す量(モデルの座標系)と、モデルの大きさを揃える倍率
     float32_t3 modelOffset;
     float32_t modelScale;
+    // 空気抵抗の強さ(1秒あたりに速度が減る割合の指数。0 なら減らない)
+    float32_t drag;
+    // 寿命に合わせて、出たときの色から endColor へ変えるか(0 以外なら変える)
+    uint32_t changesColor;
+    float32_t2 padding;
+    // 寿命が尽きる瞬間の色
+    float32_t4 endColor;
 };
 
 // 1フレーム分の設定(動かすコンピュートシェーダーで使う)

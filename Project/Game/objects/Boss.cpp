@@ -6,7 +6,7 @@
 #include "CameraManager.h"
 #include "Camera.h"
 #include "GlobalVariables.h"
-#include "ParticleManager.h"
+#include "InkEffectManager.h"
 #include "Easing.h"
 #include <algorithm>
 #include <cmath>
@@ -190,6 +190,7 @@ void Boss::ResetAttack(){
 	attackTimer_ = GlobalVariables::GetInstance()->GetFloatValue(kBossGroup,kAttackIntervalKey);
 	burstShotsLeft_ = 0;
 	telegraphRate_ = 0.0f;
+	chargeEmitTimer_ = 0.0f;
 	// 輪を塗り返す攻撃も、予告・攻撃中の途中なら止める
 	ringAttackState_ = RingAttackState::None;
 	ringAttackRailIndex_ = kNoRingAttackRail;
@@ -246,7 +247,12 @@ void Boss::Update(bool isBossStage,const Vector3& playerPosition,PlayerBulletMan
 			// 火花は、体の中心からプレイヤーの方へ向いた体の表面に出す(中心に出すと体に隠れて見えない)
 			const Vector3 toPlayer = playerPosition - position_;
 			const Vector3 sparkPosition = (Length(toPlayer) >= kMinFaceDistance)?position_ + Normalize(toPlayer) * hitSphere.radius:position_;
-			ParticleManager::GetInstance()->EmitSpark(sparkPosition);
+			// インクのしぶきも同じ位置から、プレイヤーの方へ跳ねさせる(重なっていて向きが定まらないときは真上へ跳ねさせる)
+			const Vector3 splashDirection = (Length(toPlayer) >= kMinFaceDistance)?Normalize(toPlayer):kWorldUp;
+			if(inkEffect_){
+				inkEffect_->EmitSpark(sparkPosition);
+				inkEffect_->EmitHitSplash(sparkPosition,splashDirection);
+			}
 		}
 		if(hp_ <= 0 && phase_ == kFirstPhase){
 			// 1形態目の体力が尽きたら、倒れずに2形態目へ変わる
@@ -262,6 +268,19 @@ void Boss::Update(bool isBossStage,const Vector3& playerPosition,PlayerBulletMan
 
 	// プレイヤーが輪に乗っている間、決まった順番で攻撃する(2形態目へ変わる演出の間は攻撃しない)
 	UpdateAttack(playerPosition,canAttack && phaseChangeTimer_ <= 0.0f,playerRailIndex,deltaTime);
+
+	// 予備動作の間は、周りから光の粒を体へ吸い込ませ、撃つ瞬間(攻撃の待ち時間が尽きる瞬間)に体へ届くようにする
+	// 時間の刻みに関係なく同じ量になるよう、決まった間隔ごとに出す
+	if(telegraphRate_ > 0.0f && inkEffect_){
+		const float bodyRadius = GetHitSphere().radius;
+		chargeEmitTimer_ += deltaTime;
+		while(chargeEmitTimer_ >= kChargeEmitInterval){
+			chargeEmitTimer_ -= kChargeEmitInterval;
+			inkEffect_->EmitBossCharge(position_,bodyRadius,attackTimer_);
+		}
+	} else{
+		chargeEmitTimer_ = 0.0f;
+	}
 
 	// 減った体力の割合に合わせて、満タンの色から残りわずかの色へ近づける(満タンの色は形態ごとに変える)
 	if(Model::Material* mat = obj_->GetMaterial()){

@@ -10,6 +10,7 @@
 // 前方宣言
 class Obj3D;
 class Obj3dCommon;
+class InkEffectManager;
 
 /// <summary>
 /// プレイヤーの弾の管理
@@ -43,6 +44,9 @@ public:
 
 	// 弾の着地を調べる処理を設定する(設定しなければ、弾は何にも着かずに寿命まで飛ぶ)
 	void SetLandingHandler(LandingHandler handler){ landingHandler_ = std::move(handler); }
+
+	// 飛んでいる弾から垂れるインクの粒(軌跡)を出す演出を設定する(設定しなければ軌跡を出さない)
+	void SetInkEffect(InkEffectManager* inkEffect){ inkEffect_ = inkEffect; }
 
 	// 弾の移動と生存時間の更新(的に当たらなくても一定時間で消滅させる。面に着いた弾はインクを塗って消滅させる)
 	void Move(float deltaTime);
@@ -84,6 +88,8 @@ private:
 		float lifeTime = 0.0f;
 		// 発射してから飛んだ距離(射程を過ぎたかの判定に使う)
 		float traveledDistance = 0.0f;
+		// 軌跡の粒を前に出してからの経過時間(秒)
+		float trailTimer = 0.0f;
 		// 使用中かどうか(false なら未使用で、次の発射に使い回せる)
 		bool isAlive = false;
 		// 的・敵に当たるか
@@ -100,6 +106,9 @@ private:
 
 	// 弾の着地を調べる処理
 	LandingHandler landingHandler_;
+
+	// 軌跡の粒を出す演出(GameScene が持つものを借りる)
+	InkEffectManager* inkEffect_ = nullptr;
 
 	// 未使用の弾が無く、飛んでいる弾を使い回して撃った回数(デバッグ表示用)
 	int poolFullCount_ = 0;
@@ -137,4 +146,6 @@ private:
 	static constexpr int kDamage = 1;
 	// 弾が面に着いたときに塗るインクの半径
 	static constexpr float kLandingInkRadius = 0.5f;
+	// 1発の弾から軌跡の粒を出す間隔(秒。同時に飛ぶ弾が多いため、細かくしすぎない)
+	static constexpr float kTrailInterval = 0.05f;
 };

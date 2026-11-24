@@ -66,6 +66,10 @@ struct MeshParticleSystem::GpuKindParams{
 	uint32_t stretchesAlongVelocity;
 	Vector3 modelOffset;
 	float modelScale;
+	float drag;
+	uint32_t changesColor;
+	float padding[2];
+	Vector4 endColor;
 };
 
 struct MeshParticleSystem::GpuFrameConstants{
@@ -97,7 +101,7 @@ namespace{
 	constexpr size_t kGpuSpawnRequestSize = 112;
 	constexpr size_t kGpuInstanceSize = 144;
 	constexpr size_t kGpuCrossingReportSize = 48;
-	constexpr size_t kGpuKindParamsSize = 48;
+	constexpr size_t kGpuKindParamsSize = 80;
 
 	// コンピュートシェーダーの1グループのスレッド数(MeshParticleSpawn.CS.hlsl / MeshParticleUpdate.CS.hlsl の numthreads と合わせる)
 	constexpr uint32_t kThreadGroupSize = 64;
@@ -242,6 +246,9 @@ void MeshParticleSystem::Initialize(Obj3dCommon* objCommon,const std::vector<Kin
 		params.stretchesAlongVelocity = desc.stretchesAlongVelocity?1u:0u;
 		params.modelOffset = desc.modelOffset;
 		params.modelScale = desc.modelScale;
+		params.drag = desc.drag;
+		params.changesColor = desc.changesColor?1u:0u;
+		params.endColor = desc.endColor;
 		frameConstants_->kinds[i] = params;
 	}
 

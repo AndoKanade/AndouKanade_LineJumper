@@ -4,12 +4,13 @@
 #include "ModelManager.h"
 #include "CameraManager.h"
 #include "Camera.h"
+#include "InkEffectManager.h"
 #include <cmath>
 #include <string>
 
 namespace{
-	// 弾の表示に使用するモデル
-	const std::string kBulletModelPath = "Sphere/sphere.obj";
+	// 弾の表示に使用するモデル(凹凸の無いなめらかな球。tools/generate_smooth_sphere.ps1 で生成)
+	const std::string kBulletModelPath = "SmoothSphere/smoothSphere.obj";
 
 	// 弾の色(プレイヤーのインクの黄色。敵弾のオレンジより明るくして区別する)
 	constexpr Vector4 kBulletColor = {1.0f, 0.9f, 0.2f, 1.0f};
@@ -96,6 +97,7 @@ void PlayerBulletManager::Fire(const Vector3& position,const Vector3& direction,
 	selected->velocity = ApplySpread(direction) * kSpeed;
 	selected->lifeTime = 0.0f;
 	selected->traveledDistance = 0.0f;
+	selected->trailTimer = 0.0f;
 	selected->canHit = canHit;
 	selected->isAlive = true;
 }
@@ -137,6 +139,16 @@ void PlayerBulletManager::Move(float deltaTime){
 		// 着いたらそこにインクを塗って消滅させる
 		if(landingHandler_ && landingHandler_(previousPosition,bullet.position,kLandingInkRadius)){
 			bullet.isAlive = false;
+			continue;
+		}
+
+		// 飛んでいる間は、決まった間隔で弾からインクの粒を垂らし、飛んだ跡を見せる
+		if(inkEffect_){
+			bullet.trailTimer += deltaTime;
+			while(bullet.trailTimer >= kTrailInterval){
+				bullet.trailTimer -= kTrailInterval;
+				inkEffect_->EmitBulletTrail(bullet.position,kBulletColor);
+			}
 		}
 	}
 }

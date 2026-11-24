@@ -10,6 +10,7 @@
 class Obj3D;
 class Obj3dCommon;
 class PlayerBulletManager;
+class InkEffectManager;
 
 /// <summary>
 /// 最後のステージのボス
@@ -35,6 +36,12 @@ public:
 	/// </summary>
 	/// <param name="objCommon">3Dオブジェクト共通設定</param>
 	void Initialize(Obj3dCommon* objCommon);
+
+	// 弾が当たったときの火花・予備動作の光の粒・撃った弾の軌跡を出す演出を設定する(設定しなければ出さない)
+	void SetInkEffect(InkEffectManager* inkEffect){
+		inkEffect_ = inkEffect;
+		bulletPool_.SetInkEffect(inkEffect);
+	}
 
 	// 戦う前の状態(1形態目・体力満タン・弾なし)に戻す
 	void Reset();
@@ -151,6 +158,8 @@ private:
 
 	// 描画用の3Dオブジェクト
 	std::unique_ptr<Obj3D> obj_;
+	// 弾が当たったときの火花を出す演出(GameScene が持つものを借りる)
+	InkEffectManager* inkEffect_ = nullptr;
 	// 使い回す弾(移動・追尾・寿命・当たり判定・描画を任せる。雑魚敵と共用のクラス)
 	EnemyBulletPool bulletPool_;
 
@@ -193,6 +202,8 @@ private:
 
 	// 弾を撃つ前の予備動作の進み具合(0: していない 〜 1: 撃つ直前。体をふくらませて白く光らせるのに使う)
 	float telegraphRate_ = 0.0f;
+	// 予備動作の光の粒を、前に出してからの経過時間(秒。kChargeEmitInterval ごとに出す)
+	float chargeEmitTimer_ = 0.0f;
 
 	// 輪を塗り返す攻撃の段階・対象のレールの番号・今の段階に入ってからの経過時間(秒)
 	RingAttackState ringAttackState_ = RingAttackState::None;
@@ -260,6 +271,8 @@ private:
 	static constexpr float kTelegraphScaleRate = 0.18f;
 	static constexpr Vector4 kTelegraphColor = {1.0f, 1.0f, 1.0f, 1.0f};
 	static constexpr float kTelegraphColorRate = 0.8f;
+	// 予備動作の間に、周りから体へ吸い込まれる光の粒を出す間隔(秒)
+	static constexpr float kChargeEmitInterval = 0.03f;
 	// 2形態目へ変わる演出の間に、体を一瞬ふくらませる量(表示スケールに対する割合)
 	static constexpr float kPhaseChangeScalePulse = 0.25f;
 	// 2形態目の、体力が満タンのときの色(1形態目の黄色と見分けられるよう紫にする。残りわずかの色は1形態目と同じ赤)
@@ -283,6 +296,8 @@ private:
 	static constexpr Vector4 kLowHpColor = {1.0f, 0.2f, 0.25f, 1.0f};
 	// プレイヤーとボスが水平方向で重なっているとみなす距離(向きが定まらないため正面を向け直さない)
 	static constexpr float kMinFaceDistance = 0.001f;
+	// 上方向(当たったときのしぶきを跳ねさせる向きが定まらないときに使う)
+	static constexpr Vector3 kWorldUp = {0.0f, 1.0f, 0.0f};
 
 	// 1形態目の、攻撃を切り替える順番の要素数と、その順番(末尾まで来たら先頭へ戻る)
 	static constexpr size_t kPhase1AttackOrderCount = 3;

@@ -10,6 +10,7 @@ class Obj3D;
 class Obj3dCommon;
 class RailEditor;
 class PlayerBulletManager;
+class InkEffectManager;
 
 /// <summary>
 /// ゴールの的
@@ -28,6 +29,9 @@ public:
 	/// <param name="objCommon">3Dオブジェクト共通設定</param>
 	/// <param name="paramGroup">調整項目を登録するGlobalVariablesのグループ名</param>
 	void Initialize(Obj3dCommon* objCommon,const std::string& paramGroup);
+
+	// 弾が当たったときの火花を出す演出を設定する(設定しなければ火花を出さない)
+	void SetInkEffect(InkEffectManager* inkEffect){ inkEffect_ = inkEffect; }
 
 	// 現れる前の状態(体力満タン・非表示)に戻す
 	void Reset();
@@ -80,6 +84,8 @@ private:
 
 	// 描画用の3Dオブジェクト
 	std::unique_ptr<Obj3D> obj_;
+	// 弾が当たったときの火花を出す演出(GameScene が持つものを借りる)
+	InkEffectManager* inkEffect_ = nullptr;
 	// 的に使う円盤モデル(当たり判定で境界球を求めるのに使う)
 	Model* model_ = nullptr;
 

@@ -26,7 +26,7 @@
         "noseOffset": 2.0,
         "objectFadeEnd": 95.0,
         "objectFadeStart": 60.0,
-        "playSessionMode": false,
+        "playSessionMode": true,
         "playerMaxHp": 100.0,
         "railSpeed": 6.999996662139893,
         "respawnRevealStyle": 1,

@@ -4,11 +4,12 @@
 #include "ModelManager.h"
 #include "CameraManager.h"
 #include "Camera.h"
+#include "InkEffectManager.h"
 #include <string>
 
 namespace{
-	// 敵弾の表示に使用するモデル
-	const std::string kEnemyBulletModelPath = "Sphere/sphere.obj";
+	// 敵弾の表示に使用するモデル(凹凸の無いなめらかな球。tools/generate_smooth_sphere.ps1 で生成)
+	const std::string kEnemyBulletModelPath = "SmoothSphere/smoothSphere.obj";
 }
 
 EnemyBulletPool::EnemyBulletPool() = default;
@@ -88,6 +89,15 @@ void EnemyBulletPool::Update(const Vector3& playerPosition,float deltaTime){
 			continue;
 		}
 
+		// 飛んでいる間は、決まった間隔で弾と同じ色のインクの粒を垂らし、飛んできた向きを見せる
+		if(inkEffect_){
+			bullet.trailTimer += deltaTime;
+			while(bullet.trailTimer >= kTrailInterval){
+				bullet.trailTimer -= kTrailInterval;
+				inkEffect_->EmitBulletTrail(bullet.position,settings_.color);
+			}
+		}
+
 		// 描画用オブジェクトへ反映する
 		if(bullet.obj){
 			bullet.obj->SetTranslate(bullet.position);
@@ -113,6 +123,7 @@ void EnemyBulletPool::Fire(const Vector3& spawnPosition,const Vector3& direction
 		bullet.isHoming = isHoming;
 		bullet.damage = damage;
 		bullet.lifeTime = 0.0f;
+		bullet.trailTimer = 0.0f;
 		bullet.isAlive = true;
 		return;
 	}

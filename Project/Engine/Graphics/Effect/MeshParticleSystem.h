@@ -24,7 +24,7 @@ class Obj3dCommon;
 class MeshParticleSystem{
 public:
 	// 同時に使える種類の数の上限(MeshParticle.hlsli の kMaxKinds と合わせる)
-	static constexpr uint32_t kMaxKinds = 4;
+	static constexpr uint32_t kMaxKinds = 5;
 
 	/// <summary>
 	/// 種類ごとの設定
@@ -52,6 +52,11 @@ public:
 		// 広がりながら透明になって消えるか・寿命が尽きる瞬間の大きさ(出たときの何倍か)
 		bool expandsAndFades = false;
 		float expandScale = 1.0f;
+		// 空気抵抗の強さ(大きいほど早く止まる。0 なら減速しない)
+		float drag = 0.0f;
+		// 寿命に合わせて、出たときの色(SpawnDesc::color)から endColor へ変えるか・寿命が尽きる瞬間の色
+		bool changesColor = false;
+		Vector4 endColor = {1.0f, 1.0f, 1.0f, 0.0f};
 	};
 
 	/// <summary>
