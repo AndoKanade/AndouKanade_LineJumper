@@ -146,7 +146,11 @@
 - `resource/music/se/` の `catapult_preview.mp3` は、今はどこからも鳴らしていない（`cancel.mp3`・`move.mp3` は ESC の終了確認メニューで鳴らす）。
 
 **実装品質・パフォーマンス**
-- インクのしぶき・破片（`InkEffectManager`）は、1 個ずつ別の Obj3D で描いていて描画命令が多い。レールの管（Play 中は 2026-10-24、Edit 中の曲線・着地範囲は 2026-10-28）は 1 本のモデルにまとめて軽くした（`RailEditor::AppendTubeMesh`）ので、重くなったら同じやり方かインスタンシングで描く。
+- インクのしぶき・破片・閃光（`InkEffectManager`）は、GPU で動かして種類ごとに1回の命令で描く（`MeshParticleSystem`、シェーダーは `Engine/Graphics/Shaders/MeshParticle/`。2026-11-24）。出し方（数・速さ・ばらつき）は今までどおり `InkEffectManager` で決める。
+  - 種類ごとのモデルは `InkEffectManager.cpp` の先頭の表（パス・大きさを揃える倍率・原点をずらす量）で決める。配布モデルから差し替えるときはそこだけを書き換える。しぶきは飛ぶ向きにモデルの +Z を向けて伸ばす。
+  - 見た目を Obj3D と同じにするため、`MeshParticle.PS.hlsl` のライティングは `Object3d.PS.hlsl` と同じ式にしている。Obj3D のライティングを変えたら、こちらも合わせて変える。
+  - 台に落ちたしぶきは、GPU で「台の上面の高さを上から下へ横切った」ものを見つけて次のフレームに CPU へ返し、`StartPlatform::TryLandInk()` で塗れたら消す。そのため、塗られるのは今までより1フレーム遅く、その1フレームは台の上面のすぐ下にいる（ほとんど台に隠れる）。調べられるのは水平な面1枚だけ。
+  - レールの管（Play 中は 2026-10-24、Edit 中の曲線・着地範囲は 2026-10-28）は 1 本のモデルにまとめて軽くした（`RailEditor::AppendTubeMesh`）。
 - GPU-Based Validation は Debug だけで有効（Development はデバッグレイヤーのみ、Release はどちらもなし）。描画がおかしい・落ちるときは Debug で動かして出力ウィンドウを確認する。
   - Development は実行ライブラリにデバッグ版（`/MTd`）を使うため、コンパイラーが `_DEBUG` を自動で定義する。Debug だけで動かす処理は `#ifdef _DEBUG` ではなく `#if defined(_DEBUG) && !defined(DEVELOPMENT_BUILD)` で分ける（`DEVELOPMENT_BUILD` は Development だけで定義している）。
   - 2026-11-18 まで、これに気づかず Development でも GPU-Based Validation が有効になっていて、全体が 35〜50 FPS に落ち、初めて使うシェーダー（インクを塗る・火花・ポストエフェクト）で 150〜230ms 止まっていた。直した後はステージ4のボス戦まで約 55 FPS で、初めて使ったときの止まりも出ない。

@@ -190,11 +190,12 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	reticle_ = std::make_unique<Reticle>();
 	reticle_->Initialize(spriteCommon_);
 
-	// インクのしぶき・的の破片・閃光の演出(使い回す3Dオブジェクトをここでまとめて生成する)
+	// インクのしぶき・的の破片・閃光の演出(GPU で動かして描くパーティクルをここで生成する)
 	inkEffect_ = std::make_unique<InkEffectManager>();
 	inkEffect_->Initialize(object3dCommon_);
 	// インクのしぶきがスタート台の上面に落ちたら、落ちたところにインクを塗る
-	inkEffect_->SetLandingHandler([this](const Vector3& from,const Vector3& to,float inkRadius){
+	// しぶきは GPU で動かしているため、上面の高さを横切ったしぶきだけを調べる
+	inkEffect_->SetLandingHandler(startPlatform_->GetTopHeight(),[this](const Vector3& from,const Vector3& to,float inkRadius){
 		return startPlatform_->TryLandInk(from,to,inkRadius);
 	});
 	// 弾がスタート台の上面に当たったら、当たったところにインクを塗り、しぶきを跳ねさせる

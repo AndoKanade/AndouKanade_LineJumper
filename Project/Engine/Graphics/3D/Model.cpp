@@ -294,6 +294,19 @@ void Model::Draw(uint32_t skyboxSRVIndex,D3D12_GPU_VIRTUAL_ADDRESS cameraAddress
     commandList->DrawIndexedInstanced(drawIndexCount,1,startIndex,0,0);
 }
 
+void Model::DrawInstanced(uint32_t instanceCount){
+    if(instanceCount == 0 || modelData.indices.empty()){
+        return;
+    }
+
+    auto* commandList = modelCommon_->GetDxCommon()->GetCommandList();
+    commandList->IASetVertexBuffers(0,1,&vertexBufferView);
+    commandList->IASetIndexBuffer(&indexBufferView);
+
+    // モデル全体を instanceCount 個分描く
+    commandList->DrawIndexedInstanced(static_cast<uint32_t>(modelData.indices.size()),instanceCount,0,0,0);
+}
+
 void Model::SetTexture(const std::string& texturefilePath){
     TextureManager::GetInstance()->LoadTexture(texturefilePath);
 

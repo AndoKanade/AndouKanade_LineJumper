@@ -97,6 +97,9 @@
     <Filter Include="Resources\shader\Particle">
       <UniqueIdentifier>{341918e5-a2ed-4928-bcf9-eafbad4ba961}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Resources\shader\MeshParticle">
+      <UniqueIdentifier>{a70ef5f2-b878-47d3-9388-d540eaf42884}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Resources\shader\Paint">
       <UniqueIdentifier>{70883a44-22ba-47a1-9fe4-fbb9cbed1fe7}</UniqueIdentifier>
     </Filter>
@@ -220,6 +223,9 @@
       <Filter>ソース ファイル\Engine\Graphics\Effect</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Graphics\Effect\ParticleManager.cpp">
+      <Filter>ソース ファイル\Engine\Graphics\Effect</Filter>
+    </ClCompile>
+    <ClCompile Include="Engine\Graphics\Effect\MeshParticleSystem.cpp">
       <Filter>ソース ファイル\Engine\Graphics\Effect</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Graphics\Effect\PaintCanvas.cpp">
@@ -557,6 +563,9 @@
     <ClInclude Include="Engine\Graphics\Effect\ParticleManager.h">
       <Filter>ヘッダー ファイル\Engine\Graphics\Effect</Filter>
     </ClInclude>
+    <ClInclude Include="Engine\Graphics\Effect\MeshParticleSystem.h">
+      <Filter>ヘッダー ファイル\Engine\Graphics\Effect</Filter>
+    </ClInclude>
     <ClInclude Include="Engine\Graphics\Effect\PostProcess.h">
       <Filter>ヘッダー ファイル\Engine\Graphics\Effect</Filter>
     </ClInclude>
@@ -862,12 +871,27 @@
     <None Include="Engine\Graphics\Shaders\PostProcess\PostProcess.hlsli">
       <Filter>Resources\shader\PostEffect</Filter>
     </None>
+    <None Include="Engine\Graphics\Shaders\MeshParticle\MeshParticle.hlsli">
+      <Filter>Resources\shader\MeshParticle</Filter>
+    </None>
     <None Include="Engine\Graphics\Shaders\Paint\InkPaint.hlsli">
       <Filter>Resources\shader\Paint</Filter>
     </None>
     <None Include="Engine\Graphics\Shaders\Sprite\Sprite.hlsli">
       <Filter>Resources\shader\Sprite</Filter>
     </None>
+    <FxCompile Include="Engine\Graphics\Shaders\MeshParticle\MeshParticle.PS.hlsl">
+      <Filter>Resources\shader\MeshParticle</Filter>
+    </FxCompile>
+    <FxCompile Include="Engine\Graphics\Shaders\MeshParticle\MeshParticle.VS.hlsl">
+      <Filter>Resources\shader\MeshParticle</Filter>
+    </FxCompile>
+    <FxCompile Include="Engine\Graphics\Shaders\MeshParticle\MeshParticleSpawn.CS.hlsl">
+      <Filter>Resources\shader\MeshParticle</Filter>
+    </FxCompile>
+    <FxCompile Include="Engine\Graphics\Shaders\MeshParticle\MeshParticleUpdate.CS.hlsl">
+      <Filter>Resources\shader\MeshParticle</Filter>
+    </FxCompile>
     <FxCompile Include="Engine\Graphics\Shaders\Paint\InkPaint.PS.hlsl">
       <Filter>Resources\shader\Paint</Filter>
     </FxCompile>

@@ -109,6 +109,9 @@ public:
 
 	// 描画(startIndexから indexCount 個のインデックスだけを描く。既定はモデル全体)
 	void Draw(uint32_t skyboxTextureIndex,D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,SkinCluster* skinCluster = nullptr,uint32_t startIndex = 0,uint32_t indexCount = kDrawAllIndices);
+	// 同じモデルを instanceCount 個まとめて1回の命令で描く(1つずつの位置・向き・色はシェーダー側で SV_InstanceID から求める)
+	// ルートシグネチャ・パイプライン・定数などは呼ぶ側で設定しておく
+	void DrawInstanced(uint32_t instanceCount);
 	// テクスチャのセット
 	void SetTexture(const std::string& texturefilePath);
 
