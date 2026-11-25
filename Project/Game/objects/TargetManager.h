@@ -72,6 +72,22 @@ public:
 	/// <returns>狙えている的があるときtrue</returns>
 	bool FindAimedTarget(const Vector3& cameraPosition,const Vector3& cameraForward,float minDistance,Vector3& outPosition,float& outDistance) const;
 
+	// 指定した的が生きているか(範囲外の番号は false。サブウェポンの狙う的を選ぶのに使う)
+	bool IsTargetAlive(int index) const;
+	// 指定した的の中心の座標を取得(範囲内の番号を渡す)
+	const Vector3& GetTargetPosition(int index) const{ return targets_[index].position; }
+	// 指定した的の、見た目が一番大きくなったとき(狙えている・鍵の的が脈打って一番ふくらんだとき)の当たり判定の半径(範囲内の番号を渡す)
+	// サブウェポンの弾が、狙っていない的をよける進路を選ぶのに使う
+	float GetTargetMaxHitRadius(int index) const;
+
+	/// <summary>
+	/// サブウェポンの弾が着いた的を壊す(壊れた位置は、弾が当たって壊れたときと同じく GetDestroyedPositions() に足す)
+	/// 的の Update() の後に呼ぶ(Update() の最初に壊れた位置の記録を消すため)
+	/// </summary>
+	/// <param name="index">壊す的の番号</param>
+	/// <returns>生きていて壊したとき true(範囲外か、もう壊れていたときは false)</returns>
+	bool DestroyTarget(int index);
+
 	// すべての的を生存状態に戻す
 	void Reset();
 

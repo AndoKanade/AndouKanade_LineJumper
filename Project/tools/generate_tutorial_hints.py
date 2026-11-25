@@ -20,6 +20,7 @@ HINTS = [
     ("hintGate.png", [("text", "ゲートの前の目印で"), ("key", "SPACE"), ("text", "を押して出発!")]),
     ("hintRailShoot.png", [("text", "的を"), ("key", "左クリック"), ("text", "で撃ちながら進もう!")]),
     ("hintKeyTarget.png", [("text", "鍵の的を壊すと となりにレールが出る!")]),
+    ("hintHomingShot.png", [("key", "Q"), ("text", "で近くの的へ3発まとめて撃てる!")]),
 ]
 
 # 画像の大きさ(ピクセル)。文の長さによらず同じ大きさにして、表示する大きさをそろえる

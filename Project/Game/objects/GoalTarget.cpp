@@ -93,18 +93,12 @@ void GoalTarget::Update(const RailEditor* railEditor,float playerRailT,bool isOn
 	// 同じフレームに何発当たっても1発ずつ判定し、当たった弾はすべて消す
 	const Model::BoundingSphere hitSphere = GetHitSphere();
 	while(hp_ > 0 && bullets.CheckHit(hitSphere)){
-		hp_ -= bullets.GetDamage();
 		// インクのしぶきは、的の模様の面(カメラへ向けている)からカメラの方へ跳ねさせる(重なっていて向きが定まらないときは真上へ跳ねさせる)
 		const Vector3 toCamera = cameraPosition - position_;
 		const Vector3 splashDirection = (Length(toCamera) >= kMinFaceDistance)?Normalize(toCamera):kWorldUp;
-		if(inkEffect_){
-			inkEffect_->EmitSpark(position_);
-			inkEffect_->EmitHitSplash(position_,splashDirection);
-		}
+		TakeHit(bullets.GetDamage(),splashDirection);
 	}
-	if(hp_ <= 0){
-		hp_ = 0;
-		isDestroyed_ = true;
+	if(isDestroyed_){
 		return;
 	}
 
@@ -132,6 +126,23 @@ void GoalTarget::Update(const RailEditor* railEditor,float playerRailT,bool isOn
 		obj_->SetCamera(activeCamera);
 	}
 	obj_->Update();
+}
+
+// 弾が1発当たったときの処理
+// 当たったことが分かるよう、当たった位置に火花と、跳ねるインクのしぶきを出す
+void GoalTarget::TakeHit(int damage,const Vector3& splashDirection){
+	if(!IsShootable()){
+		return;
+	}
+	hp_ -= damage;
+	if(inkEffect_){
+		inkEffect_->EmitSpark(position_);
+		inkEffect_->EmitHitSplash(position_,splashDirection);
+	}
+	if(hp_ <= 0){
+		hp_ = 0;
+		isDestroyed_ = true;
+	}
 }
 
 // プレイヤーの進行度から、レールに沿って並走する距離だけ先の位置と、そこでの進行方向を求める
