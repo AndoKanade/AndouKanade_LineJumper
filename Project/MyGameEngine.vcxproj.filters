@@ -357,6 +357,12 @@
     <ClCompile Include="Game\objects\PlayerBulletManager.cpp">
       <Filter>ソース ファイル\Game\objects</Filter>
     </ClCompile>
+    <ClCompile Include="Game\objects\HomingShotManager.cpp">
+      <Filter>ソース ファイル\Game\objects</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\objects\InkTank.cpp">
+      <Filter>ソース ファイル\Game\objects</Filter>
+    </ClCompile>
     <ClCompile Include="Game\objects\TargetManager.cpp">
       <Filter>ソース ファイル\Game\objects</Filter>
     </ClCompile>
@@ -391,6 +397,9 @@
       <Filter>ソース ファイル\Game\UI</Filter>
     </ClCompile>
     <ClCompile Include="Game\UI\BossHpGauge.cpp">
+      <Filter>ソース ファイル\Game\UI</Filter>
+    </ClCompile>
+    <ClCompile Include="Game\UI\InkGauge.cpp">
       <Filter>ソース ファイル\Game\UI</Filter>
     </ClCompile>
     <ClCompile Include="Game\UI\StageClearUI.cpp">
@@ -698,6 +707,12 @@
     <ClInclude Include="Game\objects\PlayerBulletManager.h">
       <Filter>ヘッダー ファイル\Game\objects</Filter>
     </ClInclude>
+    <ClInclude Include="Game\objects\HomingShotManager.h">
+      <Filter>ヘッダー ファイル\Game\objects</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\objects\InkTank.h">
+      <Filter>ヘッダー ファイル\Game\objects</Filter>
+    </ClInclude>
     <ClInclude Include="Game\objects\TargetManager.h">
       <Filter>ヘッダー ファイル\Game\objects</Filter>
     </ClInclude>
@@ -741,6 +756,9 @@
       <Filter>ヘッダー ファイル\Game\UI</Filter>
     </ClInclude>
     <ClInclude Include="Game\UI\BossHpGauge.h">
+      <Filter>ヘッダー ファイル\Game\UI</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\UI\InkGauge.h">
       <Filter>ヘッダー ファイル\Game\UI</Filter>
     </ClInclude>
     <ClInclude Include="Game\UI\StageClearUI.h">

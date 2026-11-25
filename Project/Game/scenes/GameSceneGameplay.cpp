@@ -21,6 +21,8 @@
 #include "objects/Player.h"
 #include "objects/StartPlatform.h"
 #include "objects/PlayerBulletManager.h"
+#include "objects/HomingShotManager.h"
+#include "objects/InkTank.h"
 #include "objects/TargetManager.h"
 #include "objects/GoalTarget.h"
 #include "objects/Boss.h"
@@ -37,6 +39,7 @@
 #include "Camera/CameraPose.h"
 // UI
 #include "UI/Reticle.h"
+#include "UI/InkGauge.h"
 #include "UI/StageHUD.h"
 #include "UI/StageClearUI.h"
 #include "UI/BossHpGauge.h"
@@ -125,6 +128,8 @@ void GameScene::UpdateGameplay(){
 		goalTarget_->Reset();
 		// Play中に減らした・倒したボスも、Editモードでは体力満タンで出す
 		boss_->Reset();
+		// 飛んでいるサブウェポンの弾が、Editモードに戻った後に的を壊さないよう消す
+		homingShotManager_->Clear();
 		// Editモードに戻ったら、Play前に見ていた位置のまま俯瞰デバッグカメラに戻す
 		debugTopCamera_->Enable();
 		// Play前に編集していたレールと制御点を選び直し、続けて編集できるようにする
@@ -464,6 +469,12 @@ void GameScene::UpdateGameplay(){
 	// 試し撃ちの弾は的・敵には当たらないようにして、プレイが始まる前に的を壊したり敵を倒したりしないようにする
 	fireCooldown_ = (std::max)(fireCooldown_ - kDeltaTime,0.0f);
 	bool shootTriggered = (isGameplayActive || isPlayerMovable) && input_ && input_->PushMouseButton(kShootMouseButton) && fireCooldown_ <= kFireIntervalTolerance;
+	// プレイ中はメインの弾もインクタンクのインクを使い、足りないときは撃たずにゲージを赤く点滅させる
+	// スタート台の上の試し撃ちでは、インクを気にせず試せるようインクを使わない
+	if(shootTriggered && isGameplayActive && !inkTank_->TryConsume(inkTank_->GetMainShotCost())){
+		shootTriggered = false;
+		inkGauge_->NotifyShortage();
+	}
 	if(shootTriggered){
 		fireCooldown_ = kFireInterval;
 
@@ -508,6 +519,25 @@ void GameScene::UpdateGameplay(){
 		inkEffect_->EmitInkSplash(muzzlePos,shootDirection,kMuzzleSplashCount);
 	}
 
+	// サブウェポン(Q)の発射処理(ステージに出てプレイしている間だけ撃てる。スタート台の上では撃てない)
+	// インクが足りないときは撃たずにゲージを赤く点滅させ、狙える的が無いときは撃たずにインクも使わない
+	// 撃ったかは、操作の案内(サブウェポンの案内を消す)にも使う
+	bool hasFiredHomingShot = false;
+	if(isGameplayActive && input_ && input_->TriggerKey(DIK_Q)){
+		const float homingShotCost = inkTank_->GetHomingShotCost();
+		if(!inkTank_->CanAfford(homingShotCost)){
+			inkGauge_->NotifyShortage();
+		} else if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
+			hasFiredHomingShot = homingShotManager_->Fire(playerPos,cameraForward,activeCamera->GetViewProjectionMatrix(),*targetManager_,*goalTarget_);
+			if(hasFiredHomingShot){
+				inkTank_->TryConsume(homingShotCost);
+			}
+		}
+	}
+
+	// インクタンクのインクを戻す(プレイ中にレールに足が着いている間だけ。左クリックを押している間は戻さない)
+	inkTank_->Update(isGameplayActive && player_->IsGroundedOnRail(),isGameplayActive && input_ && input_->PushMouseButton(kShootMouseButton),worldDeltaTime);
+
 	// 弾の移動更新と生存時間チェック
 	bulletManager_->Move(worldDeltaTime);
 
@@ -516,6 +546,11 @@ void GameScene::UpdateGameplay(){
 
 	// 的の照準判定と弾との当たり判定
 	bool isAimingAtAnyTarget = targetManager_->Update(cameraPos,cameraForward,*bulletManager_,worldDeltaTime);
+
+	// サブウェポンの弾を進め、着いた弾の的を壊す・ゴールの的の体力を減らす
+	// 壊れた的は弾が当たって壊れた的と同じ一覧に入るため、的の判定の後・壊れた的の演出の前に行う
+	// ゴールの的を壊したときも、このフレームのクリア判定に入るよう、ゴールの的の更新より前に行う
+	homingShotManager_->Update(worldDeltaTime,*targetManager_,*goalTarget_);
 
 	// 壊れた的ごとに、破片・しぶき・閃光を出して連鎖数を増やす
 	for(const Vector3& destroyedPos : targetManager_->GetDestroyedPositions()){
@@ -547,6 +582,8 @@ void GameScene::UpdateGameplay(){
 			Application::GetInstance()->TriggerRadialBlur(CameraPoseMath::WorldToScreenUv(goalBreakPosition,activeCamera->GetViewProjectionMatrix()),kGoalBreakRadialBlurWidth,kGoalBreakRadialBlurDuration);
 		}
 		// 壊れた的の破片を少し見せてから、大ジャンプでスタート台へ戻る
+		// 飛んでいるサブウェポンの弾は、ステージが終わったため消す
+		homingShotManager_->Clear();
 		returnJump_->Begin(MakeDepartureContext());
 	}
 
@@ -609,6 +646,9 @@ void GameScene::UpdateGameplay(){
 	// 体力の表現の更新(Play中だけ出し、Editモードでは外す)
 	damageInkEffect_->Update(player_->GetHpRate(),isPlayMode,kDeltaTime);
 
+	// インクの残りのゲージの更新
+	inkGauge_->Update(inkTank_->GetRate(),kDeltaTime);
+
 	// 画面表示の更新(左上のアイコンには残機を出す)
 	stageHUD_->Update(lives_,kMaxLives,targetManager_->GetDestroyedCount(),targetManager_->GetTotalCount(),*comboCounter_);
 	// ボスの体力ゲージは、プレイが始まっていて、ボスがまだ倒されていない間だけ出す
@@ -641,6 +681,9 @@ void GameScene::UpdateGameplay(){
 	tutorialSituation.hasDestroyedTarget = !targetManager_->GetDestroyedPositions().empty();
 	tutorialSituation.isKeyTargetNear = isKeyTargetNear;
 	tutorialSituation.hasDestroyedKeyTarget = targetManager_->HasDestroyedKeyTarget();
+	tutorialSituation.hasFiredHomingShot = hasFiredHomingShot;
+	// 飛び移り方の案内は、この後で求めるため前のフレームに出した側で調べる
+	tutorialSituation.isRailSwitchPromptShown = lastRailSwitchSide_ != 0;
 	tutorialHints_->Update(tutorialSituation,kDeltaTime);
 
 	// 鍵の的を壊して出た、まだ乗っていないレールへ飛び移れるときは、そのレールがある側に押すキーを出す

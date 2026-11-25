@@ -47,6 +47,7 @@ PADDING = 56
 CONTROLS = [
     ("マウス", "照準を動かす / 見回す", ""),
     ("左クリック", "インクを撃つ", "鍵の的を壊すと となりにレールが出る"),
+    ("Q", "近くの的へ3発まとめて撃つ", "インクを多く使う(撃たずにいると戻る)"),
     ("SPACE", "ジャンプ / 出発する", ""),
     ("A/D+SPACE", "となりのレールへ飛び移る", "画面に出た側のキーを押す"),
     ("WASD", "スタート台の上で歩く", ""),
@@ -124,8 +125,8 @@ def generate_help(controls, flows, output_path):
     # 左の列: 操作の一覧
     draw.text((left_column, top), "操作", font=heading_font, fill=HEADING_COLOR, anchor="lt")
     key_area_width = 260
-    # 操作が8行あるため、一番下の「H キーで閉じる」に重ならない、なるべく広い間隔にする
-    row_height = 68
+    # 操作が9行あるため、一番下の「H キーで閉じる」に重ならない、なるべく広い間隔にする
+    row_height = 60
     y = top + 70
     for key, text, sub in controls:
         draw_key(draw, left_column, y, key, key_font)

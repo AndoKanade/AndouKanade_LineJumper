@@ -24,11 +24,14 @@ class RailCamera;
 class ScreenImpact;
 class DebugTopCamera;
 class PlayerBulletManager;
+class HomingShotManager;
+class InkTank;
 class TargetManager;
 class GoalTarget;
 class Boss;
 class EnemyManager;
 class Reticle;
+class InkGauge;
 class InkEffectManager;
 class ComboCounter;
 class StageHUD;
@@ -211,6 +214,10 @@ private:
 
 	// プレイヤーの弾
 	std::unique_ptr<PlayerBulletManager> bulletManager_;
+	// サブウェポン(Q)の弾(押した瞬間に画面に映っている近くの的へ、背中から3発飛ばす)
+	std::unique_ptr<HomingShotManager> homingShotManager_;
+	// メインの弾とサブウェポンで使うインクタンク
+	std::unique_ptr<InkTank> inkTank_;
 
 	// 的
 	std::unique_ptr<TargetManager> targetManager_;
@@ -251,6 +258,8 @@ private:
 
 	// 画面中央固定のレティクル(照準)
 	std::unique_ptr<Reticle> reticle_;
+	// レティクルの右横に出す、インクタンクの残りのゲージ
+	std::unique_ptr<InkGauge> inkGauge_;
 
 	// インクのしぶき・的の破片・撃破時の閃光の演出
 	std::unique_ptr<InkEffectManager> inkEffect_;

@@ -67,6 +67,18 @@ public:
 	bool IsAppeared() const{ return isAppeared_; }
 	// 現在の座標を取得(壊れたときの破片の演出の発生位置に使う)
 	const Vector3& GetPosition() const{ return position_; }
+	// 現れていて、まだ壊れていないか(サブウェポンで狙えるか)
+	bool IsShootable() const{ return isAppeared_ && !isDestroyed_; }
+	// 当たり判定の球の半径を取得(サブウェポンの弾が、この的をよける進路を選ぶのに使う)
+	float GetHitRadius() const{ return GetHitSphere().radius; }
+
+	/// <summary>
+	/// 弾が1発当たったときの処理(体力を減らし、当たった位置に火花としぶきを出す。体力が0になったら壊れる)
+	/// メインの弾は Update() の中で、サブウェポンの弾は着いたときに呼ぶ。現れていない・壊れたときは何もしない
+	/// </summary>
+	/// <param name="damage">減らす体力</param>
+	/// <param name="splashDirection">しぶきを跳ねさせる向き(正規化済み)</param>
+	void TakeHit(int damage,const Vector3& splashDirection);
 
 private:
 	/// <summary>

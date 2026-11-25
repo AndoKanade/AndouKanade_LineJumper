@@ -28,6 +28,8 @@
 #include "objects/Player.h"
 #include "objects/StartPlatform.h"
 #include "objects/PlayerBulletManager.h"
+#include "objects/HomingShotManager.h"
+#include "objects/InkTank.h"
 #include "objects/TargetManager.h"
 #include "objects/GoalTarget.h"
 #include "objects/Boss.h"
@@ -42,6 +44,7 @@
 #include "Camera/CameraPose.h"
 // UI
 #include "UI/Reticle.h"
+#include "UI/InkGauge.h"
 #include "UI/StageHUD.h"
 #include "UI/StageClearUI.h"
 #include "UI/BossHpGauge.h"
@@ -163,6 +166,12 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// プレイヤーの弾の生成
 	bulletManager_ = std::make_unique<PlayerBulletManager>();
 	bulletManager_->Initialize(object3dCommon_);
+	// サブウェポン(Q)の弾の生成(狙う範囲・的に着くまでの時間を調整項目に登録する)
+	homingShotManager_ = std::make_unique<HomingShotManager>();
+	homingShotManager_->Initialize(object3dCommon_,kGameSceneGroup);
+	// メインの弾とサブウェポンで使うインクタンク(容量・使う量・戻り方を調整項目に登録する)
+	inkTank_ = std::make_unique<InkTank>();
+	inkTank_->Initialize(kGameSceneGroup);
 
 	// 的の生成(保存済みの配置が無い初回起動時はレール沿いに自動配置する)
 	targetManager_ = std::make_unique<TargetManager>();
@@ -183,6 +192,9 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	// 画面中央固定のレティクルを生成
 	reticle_ = std::make_unique<Reticle>();
 	reticle_->Initialize(spriteCommon_);
+	// レティクルの右横に出す、インクタンクの残りのゲージ
+	inkGauge_ = std::make_unique<InkGauge>();
+	inkGauge_->Initialize(spriteCommon_);
 
 	// インクのしぶき・的の破片・閃光の演出(GPU で動かして描くパーティクルをここで生成する)
 	inkEffect_ = std::make_unique<InkEffectManager>();
@@ -207,6 +219,7 @@ void GameScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommon
 	boss_->SetInkEffect(inkEffect_.get());
 	enemyManager_->SetInkEffect(inkEffect_.get());
 	bulletManager_->SetInkEffect(inkEffect_.get());
+	homingShotManager_->SetInkEffect(inkEffect_.get());
 
 	// 的を続けて壊したときの連鎖数
 	comboCounter_ = std::make_unique<ComboCounter>();
@@ -502,6 +515,8 @@ void GameScene::Draw(){
 
 	// 発射中の弾を描画
 	bulletManager_->Draw();
+	// 飛んでいるサブウェポンの弾を描画
+	homingShotManager_->Draw();
 
 	// インクのしぶき・的の破片・閃光を描画
 	inkEffect_->Draw();
@@ -527,6 +542,8 @@ void GameScene::Draw(){
 
 	if(!isTitleShowing && !isDeparting && !isReturning && !isBreakingBarrier){
 		reticle_->Draw();
+		// インクの残りは狙っている場所から目を離さずに見られるよう、レティクルと同じときに出す
+		inkGauge_->Draw();
 	}
 
 	// 体力・壊した的の数・連鎖数はPlay中だけ表示する(タイトル中・カメラの回り込み中は出さない)

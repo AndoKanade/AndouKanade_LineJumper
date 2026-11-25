@@ -181,6 +181,8 @@ Game/
 | `railCamera_` | レール追従カメラ（RailCamera） |
 | `debugTopCamera_` | 俯瞰デバッグカメラ（DebugTopCamera） |
 | `bulletManager_` | プレイヤーの弾（PlayerBulletManager） |
+| `homingShotManager_` | サブウェポン（Q）の弾（HomingShotManager） |
+| `inkTank_` | メインの弾とサブウェポンで使うインクタンク（InkTank） |
 | `targetManager_` | 的（TargetManager） |
 | `goalTarget_` | ゴールの的（GoalTarget）。ゴールのレールに乗ると現れて先を並走し、壊すとステージクリア |
 | `boss_` | 最後のステージのボス（Boss）。輪の中心に浮かび、倒すとクリア画面へ移る |
@@ -189,6 +191,7 @@ Game/
 | `enemyManager_` | 雑魚敵（EnemyManager） |
 | `startSequence_` | ステージ開始演出（StartSequence）。タイトルロゴもこの中で表示する |
 | `reticle_` | 画面中央のレティクル（Reticle） |
+| `inkGauge_` | レティクルの右横のインクの残りのゲージ（InkGauge） |
 | `inkEffect_` | インクのしぶき・的の破片・閃光の演出（InkEffectManager） |
 | `comboCounter_` | 連鎖数（ComboCounter） |
 | `stageHUD_` | 残機・壊した的の数・連鎖数の表示（StageHUD） |
@@ -225,7 +228,7 @@ Game/
    7. `Player::UpdateTransform()` でプレイヤーをレールの上に立たせ、照準の方向へ向ける。出発の演出中は `DepartureDirector::Update()`、大ジャンプの最中は `ReturnJump::Update()` でプレイヤーの表示を上書きする。大ジャンプで跳び上がった瞬間（`ConsumeLaunched()`）にプレイヤーをスタート台の上へ移して照準を戻し、「STAGE CLEAR!」を出す。着地した瞬間（`ConsumeLanded()`）に今のステージをクリアしたことにし（`StageInfo::clearedStages`）、最後のステージとプレイ会用の設定で遊ぶステージなら `StartStageClear()`、それ以外は `RestartFromReturnJump()` を呼ぶ。出発ゲートを開け始めた瞬間（`StartSequence::IsGateOpenTriggered()`）に、開けたゲートのステージへ `SwitchStage()` で切り替える。カメラは「タイトル・回り込み（StartSequence）→ 出発の演出 → 大ジャンプ → ゲートを映すカメラ」の優先順で上書きし、最後に画面の揺れを足す。
    8. 敵の更新、敵弾とプレイヤーの当たり判定、ゲームオーバー判定。
    9. `Player::UpdateMovement()` でジャンプ・WASD 移動・着地判定を行う。地面まで落ちたら、プレイ中なら `LoseLife()`、出発前のスタート台の上なら `RestartAfterMiss()` を呼ぶ。`isPlayerMovable` の間も同じく動かす。出発台を使う演出なら、出発台の手前の線を越えたら演出を始める。歩いてレールへ乗ったとき・出発の演出がレールへ乗せ終えたときは `StartSequence::NotifyBoarded()` を呼び、`PlayBoardedEffects()` で足元から輪・インクのしぶき・インクの跡を出す。
-   10. 射撃（手元からインクのしぶきも出す。スタート台の上では的・敵に当たらない試し撃ち）、弾の移動、的・敵と弾の当たり判定、壊れた的ごとの演出と連鎖数の加算、ゴールの的の並走と当たり判定・クリア判定、弾の行列の更新、レティクルの色の更新。
+   10. 射撃（手元からインクのしぶきも出す。プレイ中はインクを使う。スタート台の上では的・敵に当たらない試し撃ち）、サブウェポン（Q）の発射、インクタンクの戻り、弾の移動、的・敵と弾の当たり判定、サブウェポンの弾の着弾、壊れた的ごとの演出と連鎖数の加算、ゴールの的の並走と当たり判定・クリア判定、弾の行列の更新、レティクルの色の更新。
    11. 演出・スピード線・HUD・「STAGE CLEAR!」の更新。レールを進んでいる間は、通った区間を塗り、足元から後ろへしぶきを飛ばし、スピード線を出す。
 3. デバッグ用のキー操作（F4 / F5）と、Edit モード中の ImGui パネル（`ShowEditorPanels()`）を処理する。
 
@@ -236,7 +239,9 @@ Game/
 | 項目 | 内容 |
 | --- | --- |
 | 射撃 | 左クリックを押している間、0.1 秒ごとに連射する（押した瞬間に 1 発目を撃つ）。プレイヤーの手元（`Player::GetMuzzlePosition()`）から弾を発射する。的をレティクルで狙えている（レティクルの中心が赤い）とき、またはレティクルの方向が敵・ゴールの的の当たり判定の球を通るときは、レティクルの線（カメラの前方へ伸ばした線）の上の、一番手前のものと同じ奥行きの点へ向けて撃つ（中心そのものは狙わず、弾はいつもレティクルの通りに飛ぶ。手元から前方へ 1.0 より手前にあるものは狙わない）。どちらも無いときは、カメラの前方 12.0 の点（レティクルの先。手元からはおよそ 9 先で、射程 10 より手前）へ向けて撃つ |
-| 試し撃ち | スタート台の上（`isPlayerMovable` の間）でも撃てる。この弾は的・敵に当たらず、台に着いたところにインクを塗る |
+| インク | プレイ中（`isGameplayActive` の間）は、メインの弾1発ごとに `inkMainShotCost` のインクを使う。足りないときは撃たず、インクのゲージを赤く点滅させる（InkTank・InkGauge を参照） |
+| サブウェポン | プレイ中に Q を押すと、`inkHomingShotCost` のインクを使って、画面に映っている近くの的へ3発の弾を飛ばす（HomingShotManager を参照）。インクが足りないときはゲージを赤く点滅させ、狙える的が無いときは撃たずにインクも使わない。飛んでいる弾は `ResetPlayState()`・`SwitchStage()`・大ジャンプの始まり・Edit へ戻るときに消す |
+| 試し撃ち | スタート台の上（`isPlayerMovable` の間）でも撃てる。この弾は的・敵に当たらず、台に着いたところにインクを塗る。インクは使わない（サブウェポンは撃てない） |
 | 出発の演出 | ImGui の「Departure」で選んだ演出で、スタート台からレールへ移る（Title の Departure を参照） |
 | 落下リスタート | どのレールにも乗れずに地面の高さまで落ちたら暗転（`SceneManager::StartTransition()`）を始め、画面を覆っている間に `ResetPlayState()` を呼ぶ（`RestartAfterMiss()`）。開始演出は挟まない。チェックポイントを通っていれば、続けて `RespawnAtCheckpoint()` でそこから始め直す。プレイ中に落ちたときは残機を 1 つ減らす（出発前にスタート台から落ちたときは減らさない） |
 | 残機 | 最大 3（`kMaxLives`）。落下・体力 0 で 1 つ減り（`LoseLife()`）、残っていれば落下リスタートと同じ暗転でやり直す（体力は満タンに戻る）。0 になったら、そのときのボスの形態を `ContinuePoint::bossPhase` に書き込み、やられ演出のあと GAMEOVER へ移る。`ResetPlayState()` では戻さず、Play に入ったとき（コンティニューを含む）と R キーのやり直しで満タンに戻す |
@@ -283,6 +288,12 @@ Game/
 | `playerMaxHp` | 100 | Player | プレイヤーの体力の最大値（次にやり直したときから反映される） |
 | `hpRegenStartDelay` / `hpRegenSpeed` | 3.0 / 12.0 | Player | 最後にダメージを受けてから体力が戻り始めるまでの秒数 / 1 秒あたりに戻る体力 |
 | `enemyBulletDamage` | 30 | GameScene | 雑魚敵の弾が当たったときに減る体力 |
+| `inkCapacity` | 100 | InkTank | インクタンクの容量 |
+| `inkMainShotCost` / `inkHomingShotCost` | 2 / 35 | InkTank | メインの弾1発 / サブウェポン1回で使うインク |
+| `inkRegenDelay` / `inkRegenSpeed` | 0.5 / 50 | InkTank | 最後にインクを使ってから（左クリックを押している間も含む）戻り始めるまでの秒数 / 1 秒あたりに戻るインク |
+| `homingShotRange` | 25 | HomingShotManager | サブウェポンで狙う的を探す、プレイヤーからの距離 |
+| `homingShotFlightTime` | 0.6 | HomingShotManager | サブウェポンの弾が撃ってから的に着くまでの秒数 |
+| `homingShotGoalDamage` | 1 | HomingShotManager | サブウェポンの弾がゴールの的に1発当たったときに減らす体力（メインの弾1発と同じ） |
 | `cameraHeightOffset` | 0.8 | RailCamera | カメラの回転の中心をレールより上に置く量 |
 | `cameraDistance` | 3.0 | RailCamera | カメラをプレイヤーの後ろへ離す距離 |
 | `cameraFollowSharpness` | 8.0 | RailCamera | レールの向きへカメラが追従する速さ（大きいほど遅れが小さい） |
@@ -703,6 +714,46 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `GetDamage()` | 弾 1 発のダメージ量を取得する |
 | `GetAliveCount()` / `GetMaxCount()` / `GetPoolFullCount()` | 飛んでいる弾の数 / 使い回す弾の最大数 / 未使用の弾が無く飛んでいる弾を使い回して撃った回数を取得する（デバッグ表示用） |
 
+### HomingShotManager（`objects/HomingShotManager.h/.cpp`）
+
+サブウェポン（Q）の弾の管理。Q を押した瞬間に狙う的を決め、背中のタンクから3発の弾を飛ばす。
+
+| 項目 | 内容 |
+| --- | --- |
+| 狙う的 | 生きている的（普通の的・鍵の的）と、現れていて壊れていないゴールの的のうち、プレイヤーから `homingShotRange`（25）以内で、画面に映っているもの（`CameraPoseMath::IsInView()`）を、プレイヤーに近い順に最大3つ。ほかのサブの弾がもう向かっている的は選ばない（ゴールの的は体力があるため選ぶ）。ボス・敵は狙わない |
+| 割り振り | 的が3つなら1発ずつ、2つなら近い方に2発、1つなら3発とも（i 番目の弾は近い順で i × 的の数 / 3 番目の的）。左へ開く弾ほど左にある的へ向かうよう並べ替える |
+| 進路 | 3次ベジェ曲線。始点は背中のタンク（足元から 0.4 上、背中側へ 0.12）、終点は的の中心。弾は背中側へ 1.5 出て、左・上・右へ 2.5 開いてから、的の横（開く向きへ 1.5、プレイヤー側へ最大 4.0）から回り込んで的へ向かう |
+| よける進路 | 撃つ瞬間に、開く向き（0・±0.45・±0.9 ラジアン）と広がり（1.0・1.6 倍）を変えた進路を順に試し、狙っていない生きている的（ゴールの的は撃つ瞬間の位置）の当たり判定（一番大きくなったときの半径 ＋ 0.3）に近づかない最初の進路を選ぶ。進路は 16 本の線分に分けて調べる。どれも近づいてしまうときは、近づく的の数が一番少ない進路にする |
+| 着弾 | 撃ってから `homingShotFlightTime`（0.6 秒）で必ず的に着く。並走して動くゴールの的へ向かう弾は、毎フレーム、進路の終点と3番目の制御点を的が動いた分だけ動かす。普通の的・鍵の的は、生きていれば `TargetManager::DestroyTarget()` で壊す（破片・連鎖数は弾で壊したときと同じく GameScene が出す）。ゴールの的は `GoalTarget::TakeHit()` で体力を `homingShotGoalDamage`（1）減らし、来た向きへしぶきを跳ね返す（体力が 0 になったらクリア）。先に壊されていたら、その位置でしぶき 6 粒を出して消える。まわりの的は壊さない |
+| 当たり判定 | 飛んでいる途中は何にも当たらない（狙っていない的・敵・ボス・スタート台はすり抜ける） |
+| 見た目 | `SmoothSphere/smoothSphere.obj`（メインの弾と同じ黄色・ライティングなし）、スケール 0.2 を進む向きへ 1.8 倍に伸ばす。0.03 秒ごとに軌跡の粒（`EmitBulletTrail`）を出す |
+| 生成 | 初期化時に 9 発（3 回分）まとめて生成し、使い回す。未使用の弾が 3 発無いときは撃たない |
+
+| 関数 | 内容 |
+| --- | --- |
+| `Initialize(Obj3dCommon*, paramGroup)` | 弾のモデルを読み込み、使い回す弾を生成し、調整項目 `homingShotRange` / `homingShotFlightTime` / `homingShotGoalDamage` を登録する |
+| `SetInkEffect(inkEffect)` | 軌跡の粒・しぶきを出す演出を設定する |
+| `Fire(playerPosition, cameraForward, viewProjection, targets, goalTarget)` | 狙う的を選んで3発撃つ。撃ったら true（狙える的が無い・弾が足りないときは false） |
+| `Update(deltaTime, targets, goalTarget)` | 弾を進め、着いた弾の的を壊す・ゴールの的の体力を減らす（`TargetManager::Update()` の後、`GoalTarget::Update()` の前に呼ぶ） |
+| `Draw()` / `Clear()` | 飛んでいる弾を描画する / すべて消す |
+
+### InkTank（`objects/InkTank.h/.cpp`）
+
+プレイヤーが背負っているインクタンク。メインの弾とサブウェポンで同じインクを使う。
+
+| 項目 | 内容 |
+| --- | --- |
+| 容量 | `inkCapacity`（100）。やり直したとき（`ResetPlayState()`）に満タンに戻す |
+| 使う量 | メインの弾1発で `inkMainShotCost`（2。撃ち続けると 5 秒で切れる）、サブウェポン1回で `inkHomingShotCost`（35。満タンから2回撃てる） |
+| 戻り方 | プレイ中にレールに足が着いている間だけ、1 秒あたり `inkRegenSpeed`（50。空から満タンまで 2 秒）ずつ戻る。最後にインクを使ってから `inkRegenDelay`（0.5 秒）は戻らない。左クリックを押している間は、インクが足りなくて撃てていなくても戻らない（指を離してから 0.5 秒で戻り始める） |
+
+| 関数 | 内容 |
+| --- | --- |
+| `Initialize(paramGroup)` / `Reset()` | 調整項目の登録 / 満タンに戻す |
+| `Update(canRegenerate, isUsing, deltaTime)` | インクの戻りを進める（`canRegenerate`: レールに足が着いているか、`isUsing`: 左クリックを押しているか） |
+| `CanAfford(amount)` / `TryConsume(amount)` | 指定した量が残っているか / 指定した量を使う（足りないときは使わずに false） |
+| `GetRate()` / `GetMainShotCost()` / `GetHomingShotCost()` | 残りの割合 / メインの弾1発 / サブウェポン1回で使う量 |
+
 ### TargetManager（`objects/TargetManager.h/.cpp`）
 
 的の管理。TargetEditor の配置データを的のリストに反映し、照準判定・弾との当たり判定・描画を行う。
@@ -724,6 +775,8 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Reset()` / `Draw()` | 全ての的を復活させる / 生存している的を描画する |
 | `GetAliveStates()` / `RestoreAliveStates(aliveStates)` | 的ごとの生存状態を取得する / 取得した状態に戻す（チェックポイント用） |
 | `FillLockedRails(lockedRails)` | 生きている鍵の的が指定しているレールに true を入れる（範囲外のレールの指定は無視する） |
+| `IsTargetAlive(index)` / `GetTargetPosition(index)` / `GetTargetMaxHitRadius(index)` | 指定した的が生きているか / 中心の座標 / 見た目が一番大きくなったとき（狙えている・鍵の的が一番ふくらんだとき）の当たり判定の半径（サブウェポンの狙う的・よける進路を決めるのに使う） |
+| `DestroyTarget(index)` | サブウェポンの弾が着いた的を壊し、壊れた位置を `GetDestroyedPositions()` に足す（`Update()` の後に呼ぶ）。生きていて壊したら true |
 | `GetDestroyedPositions()` | 直前の `Update()` で壊れた的の座標の一覧を取得する |
 | `GetTotalCount()` / `GetDestroyedCount()` | 的の総数 / 壊された的の数を取得する |
 | `ConsumeFocusRequest(outPosition)` | Target Editor で Focus の操作があれば、選択中の的の位置を返す（GameScene が俯瞰カメラを寄せる） |
@@ -752,6 +805,8 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `FindAimed(cameraPosition, cameraForward, minDistance, outDistance)` | レティクルの方向が当たり判定の球を通っているか |
 | `Draw()` | 現れていて壊れていないときに描画する |
 | `IsDestroyed()` / `GetPosition()` | 壊れたか / 今の座標 |
+| `IsShootable()` / `GetHitRadius()` | 現れていて壊れていないか / 当たり判定の球の半径（どちらもサブウェポンが使う） |
+| `TakeHit(damage, splashDirection)` | 弾が1発当たったときに体力を減らし、火花としぶきを出す（体力が 0 で壊れる）。メインの弾は `Update()` の中で、サブウェポンの弾は着いたときに呼ぶ |
 
 ### Boss（`objects/Boss.h/.cpp`）
 
@@ -1004,6 +1059,7 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `LookAt(position, target)` / `LookRotation(from, to)` | 注目する点へ向けたカメラ / その向き |
 | `Lerp(from, to, t)` / `LerpAngle(from, to, t)` | 2 つの画を混ぜる（角度は近い回り方で補間する） |
 | `WorldToScreenUv(position, viewProjection)` | ワールド座標を画面の UV に変換する（放射ブラーの中心に使う） |
+| `IsInView(position, viewProjection)` | ワールド座標が画面に映っているか（カメラの後ろは映っていないとする。サブウェポンの狙う的を選ぶのに使う） |
 
 - 放射ブラーは `Application::TriggerRadialBlur(center, width, duration)`（Engine）でかけ、時間とともに弱めて元の表示に戻す。
 
@@ -1034,6 +1090,16 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | `Update()` | 行列の更新 |
 | `SetAiming(bool)` | 狙えているときは中心ドットを赤、それ以外は白にする |
 | `Draw()` | スプライト共通の描画前処理を行ってから描画する |
+
+### InkGauge（`UI/InkGauge.h/.cpp`）
+
+インクタンクの残りのゲージ。レティクルの右横（中心から右へ 40）に縦長の帯（10 × 56）を出し、残りに合わせて下から伸ばす（白一色の `RailTube/white.png` に色を付ける）。レティクルと同じときに描く。
+
+| 関数 | 内容 |
+| --- | --- |
+| `Initialize(SpriteCommon*)` / `Reset()` | スプライトの生成 / 点滅を止める |
+| `NotifyShortage()` | インクが足りなくて撃てなかったときに呼ぶ。0.5 秒のあいだ、0.08 秒ごとに帯と下地を赤と元の色に切り替える。押しっぱなしで毎フレーム呼ばれても、点滅の進み方は最初に戻さず、残り時間だけを延ばす |
+| `Update(rate, deltaTime)` / `Draw()` | 帯の長さと色の更新 / 描画 |
 
 ### StageHUD（`UI/StageHUD.h/.cpp`）
 
@@ -1091,16 +1157,17 @@ Edit モードの Global Variables パネル、または `resource/GlobalVariabl
 | Gate「ゲートの前の目印で SPACE を押して出発」 | 同上 | 出発ゲートを開け始める |
 | RailShoot「的を左クリックで撃ちながら進もう」 | レールを進んでいる間 | 的を1つ壊すか、6 秒たつ |
 | KeyTarget「鍵の的を壊すと となりにレールが出る!」 | レールを進んでいて、生きている鍵の的が 35 以内にある間 | 鍵の的を壊す |
+| HomingShot「Q で近くの的へ3発まとめて撃てる!」（`hintHomingShot.png`） | レールを進んでいて、飛び移り方の案内（`RailSwitchPrompt`）を出していない間 | Q でサブウェポンを撃つか、6 秒たつ |
 
 - 消えた案内は 0.3 秒で薄くなり、0.4 秒置いて次の案内が少し上から下りてきながら出る。
-- 先の操作を先にしたとき（案内の前にゲートを開けた・レールに乗った）は、レールの案内まで飛ばす。
+- 先の操作を先にしたとき（案内の前にゲートを開けた・レールに乗った）は、レールの案内まで飛ばす。サブウェポンを案内より先に撃っていたら、サブウェポンの案内は出さない。
 - GameScene は Play に入ったとき（コンティニューを除く）と R キーのやり直しで `Reset()` を呼ぶ。落ちてやり直しても出し直さない。
 
 | 関数 | 内容 |
 | --- | --- |
 | `Initialize(SpriteCommon*)` | テクスチャの読み込みとスプライトの生成 |
 | `Reset()` | 最初の案内から出し直す |
-| `Update(situation, deltaTime)` | 台の上か・レールの上か・プレイヤーの位置・撃ったか・ゲートを開けたか・的を壊したか（`Situation`）から案内を進める |
+| `Update(situation, deltaTime)` | 台の上か・レールの上か・プレイヤーの位置・撃ったか・ゲートを開けたか・的を壊したか・サブウェポンを撃ったか・飛び移り方の案内を出しているか（`Situation`）から案内を進める |
 | `Draw()` | 今の案内と、消えていく前の案内を描く |
 
 ### StageLockedNotice（`UI/StageLockedNotice.h/.cpp`）
@@ -1408,7 +1475,8 @@ Scene ビュー上のマウス位置から画面奥へ伸びるレイを求め�
 | キー | 内容 |
 | --- | --- |
 | マウス移動 | 照準 |
-| 左クリック（押しっぱなしで連射） | 射撃 |
+| 左クリック（押しっぱなしで連射） | 射撃（インクを使う） |
+| Q | サブウェポン（画面に映っている近くの的へ3発。インクを多く使う） |
 | SPACE | レールに沿って進みながらその場で跳ねる |
 | A / D ＋ SPACE | 押した方向の並走レールへ飛び移る |
 | W / S ＋ SPACE | ループするレール（ボスの輪）の上で、カメラの前・後ろにある輪へ飛び移る |

@@ -19,6 +19,8 @@
 #include "objects/Player.h"
 #include "objects/StartPlatform.h"
 #include "objects/PlayerBulletManager.h"
+#include "objects/HomingShotManager.h"
+#include "objects/InkTank.h"
 #include "objects/TargetManager.h"
 #include "objects/GoalTarget.h"
 #include "objects/Boss.h"
@@ -34,6 +36,7 @@
 #include "Camera/CameraPose.h"
 // UI
 #include "UI/StageClearUI.h"
+#include "UI/InkGauge.h"
 #include "UI/BossHpGauge.h"
 #include "UI/StageLockedNotice.h"
 #include "UI/RailSwitchPrompt.h"
@@ -69,6 +72,11 @@ void GameScene::ResetPlayState(){
 	// 開始時に残っている弾もリセットし、次に押したときすぐ撃てるようにする
 	bulletManager_->Clear();
 	fireCooldown_ = 0.0f;
+	// 飛んでいるサブウェポンの弾も消し、生き返らせた的をやり直した直後に壊さないようにする
+	homingShotManager_->Clear();
+	// インクタンクは満タンに戻し、ゲージの点滅も止める
+	inkTank_->Reset();
+	inkGauge_->Reset();
 
 	// レールを0番へ戻し、インクで塗った区間も消す
 	if(railEditor_){
@@ -297,6 +305,8 @@ void GameScene::SwitchStage(int stageIndex){
 	railEditor_->SetStageIndex(stageIndex);
 	targetManager_->SetStageIndex(stageIndex);
 	enemyManager_->SetStageIndex(stageIndex);
+	// 飛んでいるサブウェポンの弾は前のステージの的の番号を狙っているため消す
+	homingShotManager_->Clear();
 
 	// Playから戻ったときに選び直すレール・制御点は前のステージのものなので、切り替えた先の0番のレールにする
 	editRailIndex_ = 0;
