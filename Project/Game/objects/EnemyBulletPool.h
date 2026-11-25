@@ -7,6 +7,7 @@
 // クラスの前方宣言
 class Obj3D;
 class Obj3dCommon;
+class InkEffectManager;
 
 /// <summary>
 /// 敵の弾の使い回し(雑魚敵 Enemy とボス Boss で共用する)
@@ -72,6 +73,9 @@ public:
 	// 追尾弾の曲がりやすさを変える(調整項目の変更を反映するのに使う)
 	void SetHomingTurnRate(float homingTurnRate){ settings_.homingTurnRate = homingTurnRate; }
 
+	// 飛んでいる弾から垂れるインクの粒(軌跡)を出す演出を設定する(設定しなければ軌跡を出さない)
+	void SetInkEffect(InkEffectManager* inkEffect){ inkEffect_ = inkEffect; }
+
 private:
 	// 弾1発分のデータ
 	struct Bullet{
@@ -83,6 +87,7 @@ private:
 		float speed = 0.0f;                    // 移動速度(向きを変えても速さを保つために保持する)
 		bool isHoming = false;                 // 追尾するかどうか(trueなら毎フレーム向きを補正する)
 		float damage = 0.0f;                   // 当たったときに減らす体力の量
+		float trailTimer = 0.0f;               // 軌跡の粒を前に出してからの経過時間(秒)
 	};
 
 	// 弾の作り
@@ -91,7 +96,11 @@ private:
 	Model* bulletModel_ = nullptr;
 	// 使い回す弾の実体(サイズはsettings_.countで固定)
 	std::vector<Bullet> bullets_;
+	// 軌跡の粒を出す演出(GameScene が持つものを、弾を撃つ雑魚敵・ボスから借りる)
+	InkEffectManager* inkEffect_ = nullptr;
 
+	// 1発の弾から軌跡の粒を出す間隔(秒。避けるときに弾の向きが分かるよう、自分の弾より少し細かくする)
+	static constexpr float kTrailInterval = 0.04f;
 	// 向きが定まらないとみなすベクトルの長さ(プレイヤーと弾が重なっているときは追尾の向き補正をしない)
 	static constexpr float kMinDirectionLength = 1e-5f;
 	// 追尾弾が1フレームで向きを補正する割合の上限(これを超えると一気に向きが切り替わってしまう)

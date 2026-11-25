@@ -12,13 +12,8 @@
 // プレイの結果(GameSceneがクリア直前に全ステージの合計を書き込む)
 #include "objects/StageResult.h"
 
-// プレイ会用の設定か
-#include "objects/StageInfo.h"
-
 // 効果音の音量
 #include "Title/StartSequence.h"
-
-#include <random>
 
 // 定数定義 (ファイルパス)
 namespace{
@@ -40,13 +35,7 @@ void ClearScene::Initialize(Obj3dCommon* object3dCommon,Input* input,SpriteCommo
 	spriteCommon_ = spriteCommon;
 
 	// ランクは、GameScene が書き込んだ全ステージの合計から決める
-	// プレイ会用の設定では、結果がステージ3の分(ゴールの的だけで、普通の的は置いていない)だけになるため、ランクをランダムに決めて、どのランクの演出も見られるようにする
-	ClearResultUI::Rank rank = ClearResultUI::CalculateRank(StageResult::destroyedTargetCount,StageResult::totalTargetCount,StageResult::maxCombo);
-	if(StageInfo::isPlaySessionMode){
-		std::random_device randomDevice;
-		std::uniform_int_distribution<int> distribution(static_cast<int>(ClearResultUI::Rank::S),static_cast<int>(ClearResultUI::Rank::C));
-		rank = static_cast<ClearResultUI::Rank>(distribution(randomDevice));
-	}
+	const ClearResultUI::Rank rank = ClearResultUI::CalculateRank(StageResult::destroyedTargetCount,StageResult::totalTargetCount,StageResult::maxCombo);
 
 	// 結果を順に見せる表示(全ステージの合計と、決めたランクを渡す)
 	resultUI_ = std::make_unique<ClearResultUI>();

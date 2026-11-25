@@ -10,6 +10,7 @@ class Obj3dCommon;
 class Enemy;
 class EnemyEditor;
 class PlayerBulletManager;
+class InkEffectManager;
 
 /// <summary>
 /// 雑魚敵の管理
@@ -26,6 +27,9 @@ public:
 	/// </summary>
 	/// <param name="objCommon">3Dオブジェクト共通設定</param>
 	void Initialize(Obj3dCommon* objCommon);
+
+	// 弾が当たったときの火花と、敵が撃った弾の軌跡を出す演出を設定する(設定しなければ出さない)
+	void SetInkEffect(InkEffectManager* inkEffect);
 
 	// 配置エディターの更新と、編集結果(追加・削除・ドラッグ移動・パラメータ変更)の敵リストへの反映
 	void UpdateEditor();
@@ -78,6 +82,8 @@ private:
 	void SyncFromEditor();
 
 	Obj3dCommon* objCommon_ = nullptr;
+	// 弾が当たったときの火花を出す演出(GameScene が持つものを借りる)
+	InkEffectManager* inkEffect_ = nullptr;
 
 	// 敵の配置エディター(敵の座標・往復方向・体力はこちらが保持し、こちらは毎フレーム同期する)
 	std::unique_ptr<EnemyEditor> editor_;

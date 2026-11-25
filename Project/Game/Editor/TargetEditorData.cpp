@@ -1,4 +1,5 @@
 #include "TargetEditor.h"
+#include "EditorJson.h"
 #include "externals/json.hpp"
 #include <fstream>
 #include <filesystem>
@@ -27,7 +28,8 @@ void TargetEditor::SaveToJson(){
 		nlohmann::json targetsJson = nlohmann::json::array();
 		for(const auto& target : GetStageTargets(stage)){
 			nlohmann::json tj;
-			tj["position"] = {target.position.x, target.position.y, target.position.z};
+			// NaN・無限大のまま保存すると null になり次に読めなくなるため、原点に置き換えて保存する
+			tj["position"] = EditorJson::WriteVector3(target.position);
 			tj["unlockRailIndex"] = target.unlockRailIndex;
 			targetsJson.push_back(tj);
 		}
@@ -93,9 +95,8 @@ bool TargetEditor::LoadTargetsFromFile(int stageIndex){
 	points.clear();
 	for(const auto& tj : root["targets"]){
 		TargetPoint point{};
-		point.position.x = tj["position"][0].get<float>();
-		point.position.y = tj["position"][1].get<float>();
-		point.position.z = tj["position"][2].get<float>();
+		// 座標が数値でない(null など)ときは、止まらずに原点に置く
+		point.position = EditorJson::ReadVector3(tj["position"]);
 		// 壊すと出るレール(旧フォーマットのJSONには無いため、value()で既定値-1を補う)
 		point.unlockRailIndex = tj.value("unlockRailIndex",-1);
 		points.push_back(point);

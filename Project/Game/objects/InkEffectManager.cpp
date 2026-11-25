@@ -1,17 +1,43 @@
 #include "InkEffectManager.h"
-#include "Obj3D.h"
 #include "Obj3dCommon.h"
-#include "ModelManager.h"
 #include "CameraManager.h"
 #include "Camera.h"
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 
 namespace{
-	// しぶき・閃光に使うモデル
-	const std::string kDropletModelPath = "Sphere/sphere.obj";
-	// 的の破片に使うモデル(薄い三角柱)
+	// --- 種類ごとのモデル ---
+	// 配布モデルから差し替えるときは、ここのパス・倍率・ずらす量だけを書き換える(テクスチャはモデルの .mtl のものをそのまま使う)
+	// ・倍率(ModelScale)は、差し替えたモデルが今と同じ大きさに見えるよう合わせる値
+	//   (今のしぶき・閃光・火花の球は半径 1、破片の三角柱は幅 1・高さ 1 ほど。半径 2 のモデルにしたら 0.5 にする)
+	// ・ずらす量(ModelOffset)は、モデルの原点が形の中心にないときに、回る中心を形の中心へ合わせるためにモデルの頂点へ足す量
+	//   (例: 原点が底にある高さ 1 のモデルなら {0, -0.5, 0})
+	// ・しぶきは飛んでいる向きへモデルの +Z を向けて伸ばすため、しずく形などにするときは伸ばしたい向きを +Z にしておく
+	// インクのしぶき
+	// しぶき・閃光・火花は、凹凸の無いなめらかな球(tools/generate_smooth_sphere.ps1 で生成)を使う
+	const std::string kDropletModelPath = "SmoothSphere/smoothSphere.obj";
+	constexpr float kDropletModelScale = 1.0f;
+	constexpr Vector3 kDropletModelOffset = {0.0f, 0.0f, 0.0f};
+	// 的の破片(薄い三角柱)
 	const std::string kShardModelPath = "InkShard/shard.obj";
+	constexpr float kShardModelScale = 1.0f;
+	constexpr Vector3 kShardModelOffset = {0.0f, 0.0f, 0.0f};
+	// 撃破時の閃光
+	const std::string kFlashModelPath = "SmoothSphere/smoothSphere.obj";
+	constexpr float kFlashModelScale = 1.0f;
+	constexpr Vector3 kFlashModelOffset = {0.0f, 0.0f, 0.0f};
+	// 被弾の火花
+	const std::string kSparkModelPath = "SmoothSphere/smoothSphere.obj";
+	constexpr float kSparkModelScale = 1.0f;
+	constexpr Vector3 kSparkModelOffset = {0.0f, 0.0f, 0.0f};
+	// ボスの予備動作の光の粒(飛んでいる向きへモデルの +Z を向けて伸ばす)
+	const std::string kChargeModelPath = "SmoothSphere/smoothSphere.obj";
+	constexpr float kChargeModelScale = 1.0f;
+	constexpr Vector3 kChargeModelOffset = {0.0f, 0.0f, 0.0f};
+
+	// 縮まない種類に渡す、縮み始める寿命の割合(寿命が尽きるまで縮まない)
+	constexpr float kNoShrinkRate = 1.0f;
 
 	// プレイヤーのインクの色(黄色)
 	constexpr Vector4 kInkColor = {1.0f, 0.85f, 0.1f, 1.0f};
@@ -27,6 +53,11 @@ namespace{
 		{0.18f, 0.18f, 0.2f, 1.0f},
 	};
 	constexpr size_t kShardColorCount = sizeof(kShardColors) / sizeof(kShardColors[0]);
+	// 火花の出た瞬間の色(明るい黄色)と、消える瞬間の色(赤みがかった橙で透明)
+	constexpr Vector4 kSparkStartColor = {1.0f, 0.8f, 0.3f, 1.0f};
+	constexpr Vector4 kSparkEndColor = {1.0f, 0.3f, 0.0f, 0.0f};
+	// ボスの予備動作の光の粒の色(白く光る体に合わせて、少し黄みがかった白)
+	constexpr Vector4 kChargeColor = {1.0f, 1.0f, 0.85f, 1.0f};
 
 	// 上方向
 	constexpr Vector3 kWorldUp = {0.0f, 1.0f, 0.0f};
@@ -34,35 +65,75 @@ namespace{
 	constexpr float kFullTurn = 2.0f * std::numbers::pi_v<float>;
 }
 
-InkEffectManager::InkEffectManager() = default;
+// GPU のパーティクルは、Initialize() より前に SetLandingHandler() を呼ばれても受け取れるよう、先に作っておく
+InkEffectManager::InkEffectManager() : particles_(std::make_unique<MeshParticleSystem>()){}
 InkEffectManager::~InkEffectManager() = default;
 
 // 初期化処理
-// 演出に使う3Dオブジェクトはここでまとめて生成し、以降は使い回す
+// 種類ごとのモデル・数・動き方を GPU のパーティクルに渡す(並びは Kind と同じ)
 void InkEffectManager::Initialize(Obj3dCommon* objCommon){
-	ModelManager::GetInstance()->LoadModel(kDropletModelPath);
-	ModelManager::GetInstance()->LoadModel(kShardModelPath);
+	std::vector<MeshParticleSystem::KindDesc> kinds(kKindCount);
 
-	// 種類ごとに決まった数だけ生成する
-	auto createPool = [objCommon](std::vector<Piece>& pool,size_t count,Kind kind,const std::string& modelPath){
-		pool.resize(count);
-		for(Piece& piece : pool){
-			piece.obj = std::make_unique<Obj3D>();
-			piece.obj->Initialize(objCommon);
-			piece.obj->SetModel(modelPath);
-			piece.kind = kind;
-		}
-	};
-	createPool(droplets_,kDropletCount,Kind::Droplet,kDropletModelPath);
-	createPool(shards_,kShardCount,Kind::Shard,kShardModelPath);
-	createPool(flashes_,kFlashCount,Kind::Flash,kDropletModelPath);
+	// インクのしぶき: 重力で落ち、飛ぶ向きに伸び、寿命の後半で小さくなる
+	MeshParticleSystem::KindDesc& droplet = kinds[static_cast<size_t>(Kind::Droplet)];
+	droplet.modelPath = kDropletModelPath;
+	droplet.modelScale = kDropletModelScale;
+	droplet.modelOffset = kDropletModelOffset;
+	droplet.capacity = kDropletCount;
+	droplet.gravity = kDropletGravity;
+	droplet.stretchesAlongVelocity = true;
+	droplet.stretchPerSpeed = kDropletStretchPerSpeed;
+	droplet.maxStretch = kDropletMaxStretch;
+	droplet.minStretchSpeed = kMinStretchSpeed;
+	droplet.shrinkStartRate = kShrinkStartRate;
 
-	// 閃光は周りの明るさに関係なく光って見えるよう、ライティングを切っておく
-	for(Piece& flash : flashes_){
-		if(Model::Material* material = flash.obj->GetMaterial()){
-			material->enableLighting = 0;
-		}
-	}
+	// 的の破片: 重力で落ち、回転し、寿命の後半で小さくなる
+	MeshParticleSystem::KindDesc& shard = kinds[static_cast<size_t>(Kind::Shard)];
+	shard.modelPath = kShardModelPath;
+	shard.modelScale = kShardModelScale;
+	shard.modelOffset = kShardModelOffset;
+	shard.capacity = kShardCount;
+	shard.gravity = kShardGravity;
+	shard.shrinkStartRate = kShrinkStartRate;
+
+	// 撃破時の閃光: 周りの明るさに関係なく光って見えるようライティングを切り、その場で広がりながら透明になる
+	MeshParticleSystem::KindDesc& flash = kinds[static_cast<size_t>(Kind::Flash)];
+	flash.modelPath = kFlashModelPath;
+	flash.modelScale = kFlashModelScale;
+	flash.modelOffset = kFlashModelOffset;
+	flash.capacity = kFlashCount;
+	flash.enableLighting = false;
+	flash.shrinkStartRate = kNoShrinkRate;
+	flash.expandsAndFades = true;
+	flash.expandScale = kFlashExpandScale;
+
+	// 被弾の火花: 光って見えるようライティングを切り、重力で落ちながら空気抵抗で減速し、色を変えながら小さくなって消える
+	MeshParticleSystem::KindDesc& spark = kinds[static_cast<size_t>(Kind::Spark)];
+	spark.modelPath = kSparkModelPath;
+	spark.modelScale = kSparkModelScale;
+	spark.modelOffset = kSparkModelOffset;
+	spark.capacity = kSparkCount;
+	spark.gravity = kSparkGravity;
+	spark.drag = kSparkDrag;
+	spark.enableLighting = false;
+	spark.shrinkStartRate = kSparkShrinkStartRate;
+	spark.changesColor = true;
+	spark.endColor = kSparkEndColor;
+
+	// ボスの予備動作の光の粒: 光って見えるようライティングを切り、重力をかけずにまっすぐ体へ飛ばし、飛ぶ向きに伸ばして吸い込まれる勢いを見せる
+	MeshParticleSystem::KindDesc& charge = kinds[static_cast<size_t>(Kind::Charge)];
+	charge.modelPath = kChargeModelPath;
+	charge.modelScale = kChargeModelScale;
+	charge.modelOffset = kChargeModelOffset;
+	charge.capacity = kChargeCount;
+	charge.enableLighting = false;
+	charge.stretchesAlongVelocity = true;
+	charge.stretchPerSpeed = kChargeStretchPerSpeed;
+	charge.maxStretch = kChargeMaxStretch;
+	charge.minStretchSpeed = kMinStretchSpeed;
+	charge.shrinkStartRate = kChargeShrinkStartRate;
+
+	particles_->Initialize(objCommon,kinds);
 
 	std::random_device seedGenerator;
 	randomEngine_.seed(seedGenerator());
@@ -70,25 +141,21 @@ void InkEffectManager::Initialize(Obj3dCommon* objCommon){
 
 // 出ている演出をすべて消す
 void InkEffectManager::Reset(){
-	for(std::vector<Piece>* pool : {&droplets_, &shards_, &flashes_}){
-		for(Piece& piece : *pool){
-			piece.isAlive = false;
-		}
-	}
+	particles_->Clear();
 }
 
-// 使い回し用の配列から次に使う1つを取り出す
-// 配列を順番に回して使うため、空きが無いときは一番古いものが上書きされる
-InkEffectManager::Piece& InkEffectManager::Spawn(std::vector<Piece>& pool,size_t& nextIndex){
-	Piece& piece = pool[nextIndex];
-	nextIndex = (nextIndex + 1) % pool.size();
+// しぶきの着地を調べる処理を設定する
+// GPU のパーティクルからは粒の大きさが届くため、塗るインクの半径に直してから渡す
+void InkEffectManager::SetLandingHandler(float surfaceHeight,LandingHandler handler){
+	landingHandler_ = std::move(handler);
+	particles_->SetCrossing(surfaceHeight,[this](const Vector3& from,const Vector3& to,float baseScale){
+		return landingHandler_ && landingHandler_(from,to,baseScale * kLandingInkRadiusRate);
+	});
+}
 
-	piece.isAlive = true;
-	piece.lifeTime = 0.0f;
-	piece.rotate = {0.0f, 0.0f, 0.0f};
-	piece.angularVelocity = {0.0f, 0.0f, 0.0f};
-	piece.paintsOnLanding = true;
-	return piece;
+// 1つ出す(一番古いものから順に上書きする)
+void InkEffectManager::Spawn(Kind kind,const MeshParticleSystem::SpawnDesc& desc){
+	particles_->Spawn(static_cast<uint32_t>(kind),desc);
 }
 
 // 指定した範囲の乱数を返す
@@ -106,207 +173,275 @@ Vector3 InkEffectManager::RandomVector(){
 // 的の色の破片とインクのしぶきを周りへ飛び散らせ、中心に一瞬だけ閃光を出す
 void InkEffectManager::EmitTargetBreak(const Vector3& position){
 	for(int i = 0; i < kBreakShardCount; ++i){
-		Piece& shard = Spawn(shards_,nextShard_);
+		MeshParticleSystem::SpawnDesc shard;
 		shard.position = position;
 		shard.velocity = Normalize(RandomVector()) * RandomRange(kBreakShardSpeedMin,kBreakShardSpeedMax) + kWorldUp * kBreakShardUpSpeed;
 		shard.angularVelocity = RandomVector() * kBreakShardSpinMax;
 		shard.color = kShardColors[static_cast<size_t>(i) % kShardColorCount];
 		shard.baseScale = RandomRange(kBreakShardScaleMin,kBreakShardScaleMax);
-		shard.maxLifeTime = RandomRange(kBreakShardLifeMin,kBreakShardLifeMax);
+		shard.lifeTime = RandomRange(kBreakShardLifeMin,kBreakShardLifeMax);
+		Spawn(Kind::Shard,shard);
 	}
 
 	for(int i = 0; i < kBreakDropletCount; ++i){
-		Piece& droplet = Spawn(droplets_,nextDroplet_);
+		MeshParticleSystem::SpawnDesc droplet;
 		droplet.position = position;
 		droplet.velocity = Normalize(RandomVector()) * RandomRange(kBreakDropletSpeedMin,kBreakDropletSpeedMax) + kWorldUp * kBreakDropletUpSpeed;
 		droplet.color = kInkColor;
 		droplet.baseScale = RandomRange(kBreakDropletScaleMin,kBreakDropletScaleMax);
-		droplet.maxLifeTime = RandomRange(kBreakDropletLifeMin,kBreakDropletLifeMax);
+		droplet.lifeTime = RandomRange(kBreakDropletLifeMin,kBreakDropletLifeMax);
+		droplet.reportsCrossing = true;
+		Spawn(Kind::Droplet,droplet);
 	}
 
-	Piece& flash = Spawn(flashes_,nextFlash_);
+	MeshParticleSystem::SpawnDesc flash;
 	flash.position = position;
-	flash.velocity = {0.0f, 0.0f, 0.0f};
 	flash.color = kFlashColor;
 	flash.baseScale = kFlashScale;
-	flash.maxLifeTime = kFlashLife;
+	flash.lifeTime = kFlashLife;
+	Spawn(Kind::Flash,flash);
 }
 
 // 指定した向きへ飛び散るインクのしぶき
 void InkEffectManager::EmitInkSplash(const Vector3& position,const Vector3& direction,int count){
 	for(int i = 0; i < count; ++i){
-		Piece& droplet = Spawn(droplets_,nextDroplet_);
+		MeshParticleSystem::SpawnDesc droplet;
 		droplet.position = position;
 		droplet.velocity = direction * RandomRange(kSplashSpeedMin,kSplashSpeedMax) + RandomVector() * kSplashSpread;
 		droplet.color = kInkColor;
 		droplet.baseScale = RandomRange(kSplashScaleMin,kSplashScaleMax);
-		droplet.maxLifeTime = RandomRange(kSplashLifeMin,kSplashLifeMax);
+		droplet.lifeTime = RandomRange(kSplashLifeMin,kSplashLifeMax);
+		droplet.reportsCrossing = true;
+		Spawn(Kind::Droplet,droplet);
 	}
 }
 
 // レールを進んでいる間、足元から後ろへ飛ぶインクのしぶき
 // 毎フレーム1粒ずつ出し続けることで、レールの上を滑っている勢いを見せる
 void InkEffectManager::EmitRailTrail(const Vector3& position,const Vector3& backward){
-	Piece& droplet = Spawn(droplets_,nextDroplet_);
+	MeshParticleSystem::SpawnDesc droplet;
 	droplet.position = position;
 	droplet.velocity = backward * kTrailBackSpeed + kWorldUp * kTrailUpSpeed + RandomVector() * kTrailSpread;
 	droplet.color = kInkColor;
 	droplet.baseScale = RandomRange(kTrailScaleMin,kTrailScaleMax);
-	droplet.maxLifeTime = RandomRange(kTrailLifeMin,kTrailLifeMax);
+	droplet.lifeTime = RandomRange(kTrailLifeMin,kTrailLifeMax);
+	droplet.reportsCrossing = true;
+	Spawn(Kind::Droplet,droplet);
 }
 
 // 出発の合図に、足元から周り一面へ高く弧を描いて飛び散るインクのしぶき
 // 横へ飛ぶ向きは水平面の全方向からばらばらに選び、落ちる場所が足元の周りに散らばるようにする
 void InkEffectManager::EmitLaunchBurst(const Vector3& position,int count){
 	for(int i = 0; i < count; ++i){
-		Piece& droplet = Spawn(droplets_,nextDroplet_);
 		const float angle = RandomRange(0.0f,kFullTurn);
 		const float horizontalSpeed = RandomRange(kBurstHorizontalSpeedMin,kBurstHorizontalSpeedMax);
+		MeshParticleSystem::SpawnDesc droplet;
 		droplet.position = position;
 		droplet.velocity = {std::cos(angle) * horizontalSpeed, RandomRange(kBurstUpSpeedMin,kBurstUpSpeedMax), std::sin(angle) * horizontalSpeed};
 		droplet.color = kInkColor;
 		droplet.baseScale = RandomRange(kBurstScaleMin,kBurstScaleMax);
-		droplet.maxLifeTime = RandomRange(kBurstLifeMin,kBurstLifeMax);
+		droplet.lifeTime = RandomRange(kBurstLifeMin,kBurstLifeMax);
+		droplet.reportsCrossing = true;
+		Spawn(Kind::Droplet,droplet);
 	}
 }
 
 // 最後のミスで自機が敵のインクになって弾け飛ぶしぶきと閃光
 // 全方向へばらばらの速さで飛ばし、少し上向きの勢いを足して、弧を描いて落ちていくようにする
+// しぶきは何かに着いても塗らない(スタート台をピンクに塗らないようにする)
 void InkEffectManager::EmitDefeatBurst(const Vector3& position){
 	for(int i = 0; i < kDefeatDropletCount; ++i){
-		Piece& droplet = Spawn(droplets_,nextDroplet_);
+		MeshParticleSystem::SpawnDesc droplet;
 		droplet.position = position;
 		droplet.velocity = Normalize(RandomVector()) * RandomRange(kDefeatDropletSpeedMin,kDefeatDropletSpeedMax) + kWorldUp * kDefeatDropletUpSpeed;
 		droplet.color = kEnemyInkColor;
 		droplet.baseScale = RandomRange(kDefeatDropletScaleMin,kDefeatDropletScaleMax);
-		droplet.maxLifeTime = RandomRange(kDefeatDropletLifeMin,kDefeatDropletLifeMax);
-		droplet.paintsOnLanding = false;
+		droplet.lifeTime = RandomRange(kDefeatDropletLifeMin,kDefeatDropletLifeMax);
+		droplet.reportsCrossing = false;
+		Spawn(Kind::Droplet,droplet);
 	}
 
-	Piece& flash = Spawn(flashes_,nextFlash_);
+	MeshParticleSystem::SpawnDesc flash;
 	flash.position = position;
-	flash.velocity = {0.0f, 0.0f, 0.0f};
 	flash.color = kEnemyInkColor;
 	flash.baseScale = kDefeatFlashScale;
-	flash.maxLifeTime = kDefeatFlashLife;
+	flash.lifeTime = kDefeatFlashLife;
+	Spawn(Kind::Flash,flash);
 }
 
 // ゴールの的を壊したときの演出(普通の的を壊したときと同じ作りで、数・大きさ・速さ・寿命を増やす)
 void InkEffectManager::EmitGoalBreak(const Vector3& position){
 	for(int i = 0; i < kGoalBreakShardCount; ++i){
-		Piece& shard = Spawn(shards_,nextShard_);
+		MeshParticleSystem::SpawnDesc shard;
 		shard.position = position;
 		shard.velocity = Normalize(RandomVector()) * RandomRange(kGoalBreakShardSpeedMin,kGoalBreakShardSpeedMax) + kWorldUp * kGoalBreakShardUpSpeed;
 		shard.angularVelocity = RandomVector() * kBreakShardSpinMax;
 		shard.color = kShardColors[static_cast<size_t>(i) % kShardColorCount];
 		shard.baseScale = RandomRange(kGoalBreakShardScaleMin,kGoalBreakShardScaleMax);
-		shard.maxLifeTime = RandomRange(kGoalBreakShardLifeMin,kGoalBreakShardLifeMax);
+		shard.lifeTime = RandomRange(kGoalBreakShardLifeMin,kGoalBreakShardLifeMax);
+		Spawn(Kind::Shard,shard);
 	}
 
 	for(int i = 0; i < kGoalBreakDropletCount; ++i){
-		Piece& droplet = Spawn(droplets_,nextDroplet_);
+		MeshParticleSystem::SpawnDesc droplet;
 		droplet.position = position;
 		droplet.velocity = Normalize(RandomVector()) * RandomRange(kGoalBreakDropletSpeedMin,kGoalBreakDropletSpeedMax) + kWorldUp * kGoalBreakDropletUpSpeed;
 		droplet.color = kInkColor;
 		droplet.baseScale = RandomRange(kGoalBreakDropletScaleMin,kGoalBreakDropletScaleMax);
-		droplet.maxLifeTime = RandomRange(kGoalBreakDropletLifeMin,kGoalBreakDropletLifeMax);
+		droplet.lifeTime = RandomRange(kGoalBreakDropletLifeMin,kGoalBreakDropletLifeMax);
+		droplet.reportsCrossing = true;
+		Spawn(Kind::Droplet,droplet);
 	}
 
-	Piece& flash = Spawn(flashes_,nextFlash_);
+	MeshParticleSystem::SpawnDesc flash;
 	flash.position = position;
-	flash.velocity = {0.0f, 0.0f, 0.0f};
 	flash.color = kFlashColor;
 	flash.baseScale = kGoalBreakFlashScale;
-	flash.maxLifeTime = kGoalBreakFlashLife;
+	flash.lifeTime = kGoalBreakFlashLife;
+	Spawn(Kind::Flash,flash);
+}
+
+// 最後のステージへ続く通路の壁が壊れたときの演出
+// ゴールの的を壊したときと同じ数・速さ・大きさで、破片を壁の色(1つおきに暗くした色)にし、壁が砕けたように見せる
+void InkEffectManager::EmitBarrierBreak(const Vector3& position,const Vector4& barrierColor){
+	const Vector4 shadedColor = {barrierColor.x * kBarrierShardShadeRate, barrierColor.y * kBarrierShardShadeRate, barrierColor.z * kBarrierShardShadeRate, barrierColor.w};
+	for(int i = 0; i < kGoalBreakShardCount; ++i){
+		MeshParticleSystem::SpawnDesc shard;
+		shard.position = position;
+		shard.velocity = Normalize(RandomVector()) * RandomRange(kGoalBreakShardSpeedMin,kGoalBreakShardSpeedMax) + kWorldUp * kGoalBreakShardUpSpeed;
+		shard.angularVelocity = RandomVector() * kBreakShardSpinMax;
+		shard.color = (i % kBarrierShardShadeInterval == 0)?barrierColor:shadedColor;
+		shard.baseScale = RandomRange(kGoalBreakShardScaleMin,kGoalBreakShardScaleMax);
+		shard.lifeTime = RandomRange(kGoalBreakShardLifeMin,kGoalBreakShardLifeMax);
+		Spawn(Kind::Shard,shard);
+	}
+
+	for(int i = 0; i < kGoalBreakDropletCount; ++i){
+		MeshParticleSystem::SpawnDesc droplet;
+		droplet.position = position;
+		droplet.velocity = Normalize(RandomVector()) * RandomRange(kGoalBreakDropletSpeedMin,kGoalBreakDropletSpeedMax) + kWorldUp * kGoalBreakDropletUpSpeed;
+		droplet.color = kInkColor;
+		droplet.baseScale = RandomRange(kGoalBreakDropletScaleMin,kGoalBreakDropletScaleMax);
+		droplet.lifeTime = RandomRange(kGoalBreakDropletLifeMin,kGoalBreakDropletLifeMax);
+		droplet.reportsCrossing = true;
+		Spawn(Kind::Droplet,droplet);
+	}
+
+	MeshParticleSystem::SpawnDesc flash;
+	flash.position = position;
+	flash.color = kFlashColor;
+	flash.baseScale = kGoalBreakFlashScale;
+	flash.lifeTime = kGoalBreakFlashLife;
+	Spawn(Kind::Flash,flash);
+}
+
+// 弾が当たったときの火花
+// 中心の周りの小さな球の中からばらばらの向き・速さで四方へ飛ばす
+void InkEffectManager::EmitSpark(const Vector3& position){
+	for(int i = 0; i < kSparkEmitCount; ++i){
+		MeshParticleSystem::SpawnDesc spark;
+		spark.position = position + Normalize(RandomVector()) * RandomRange(0.0f,kSparkRadius);
+		spark.velocity = Normalize(RandomVector()) * RandomRange(0.0f,kSparkSpeed);
+		spark.color = kSparkStartColor;
+		spark.baseScale = kSparkScale;
+		spark.lifeTime = kSparkLife;
+		Spawn(Kind::Spark,spark);
+	}
+}
+
+// 体力のある相手に弾が当たったときに、当たった面から跳ねるインクのしぶき
+// 跳ねる向きを中心に横へばらけさせ、重力で弧を描いて落ちるようにする
+void InkEffectManager::EmitHitSplash(const Vector3& position,const Vector3& direction){
+	for(int i = 0; i < kHitSplashCount; ++i){
+		MeshParticleSystem::SpawnDesc droplet;
+		droplet.position = position;
+		droplet.velocity = direction * RandomRange(kHitSplashSpeedMin,kHitSplashSpeedMax) + RandomVector() * kHitSplashSpread;
+		droplet.color = kInkColor;
+		droplet.baseScale = RandomRange(kHitSplashScaleMin,kHitSplashScaleMax);
+		droplet.lifeTime = RandomRange(kHitSplashLifeMin,kHitSplashLifeMax);
+		droplet.reportsCrossing = true;
+		Spawn(Kind::Droplet,droplet);
+	}
+}
+
+// ボスの予備動作で、周りから体へ吸い込まれる光の粒
+// 体の周りのばらばらの向き・距離から出し、寿命が尽きる瞬間にちょうど体の表面へ届く速さで中心へ飛ばす
+// 寿命を撃つまでの残り時間にそろえるため、予備動作の間に出した粒は撃つ瞬間にまとめて体へ届く
+void InkEffectManager::EmitBossCharge(const Vector3& center,float bodyRadius,float arriveTime){
+	if(arriveTime < kChargeMinLife){
+		return;
+	}
+	const float lifeTime = (std::min)(arriveTime,kChargeMaxLife);
+
+	for(int i = 0; i < kChargeEmitCount; ++i){
+		const Vector3 direction = Normalize(RandomVector());
+		const float distance = bodyRadius * RandomRange(kChargeSpawnDistanceRateMin,kChargeSpawnDistanceRateMax);
+		MeshParticleSystem::SpawnDesc charge;
+		charge.position = center + direction * distance;
+		charge.velocity = direction * (-(distance - bodyRadius) / lifeTime);
+		charge.color = kChargeColor;
+		charge.baseScale = RandomRange(kChargeScaleMin,kChargeScaleMax);
+		charge.lifeTime = lifeTime;
+		Spawn(Kind::Charge,charge);
+	}
+}
+
+// レール・スタート台へ着地したときに、足元から輪の形に広がるインクのしぶき
+// 1周を等しい角度に分けて向きを決め(最初の向きはばらばらにして、毎回同じ形に見えないようにする)、速さだけをばらつかせる
+void InkEffectManager::EmitLandingRing(const Vector3& position){
+	const float startAngle = RandomRange(0.0f,kFullTurn);
+	for(int i = 0; i < kLandingRingCount; ++i){
+		const float angle = startAngle + kFullTurn * static_cast<float>(i) / static_cast<float>(kLandingRingCount);
+		const float horizontalSpeed = RandomRange(kLandingRingHorizontalSpeedMin,kLandingRingHorizontalSpeedMax);
+		MeshParticleSystem::SpawnDesc droplet;
+		droplet.position = position;
+		droplet.velocity = {std::cos(angle) * horizontalSpeed, RandomRange(kLandingRingUpSpeedMin,kLandingRingUpSpeedMax), std::sin(angle) * horizontalSpeed};
+		droplet.color = kInkColor;
+		droplet.baseScale = RandomRange(kLandingRingScaleMin,kLandingRingScaleMax);
+		droplet.lifeTime = RandomRange(kLandingRingLifeMin,kLandingRingLifeMax);
+		droplet.reportsCrossing = true;
+		Spawn(Kind::Droplet,droplet);
+	}
+}
+
+// 鍵の的を壊して出たレールの、伸びている管の先端から飛び散るインクのしぶき
+// 上へ跳ね上げてからばらばらの向きへ散らし、先端が進んだ跡にしぶきが残っていくように見せる
+// 台に落ちると自分のインク(黄色)で塗られて色が合わないため、面に着いても塗らない
+void InkEffectManager::EmitRailGrowSplash(const Vector3& position,const Vector4& color){
+	for(int i = 0; i < kRailGrowSplashCount; ++i){
+		MeshParticleSystem::SpawnDesc droplet;
+		droplet.position = position;
+		droplet.velocity = kWorldUp * kRailGrowUpSpeed + RandomVector() * kRailGrowSpread;
+		droplet.color = color;
+		droplet.baseScale = RandomRange(kRailGrowScaleMin,kRailGrowScaleMax);
+		droplet.lifeTime = RandomRange(kRailGrowLifeMin,kRailGrowLifeMax);
+		droplet.reportsCrossing = false;
+		Spawn(Kind::Droplet,droplet);
+	}
+}
+
+// 飛んでいる弾から垂れるインクの粒
+// 弾の勢いは引き継がずにその場へ残し、わずかにばらけさせて重力で垂れ落ちさせる
+void InkEffectManager::EmitBulletTrail(const Vector3& position,const Vector4& color){
+	MeshParticleSystem::SpawnDesc droplet;
+	droplet.position = position;
+	droplet.velocity = RandomVector() * kBulletTrailSpread;
+	droplet.color = color;
+	droplet.baseScale = RandomRange(kBulletTrailScaleMin,kBulletTrailScaleMax);
+	droplet.lifeTime = RandomRange(kBulletTrailLifeMin,kBulletTrailLifeMax);
+	droplet.reportsCrossing = false;
+	Spawn(Kind::Droplet,droplet);
 }
 
 // 移動・回転・縮小・寿命の更新
+// 動かすのは次の Draw() で GPU が行うため、ここでは進める時間を渡し、前のフレームに面へ着いたしぶきにインクを塗る
 void InkEffectManager::Update(float deltaTime){
-	for(std::vector<Piece>* pool : {&droplets_, &shards_, &flashes_}){
-		for(Piece& piece : *pool){
-			if(!piece.isAlive) continue;
-
-			piece.lifeTime += deltaTime;
-			if(piece.lifeTime >= piece.maxLifeTime){
-				piece.isAlive = false;
-				continue;
-			}
-
-			// 種類ごとの重力を速度に加えてから位置を進める
-			if(piece.kind == Kind::Droplet){
-				piece.velocity.y -= kDropletGravity * deltaTime;
-			} else if(piece.kind == Kind::Shard){
-				piece.velocity.y -= kShardGravity * deltaTime;
-			}
-			const Vector3 previousPosition = piece.position;
-			piece.position += piece.velocity * deltaTime;
-			piece.rotate += piece.angularVelocity * deltaTime;
-
-			// しぶきがこのフレームの移動で面に着いたら、着いたところにインクを塗ってそこで消す
-			if(piece.kind == Kind::Droplet && piece.paintsOnLanding && landingHandler_ && landingHandler_(previousPosition,piece.position,piece.baseScale * kLandingInkRadiusRate)){
-				piece.isAlive = false;
-				continue;
-			}
-
-			UpdatePieceTransform(piece);
-		}
-	}
+	particles_->Update(deltaTime);
 }
 
-// 1つ分の行列と色を更新する
-void InkEffectManager::UpdatePieceTransform(Piece& piece){
-	// 寿命に対する経過の割合(0〜1)
-	float lifeRate = piece.lifeTime / piece.maxLifeTime;
-	Vector4 color = piece.color;
-	Vector3 scale = {piece.baseScale, piece.baseScale, piece.baseScale};
-	Vector3 rotate = piece.rotate;
-
-	if(piece.kind == Kind::Flash){
-		// 閃光は一気に広がりながら透明になって消える
-		float expand = Lerp(1.0f,kFlashExpandScale,lifeRate);
-		scale = scale * expand;
-		color.w = 1.0f - lifeRate;
-	} else{
-		// しぶき・破片は寿命の後半で小さくなりながら消える
-		if(lifeRate > kShrinkStartRate){
-			float shrink = 1.0f - (lifeRate - kShrinkStartRate) / (1.0f - kShrinkStartRate);
-			scale = scale * shrink;
-		}
-
-		// しぶきは飛んでいる向きに伸ばして、勢いのある液体に見せる
-		float speed = Length(piece.velocity);
-		if(piece.kind == Kind::Droplet && speed > kMinStretchSpeed){
-			Vector3 direction = piece.velocity / speed;
-			float horizontalLength = std::sqrt(direction.x * direction.x + direction.z * direction.z);
-			// 球モデルのZ軸を速度の向きへ回す(Y軸回転で左右、X軸回転で上下を合わせる)
-			rotate = {std::atan2(-direction.y,horizontalLength), std::atan2(direction.x,direction.z), 0.0f};
-			float stretch = 1.0f + speed * kDropletStretchPerSpeed;
-			if(stretch > kDropletMaxStretch){
-				stretch = kDropletMaxStretch;
-			}
-			scale.z *= stretch;
-		}
-	}
-
-	piece.obj->SetTranslate(piece.position);
-	piece.obj->SetRotate(rotate);
-	piece.obj->SetScale(scale);
-	if(Model::Material* material = piece.obj->GetMaterial()){
-		material->color = color;
-	}
-	if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
-		piece.obj->SetCamera(activeCamera);
-	}
-	piece.obj->Update();
-}
-
-// 出ている演出を描画する
+// 出ている演出を描画する(GPU で動かしてから、種類ごとにまとめて描く)
 void InkEffectManager::Draw(){
-	for(std::vector<Piece>* pool : {&droplets_, &shards_, &flashes_}){
-		for(Piece& piece : *pool){
-			if(piece.isAlive){
-				piece.obj->Draw();
-			}
-		}
+	if(Camera* activeCamera = CameraManager::GetInstance()->GetActiveCamera()){
+		particles_->Draw(*activeCamera);
 	}
 }

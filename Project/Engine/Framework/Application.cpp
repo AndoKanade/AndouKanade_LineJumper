@@ -7,7 +7,6 @@
 #include "SoundManager.h"
 #include "ModelManager.h"
 #include "CameraManager.h"
-#include "ParticleManager.h"
 #include "PaintManager.h"
 #include "TimeManager.h"
 #include "TextureManager.h"
@@ -100,7 +99,6 @@ void Application::InitializeGameSystems(){
 	TextureManager::GetInstance()->Initialize(dxCommon_.get(),SrvManager::GetInstance());
 	ModelManager::GetInstance()->Initialize(dxCommon_.get());
 	CameraManager::GetInstance()->Update();
-	ParticleManager::GetInstance()->Initialize(dxCommon_.get(),SrvManager::GetInstance());
 	// インクの塗り(Obj3D の描画で塗りテクスチャを読むため、Obj3D を描くより前に初期化する)
 	PaintManager::GetInstance()->Initialize(dxCommon_.get());
 	TimeManager::GetInstance()->Initialize();

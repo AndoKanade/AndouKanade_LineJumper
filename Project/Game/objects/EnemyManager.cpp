@@ -1,7 +1,7 @@
 #include "EnemyManager.h"
 #include "Enemy.h"
 #include "PlayerBulletManager.h"
-#include "ParticleManager.h"
+#include "InkEffectManager.h"
 #include "ImGuiManager.h"
 #include "Editor/EnemyEditor.h"
 
@@ -58,6 +58,8 @@ void EnemyManager::SyncFromEditor(){
 
 		auto enemy = std::make_unique<Enemy>();
 		enemy->Initialize(objCommon_,point.position,point.patrolDirection,point.maxHp);
+		// 後から生成した敵の弾にも、軌跡の粒を出させる
+		enemy->SetInkEffect(inkEffect_);
 		enemies_.push_back(std::move(enemy));
 	}
 
@@ -72,6 +74,15 @@ void EnemyManager::SyncFromEditor(){
 		enemies_[i]->SetBasePosition(point.position);
 		enemies_[i]->SetPatrolDirection(point.patrolDirection);
 		enemies_[i]->SetMaxHp(point.maxHp);
+	}
+}
+
+// 弾が当たったときの火花と、敵が撃った弾の軌跡を出す演出を設定する
+// すでに生成してある敵の弾にも渡す(これより後に生成する敵には、生成したときに渡す)
+void EnemyManager::SetInkEffect(InkEffectManager* inkEffect){
+	inkEffect_ = inkEffect;
+	for(auto& enemy : enemies_){
+		enemy->SetInkEffect(inkEffect);
 	}
 }
 
@@ -103,7 +114,9 @@ void EnemyManager::CheckHitByBullets(PlayerBulletManager& bullets){
 		// 敵の境界球は弾ごとに変わらないため、弾の判定の前に一度だけ求める
 		if(bullets.CheckHit(enemy->GetHitSphere())){
 			// 被弾位置に火花パーティクルを発生させ、当たったことを見た目で分かるようにする
-			ParticleManager::GetInstance()->EmitSpark(enemy->GetPosition());
+			if(inkEffect_){
+				inkEffect_->EmitSpark(enemy->GetPosition());
+			}
 			enemy->TakeDamage(bullets.GetDamage());
 		}
 	}

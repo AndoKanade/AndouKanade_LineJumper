@@ -503,12 +503,12 @@ void GameScene::RecordStageClear(){
 }
 
 // 最後のステージへ続く通路の壁が壊れた瞬間の演出
-// 壁を消し、壁の中心から大きな破片を飛ばし、高く飛び散らせたしぶきは台に落ちたところに跡を残す
+// 壁を消し、壁の中心から壁と同じ色の大きな破片を飛ばし、高く飛び散らせたしぶきは台に落ちたところに跡を残す
 // 演出を見せている最中なら、一瞬動きを止めて画面を揺らし、壊れた手応えを見せる
 void GameScene::PlayBarrierBreakEffects(int stageIndex,bool isShown){
 	startPlatform_->ReleaseBarrierHold();
 	const Vector3 barrierCenter = startPlatform_->GetBarrierCenter(stageIndex);
-	inkEffect_->EmitGoalBreak(barrierCenter);
+	inkEffect_->EmitBarrierBreak(barrierCenter,startPlatform_->GetBarrierColor(stageIndex));
 	inkEffect_->EmitLaunchBurst(barrierCenter,kBarrierBurstCount);
 	if(isShown){
 		screenImpact_->Trigger(kBarrierBreakHitStopDuration,kBarrierBreakShakeAmplitude,kBarrierBreakShakeDuration);

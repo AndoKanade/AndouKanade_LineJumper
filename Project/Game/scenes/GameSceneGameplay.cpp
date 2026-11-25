@@ -292,11 +292,11 @@ void GameScene::UpdateGameplay(){
 		}
 		Vector3 landedPos;
 		// スタート台へ着地したら、今のステージをクリアしたことにする
-		// 最後のステージと、プレイ会用の設定で遊ぶステージなら着地の演出を出してクリア画面へ移るのを待ち始め、それ以外はスタート台の上から次のステージを選べるようにする
+		// 最後のステージなら着地の演出を出してクリア画面へ移るのを待ち始め、それ以外はスタート台の上から次のステージを選べるようにする
 		if(returnJump_->ConsumeLanded(landedPos)){
 			RecordStageClear();
 			const int stageIndex = railEditor_->GetStageIndex();
-			if(stageIndex == StageInfo::kFinalStageIndex || StageInfo::IsPlaySessionStage(stageIndex)){
+			if(stageIndex == StageInfo::kFinalStageIndex){
 				StartStageClear(landedPos);
 			} else{
 				RestartFromReturnJump(landedPos);
@@ -569,6 +569,14 @@ void GameScene::UpdateGameplay(){
 
 	// 鍵の的を壊したら、そのレールを出す(始点から終点へ管を伸ばす)
 	ApplyRailLocks(false);
+	// 管を伸ばしている間は、伸びている先端からレールと同じ色のインクを飛び散らせ、どこにレールが出たかを目で追えるようにする
+	const Vector4 railGrowColor = RailEditor::GetUnpaintedRailColor();
+	for(int railIndex = 0; railIndex < railEditor_->GetRailCount(); ++railIndex){
+		Vector3 tipPosition;
+		if(railEditor_->GetGrowingTubeTip(railIndex,tipPosition)){
+			inkEffect_->EmitRailGrowSplash(tipPosition,railGrowColor);
+		}
+	}
 
 	// 雑魚敵への被弾判定
 	enemyManager_->CheckHitByBullets(*bulletManager_);
@@ -592,7 +600,8 @@ void GameScene::UpdateGameplay(){
 		// ボスを倒してクリア画面へ移るまでの間も、同じようにゆっくり飛び散らせる
 		inkTimeScale = kGoalBreakTimeScale;
 	}
-	inkEffect_->Update(screenImpact_->IsHitStopping()?0.0f:worldDeltaTime * inkTimeScale);
+	const float effectUpdateDeltaTime = screenImpact_->IsHitStopping()?0.0f:worldDeltaTime * inkTimeScale;
+	inkEffect_->Update(effectUpdateDeltaTime);
 
 	// スピード線はレールを進んでいる間だけ出す
 	speedLines_->Update(isRidingRail,kDeltaTime);

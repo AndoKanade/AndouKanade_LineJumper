@@ -94,8 +94,8 @@
     <Filter Include="Resources\shader\Obj3D">
       <UniqueIdentifier>{de2f5a97-8450-4157-885c-4ebffcb724b1}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Resources\shader\Particle">
-      <UniqueIdentifier>{341918e5-a2ed-4928-bcf9-eafbad4ba961}</UniqueIdentifier>
+    <Filter Include="Resources\shader\MeshParticle">
+      <UniqueIdentifier>{a70ef5f2-b878-47d3-9388-d540eaf42884}</UniqueIdentifier>
     </Filter>
     <Filter Include="Resources\shader\Paint">
       <UniqueIdentifier>{70883a44-22ba-47a1-9fe4-fbb9cbed1fe7}</UniqueIdentifier>
@@ -216,10 +216,7 @@
     <ClCompile Include="Engine\Graphics\3D\Animation\Skeleton.cpp">
       <Filter>ソース ファイル\Engine\Graphics\3D\Animation</Filter>
     </ClCompile>
-    <ClCompile Include="Engine\Graphics\Effect\ParticleEmitter.cpp">
-      <Filter>ソース ファイル\Engine\Graphics\Effect</Filter>
-    </ClCompile>
-    <ClCompile Include="Engine\Graphics\Effect\ParticleManager.cpp">
+    <ClCompile Include="Engine\Graphics\Effect\MeshParticleSystem.cpp">
       <Filter>ソース ファイル\Engine\Graphics\Effect</Filter>
     </ClCompile>
     <ClCompile Include="Engine\Graphics\Effect\PaintCanvas.cpp">
@@ -551,10 +548,7 @@
     <ClInclude Include="Engine\Graphics\3D\SkyboxCommon.h">
       <Filter>ヘッダー ファイル\Engine\Graphics\3D</Filter>
     </ClInclude>
-    <ClInclude Include="Engine\Graphics\Effect\ParticleEmitter.h">
-      <Filter>ヘッダー ファイル\Engine\Graphics\Effect</Filter>
-    </ClInclude>
-    <ClInclude Include="Engine\Graphics\Effect\ParticleManager.h">
+    <ClInclude Include="Engine\Graphics\Effect\MeshParticleSystem.h">
       <Filter>ヘッダー ファイル\Engine\Graphics\Effect</Filter>
     </ClInclude>
     <ClInclude Include="Engine\Graphics\Effect\PostProcess.h">
@@ -660,6 +654,9 @@
       <Filter>ヘッダー ファイル\Game\Editor</Filter>
     </ClInclude>
     <ClInclude Include="Game\Editor\EditHistory.h">
+      <Filter>ヘッダー ファイル\Game\Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="Game\Editor\EditorJson.h">
       <Filter>ヘッダー ファイル\Game\Editor</Filter>
     </ClInclude>
     <ClInclude Include="Game\Editor\EditorDocumentManager.h">
@@ -850,14 +847,14 @@
     <None Include="Engine\Graphics\Shaders\Obj3D\Object3d.hlsli">
       <Filter>Resources\shader\Obj3D</Filter>
     </None>
-    <None Include="Engine\Graphics\Shaders\Particle\Particle.hlsli">
-      <Filter>Resources\shader\Particle</Filter>
-    </None>
     <None Include="Engine\Graphics\Shaders\Skybox\Skybox.hlsli">
       <Filter>Resources\shader\Skybox</Filter>
     </None>
     <None Include="Engine\Graphics\Shaders\PostProcess\PostProcess.hlsli">
       <Filter>Resources\shader\PostEffect</Filter>
+    </None>
+    <None Include="Engine\Graphics\Shaders\MeshParticle\MeshParticle.hlsli">
+      <Filter>Resources\shader\MeshParticle</Filter>
     </None>
     <None Include="Engine\Graphics\Shaders\Paint\InkPaint.hlsli">
       <Filter>Resources\shader\Paint</Filter>
@@ -865,6 +862,18 @@
     <None Include="Engine\Graphics\Shaders\Sprite\Sprite.hlsli">
       <Filter>Resources\shader\Sprite</Filter>
     </None>
+    <FxCompile Include="Engine\Graphics\Shaders\MeshParticle\MeshParticle.PS.hlsl">
+      <Filter>Resources\shader\MeshParticle</Filter>
+    </FxCompile>
+    <FxCompile Include="Engine\Graphics\Shaders\MeshParticle\MeshParticle.VS.hlsl">
+      <Filter>Resources\shader\MeshParticle</Filter>
+    </FxCompile>
+    <FxCompile Include="Engine\Graphics\Shaders\MeshParticle\MeshParticleSpawn.CS.hlsl">
+      <Filter>Resources\shader\MeshParticle</Filter>
+    </FxCompile>
+    <FxCompile Include="Engine\Graphics\Shaders\MeshParticle\MeshParticleUpdate.CS.hlsl">
+      <Filter>Resources\shader\MeshParticle</Filter>
+    </FxCompile>
     <FxCompile Include="Engine\Graphics\Shaders\Paint\InkPaint.PS.hlsl">
       <Filter>Resources\shader\Paint</Filter>
     </FxCompile>
@@ -882,12 +891,6 @@
     </FxCompile>
     <FxCompile Include="Engine\Graphics\Shaders\Obj3D\SkinningObject3d.VS.hlsl">
       <Filter>Resources\shader\Obj3D</Filter>
-    </FxCompile>
-    <FxCompile Include="Engine\Graphics\Shaders\Particle\Particle.VS.hlsl">
-      <Filter>Resources\shader\Particle</Filter>
-    </FxCompile>
-    <FxCompile Include="Engine\Graphics\Shaders\Particle\Particle.PS.hlsl">
-      <Filter>Resources\shader\Particle</Filter>
     </FxCompile>
     <FxCompile Include="Engine\Graphics\Shaders\Sprite\Sprite.VS.hlsl">
       <Filter>Resources\shader\Sprite</Filter>
@@ -944,15 +947,6 @@
   <ItemGroup>
     <FxCompile Include="Engine\Graphics\Shaders\Skinning.CS.hlsl">
       <Filter>Resources\shader\Obj3D</Filter>
-    </FxCompile>
-    <FxCompile Include="Engine\Graphics\Shaders\Particle\Particle.CS.hlsl">
-      <Filter>Resources\shader\Particle</Filter>
-    </FxCompile>
-    <FxCompile Include="Engine\Graphics\Shaders\Particle\UpdateParticle.CS.hlsl">
-      <Filter>Resources\shader\Particle</Filter>
-    </FxCompile>
-    <FxCompile Include="Engine\Graphics\Shaders\Particle\EmitParticle.CS.hlsl">
-      <Filter>Resources\shader\Particle</Filter>
     </FxCompile>
   </ItemGroup>
 </Project>

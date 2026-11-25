@@ -1,0 +1,34 @@
+{
+    "Boss": {
+        "attackInterval": 1.600000023841858,
+        "bobAmplitude": 0.4000000059604645,
+        "bobSpeed": 1.2000000476837158,
+        "bulletDamage": 30.0,
+        "bulletSpeed": 16.0,
+        "burstCount": 3,
+        "burstInterval": 0.25,
+        "fanAngle": 0.11999999731779099,
+        "fanCount": 5,
+        "homingDamage": 40.0,
+        "homingSpeed": 9.0,
+        "homingTurnRate": 1.2000000476837158,
+        "leadRate": 1.0,
+        "phase1Hp": 120,
+        "phase2AttackInterval": 1.100000023841858,
+        "phase2Hp": 160,
+        "phase2RailIndex": 2,
+        "phase2RailSpeedRate": 1.25,
+        "phase2Rise": 1.0,
+        "phaseChangeDuration": 2.0,
+        "position": [
+            -60.0,
+            6.5,
+            0.0
+        ],
+        "ringDamagePerSecond": 35.0,
+        "ringDangerTime": 2.5,
+        "ringWarnTime": 1.5,
+        "scale": 3.0,
+        "telegraphTime": 0.699999988079071
+    }
+}

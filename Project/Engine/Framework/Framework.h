@@ -17,7 +17,6 @@ class SrvManager;
 class ImGuiManager;
 class SoundManager;
 class CameraManager;
-class ParticleManager;
 class TextureManager;
 class ModelManager;
 class TimeManager;

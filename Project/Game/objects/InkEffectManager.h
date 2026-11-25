@@ -1,20 +1,22 @@
 #pragma once
 
 #include "MyMath.h"
+#include "MeshParticleSystem.h"
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <random>
 #include <vector>
 
 // 前方宣言
-class Obj3D;
 class Obj3dCommon;
 
 /// <summary>
-/// インクのしぶき・的の破片・撃破時の閃光の演出
-/// 毎回生成するとメモリ確保が重くなるため、起動時に決まった数だけ生成して使い回す。
-/// 空きが無いときは一番古いものを上書きする。
+/// インクのしぶき・的の破片・撃破時の閃光・被弾の火花・ボスの予備動作の光の粒の演出
+/// 出し方(数・速さ・ばらつき)をここで決め、動かすのと描くのは GPU のパーティクル(MeshParticleSystem)で行う。
+/// 種類ごとに決まった数だけ使い回し、空きが無いときは一番古いものを上書きする。
 /// インクのしぶきは、着地を調べる処理(SetLandingHandler)を渡すと、面に着いたところにインクを塗って消える。
+/// 種類ごとのモデルは InkEffectManager.cpp の先頭の表で決めている(配布モデルから差し替えるときはそこを書き換える)。
 /// </summary>
 class InkEffectManager{
 public:
@@ -27,14 +29,20 @@ public:
 	InkEffectManager();
 	~InkEffectManager();
 
-	// 初期化処理(モデルの読み込みと、使い回す3Dオブジェクトの生成)
+	// 初期化処理(モデルの読み込みと、GPU のパーティクルの生成)
 	void Initialize(Obj3dCommon* objCommon);
 
 	// 出ている演出をすべて消す
 	void Reset();
 
-	// しぶきの着地を調べる処理を設定する(設定しなければ、しぶきは何にも着かずに寿命まで飛ぶ)
-	void SetLandingHandler(LandingHandler handler){ landingHandler_ = std::move(handler); }
+	/// <summary>
+	/// しぶきの着地を調べる処理を設定する(設定しなければ、しぶきは何にも着かずに寿命まで飛ぶ)
+	/// しぶきは GPU で動かしているため、surfaceHeight の高さを上から下へ横切ったしぶきだけを handler で調べる
+	/// (調べられるのは水平な面1枚だけ。横切ったフレームの次のフレームに調べる)
+	/// </summary>
+	/// <param name="surfaceHeight">着地を調べる面の高さ</param>
+	/// <param name="handler">着地を調べる処理</param>
+	void SetLandingHandler(float surfaceHeight,LandingHandler handler);
 
 	/// <summary>
 	/// 的を壊したときの演出(破片・インクのしぶき・閃光)
@@ -79,6 +87,59 @@ public:
 	/// <param name="position">壊れたゴールの的の座標</param>
 	void EmitGoalBreak(const Vector3& position);
 
+	/// <summary>
+	/// 最後のステージへ続く通路の壁が壊れたときの演出(ゴールの的を壊したときと同じ大きさで、破片だけを壁の色にする)
+	/// </summary>
+	/// <param name="position">壁の中心の座標</param>
+	/// <param name="barrierColor">壁の色</param>
+	void EmitBarrierBreak(const Vector3& position,const Vector4& barrierColor);
+
+	/// <summary>
+	/// 弾が当たったときの火花(敵・ゴールの的・ボスに当たったときと、プレイヤーが被弾したとき)
+	/// 四方へ速く飛び散り、重力で落ちながら空気抵抗で減速し、黄色から橙へ変わって小さくなりながら消える
+	/// </summary>
+	/// <param name="position">火花が出る中心の座標</param>
+	void EmitSpark(const Vector3& position);
+
+	/// <summary>
+	/// 体力のある相手(ゴールの的・ボス)に弾が当たったときに、当たった面から跳ねるインクのしぶき
+	/// 1発で壊れない相手でも、インクで塗っている手応えが出るようにする(撃ったときのしぶきより大きくし、離れていても見えるようにする)
+	/// </summary>
+	/// <param name="position">当たった面の座標</param>
+	/// <param name="direction">跳ねる向き(当たった面からプレイヤーの方。正規化済み)</param>
+	void EmitHitSplash(const Vector3& position,const Vector3& direction);
+
+	/// <summary>
+	/// ボスが弾を撃つ前の予備動作で、周りから体へ吸い込まれる光の粒
+	/// 粒は arriveTime 秒後(撃つ瞬間)にちょうど体の表面へ届く速さで飛ばす(予備動作の間、続けて呼ぶ)
+	/// </summary>
+	/// <param name="center">ボスの体の中心</param>
+	/// <param name="bodyRadius">ボスの体の半径</param>
+	/// <param name="arriveTime">撃つまでの残り時間(秒)</param>
+	void EmitBossCharge(const Vector3& center,float bodyRadius,float arriveTime);
+
+	/// <summary>
+	/// レール・スタート台へ着地したときに、足元から輪の形に広がるインクのしぶき
+	/// 水平方向へ等しい角度で広げ、少しだけ上へ跳ねさせる(着地を調べる処理を設定していれば、台に落ちたところにインクを塗る)
+	/// </summary>
+	/// <param name="position">足元の座標</param>
+	void EmitLandingRing(const Vector3& position);
+
+	/// <summary>
+	/// 鍵の的を壊して出たレールの、伸びている管の先端から飛び散るインクのしぶき(管を伸ばしている間、毎フレーム呼ぶ)
+	/// </summary>
+	/// <param name="position">管の先端の座標</param>
+	/// <param name="color">しぶきの色(伸びているレールの管と同じ色にする)</param>
+	void EmitRailGrowSplash(const Vector3& position,const Vector4& color);
+
+	/// <summary>
+	/// 飛んでいる弾から垂れるインクの粒(弾の軌跡。弾ごとに決まった間隔で呼ぶ)
+	/// 弾の筋の後ろに小さな粒を残し、重力で垂れ落ちさせる(飾りなので、面に着いても塗らない)
+	/// </summary>
+	/// <param name="position">弾の座標</param>
+	/// <param name="color">弾の色(自分の弾は黄色、敵の弾はピンク)</param>
+	void EmitBulletTrail(const Vector3& position,const Vector4& color);
+
 	// 移動・回転・縮小・寿命の更新
 	void Update(float deltaTime);
 
@@ -86,32 +147,19 @@ public:
 	void Draw();
 
 private:
-	// 演出1つ分の種類(動き方と見た目が変わる)
-	enum class Kind{
+	// 演出1つ分の種類(動き方と見た目が変わる。MeshParticleSystem に渡す種類の番号と同じ並び)
+	enum class Kind : uint32_t{
 		Droplet, // インクのしぶき(重力で落ち、飛ぶ向きに伸びる)
 		Shard,   // 的の破片(重力で落ち、回転する)
 		Flash,   // 撃破時の閃光(その場で広がって消える)
+		Spark,   // 被弾の火花(減速しながら落ち、色を変えて小さくなって消える)
+		Charge,  // ボスの予備動作の光の粒(体へ向かってまっすぐ飛び、飛ぶ向きに伸びる)
 	};
+	// 種類の数
+	static constexpr size_t kKindCount = 5;
 
-	// 演出1つ分
-	struct Piece{
-		std::unique_ptr<Obj3D> obj;
-		Kind kind = Kind::Droplet;
-		Vector3 position = {0.0f, 0.0f, 0.0f};
-		Vector3 velocity = {0.0f, 0.0f, 0.0f};
-		Vector3 rotate = {0.0f, 0.0f, 0.0f};
-		Vector3 angularVelocity = {0.0f, 0.0f, 0.0f};
-		Vector4 color = {1.0f, 1.0f, 1.0f, 1.0f};
-		float baseScale = 1.0f;
-		float lifeTime = 0.0f;
-		float maxLifeTime = 1.0f;
-		bool isAlive = false;
-		// 面に着いたときにインクを塗るか(やられ演出のしぶきだけ塗らない)
-		bool paintsOnLanding = true;
-	};
-
-	// 使い回し用の配列から次に使う1つを取り出す(一番古いものから順に上書きする)
-	Piece& Spawn(std::vector<Piece>& pool,size_t& nextIndex);
+	// 1つ出す(一番古いものから順に上書きする)
+	void Spawn(Kind kind,const MeshParticleSystem::SpawnDesc& desc);
 
 	// 指定した範囲の乱数を返す
 	float RandomRange(float min,float max);
@@ -119,20 +167,8 @@ private:
 	// 各軸が -1〜1 の乱数のベクトルを返す
 	Vector3 RandomVector();
 
-	// 1つ分の行列と色を更新する
-	void UpdatePieceTransform(Piece& piece);
-
-	// インクのしぶき(球モデル)
-	std::vector<Piece> droplets_;
-	// 的の破片(三角柱モデル)
-	std::vector<Piece> shards_;
-	// 撃破時の閃光(球モデル)
-	std::vector<Piece> flashes_;
-
-	// 次に使う要素の番号
-	size_t nextDroplet_ = 0;
-	size_t nextShard_ = 0;
-	size_t nextFlash_ = 0;
+	// しぶき・破片・閃光を動かして描く GPU のパーティクル
+	std::unique_ptr<MeshParticleSystem> particles_;
 
 	// 飛び散り方のばらつきに使う乱数
 	std::mt19937 randomEngine_;
@@ -141,9 +177,14 @@ private:
 	LandingHandler landingHandler_;
 
 	// 使い回す個数
-	static constexpr size_t kDropletCount = 160;
-	static constexpr size_t kShardCount = 48;
-	static constexpr size_t kFlashCount = 8;
+	// 着地・レールが伸びる先端・当たったときのしぶき・弾の軌跡も同じ種類で出すため、ほかのしぶきを早く上書きしないよう多めにする
+	static constexpr uint32_t kDropletCount = 512;
+	static constexpr uint32_t kShardCount = 48;
+	static constexpr uint32_t kFlashCount = 8;
+	// 火花は1回に kSparkEmitCount 個出すため、同じ時間に8回分出せる数にする
+	static constexpr uint32_t kSparkCount = 160;
+	// 光の粒は寿命(最大 kChargeMaxLife 秒)の間に出す数より多くする
+	static constexpr uint32_t kChargeCount = 64;
 
 	// しぶき・破片に掛ける重力加速度(1秒あたりの下方向への速度変化量)
 	static constexpr float kDropletGravity = 12.0f;
@@ -240,6 +281,70 @@ private:
 	// ゴールの的を壊したときの閃光の大きさ・寿命
 	static constexpr float kGoalBreakFlashScale = 0.6f;
 	static constexpr float kGoalBreakFlashLife = 0.3f;
+	// 壁の破片のうち、1つおきに暗くする割合(同じ色だけだと破片の重なりが見分けにくいため、明るさを2段階にする)
+	static constexpr float kBarrierShardShadeRate = 0.65f;
+	// 壁の破片の明るさを変える間隔(この数ごとに1つ暗くする)
+	static constexpr int kBarrierShardShadeInterval = 2;
+	// 火花の数・出す範囲の半径・速さの最大値・大きさ・寿命・重力加速度・空気抵抗の強さ(ParticleManager で出していたときと同じ値)
+	static constexpr int kSparkEmitCount = 20;
+	static constexpr float kSparkRadius = 0.1f;
+	static constexpr float kSparkSpeed = 8.0f;
+	static constexpr float kSparkScale = 0.25f;
+	static constexpr float kSparkLife = 0.45f;
+	static constexpr float kSparkGravity = 15.0f;
+	static constexpr float kSparkDrag = 3.0f;
+	// 火花は出た瞬間から寿命が尽きるまで、少しずつ小さくする
+	static constexpr float kSparkShrinkStartRate = 0.0f;
+	// 体力のある相手に当たったときのしぶきの数・速さ・横へのばらつき・大きさ・寿命
+	// ゴールの的やボスには何発も続けて当てるため、1発分は少なめにし、当て続けるとインクが飛び散り続けて見えるようにする
+	static constexpr int kHitSplashCount = 6;
+	static constexpr float kHitSplashSpeedMin = 2.0f;
+	static constexpr float kHitSplashSpeedMax = 5.0f;
+	static constexpr float kHitSplashSpread = 2.0f;
+	static constexpr float kHitSplashScaleMin = 0.06f;
+	static constexpr float kHitSplashScaleMax = 0.1f;
+	static constexpr float kHitSplashLifeMin = 0.3f;
+	static constexpr float kHitSplashLifeMax = 0.5f;
+	// ボスの予備動作の光の粒の、1回に出す数・出す距離(体の半径の何倍か)・大きさ
+	static constexpr int kChargeEmitCount = 2;
+	static constexpr float kChargeSpawnDistanceRateMin = 1.8f;
+	static constexpr float kChargeSpawnDistanceRateMax = 2.6f;
+	static constexpr float kChargeScaleMin = 0.08f;
+	static constexpr float kChargeScaleMax = 0.14f;
+	// 光の粒の寿命の上限(撃つまでの時間が長いときも、遠くからゆっくり来ないようにする)と、
+	// これより撃つまでの時間が短いときは出さない(体へ届く前に撃ってしまい、すぐ消えて見えるため)
+	static constexpr float kChargeMaxLife = 0.4f;
+	static constexpr float kChargeMinLife = 0.05f;
+	// 光の粒を飛ぶ向きへ伸ばす割合(速さ1あたり)と上限・寿命のこの割合を過ぎたら小さくなり、体に吸い込まれて見えるようにする
+	static constexpr float kChargeStretchPerSpeed = 0.15f;
+	static constexpr float kChargeMaxStretch = 4.0f;
+	static constexpr float kChargeShrinkStartRate = 0.7f;
+	// 着地のしぶきの数・横への速さ・上への速さ・大きさ・寿命
+	// レールの上では跳ねるたびに出るため、数は少なめ・寿命は短めにして、うるさくならないようにする
+	static constexpr int kLandingRingCount = 12;
+	static constexpr float kLandingRingHorizontalSpeedMin = 2.5f;
+	static constexpr float kLandingRingHorizontalSpeedMax = 3.5f;
+	static constexpr float kLandingRingUpSpeedMin = 1.0f;
+	static constexpr float kLandingRingUpSpeedMax = 1.6f;
+	static constexpr float kLandingRingScaleMin = 0.03f;
+	static constexpr float kLandingRingScaleMax = 0.05f;
+	static constexpr float kLandingRingLifeMin = 0.3f;
+	static constexpr float kLandingRingLifeMax = 0.45f;
+	// レールが伸びている先端のしぶきの1フレームあたりの数・上への速さ・ばらつき・大きさ・寿命
+	// 遠くのレールでも見えるよう、レール走行中のしぶきより大きくする
+	static constexpr int kRailGrowSplashCount = 2;
+	static constexpr float kRailGrowUpSpeed = 2.5f;
+	static constexpr float kRailGrowSpread = 2.0f;
+	static constexpr float kRailGrowScaleMin = 0.06f;
+	static constexpr float kRailGrowScaleMax = 0.1f;
+	static constexpr float kRailGrowLifeMin = 0.35f;
+	static constexpr float kRailGrowLifeMax = 0.55f;
+	// 弾の軌跡の粒のばらつき・大きさ・寿命(弾の数だけ出続けるため、小さく短くして画面の邪魔にならないようにする)
+	static constexpr float kBulletTrailSpread = 0.4f;
+	static constexpr float kBulletTrailScaleMin = 0.02f;
+	static constexpr float kBulletTrailScaleMax = 0.035f;
+	static constexpr float kBulletTrailLifeMin = 0.15f;
+	static constexpr float kBulletTrailLifeMax = 0.25f;
 	// しぶきが面に着いたときに塗るインクの半径(しぶきの大きさに対する倍率)
 	// しぶきは画面の邪魔にならないよう小さめにし、その分倍率を上げて、台に残る跡は見える大きさにする
 	static constexpr float kLandingInkRadiusRate = 6.0f;
