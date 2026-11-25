@@ -229,6 +229,39 @@ bool TargetManager::FindAimedTarget(const Vector3& cameraPosition,const Vector3&
 	return isFound;
 }
 
+// 指定した的が生きているか(範囲外の番号は false)
+bool TargetManager::IsTargetAlive(int index) const{
+	return index >= 0 && index < static_cast<int>(targets_.size()) && targets_[index].isAlive;
+}
+
+// 指定した的の、見た目が一番大きくなったときの当たり判定の半径
+// 狙えているときの大きさに、鍵の的は脈打って一番ふくらんだときの倍率を掛けて、どの瞬間でも判定の球より小さくならないようにする
+float TargetManager::GetTargetMaxHitRadius(int index) const{
+	if(!model_){
+		return 0.0f;
+	}
+	float scale = kAimedScale;
+	if(targets_[index].unlockRailIndex >= 0){
+		scale *= kKeyTargetScaleRate * (1.0f + kKeyPulseAmplitude);
+	}
+	return model_->GetBoundingSphere(targets_[index].position,scale).radius;
+}
+
+// サブウェポンの弾が着いた的を壊す
+// 破片・しぶき・閃光の演出と連鎖数の加算は、弾が当たって壊れたときと同じく呼び出し側で行うため、壊れた位置を記録しておく
+bool TargetManager::DestroyTarget(int index){
+	if(!IsTargetAlive(index)){
+		return false;
+	}
+	Target& target = targets_[index];
+	target.isAlive = false;
+	destroyedPositions_.push_back(target.position);
+	if(target.unlockRailIndex >= 0){
+		hasDestroyedKeyTarget_ = true;
+	}
+	return true;
+}
+
 // 壊された的の数を数える
 int TargetManager::GetDestroyedCount() const{
 	int count = 0;

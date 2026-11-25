@@ -62,4 +62,23 @@ namespace CameraPoseMath{
 		}
 		return {kClipToUvScale + clipX / clipW * kClipToUvScale, kClipToUvScale - clipY / clipW * kClipToUvScale};
 	}
+
+	/// <summary>
+	/// ワールド座標が、カメラの画面の中に映っているか(サブウェポンの狙う的を、画面に映っているものに限るのに使う)
+	/// カメラの後ろにある点は映っていないものとする
+	/// </summary>
+	/// <param name="position">ワールド座標</param>
+	/// <param name="viewProjection">カメラのビュー・プロジェクション行列</param>
+	inline bool IsInView(const Vector3& position,const Matrix4x4& viewProjection){
+		// WorldToScreenUv() と同じく、行ベクトル × 行列の順で掛けて同次座標(x, y, w)を求める
+		const Matrix4x4& m = viewProjection;
+		float clipX = position.x * m.m[0][0] + position.y * m.m[1][0] + position.z * m.m[2][0] + m.m[3][0];
+		float clipY = position.x * m.m[0][1] + position.y * m.m[1][1] + position.z * m.m[2][1] + m.m[3][1];
+		float clipW = position.x * m.m[0][3] + position.y * m.m[1][3] + position.z * m.m[2][3] + m.m[3][3];
+		if(clipW <= 0.0f){
+			return false;
+		}
+		// 描画先の座標(-1〜1)の範囲に入っていれば画面に映っている
+		return std::abs(clipX) <= clipW && std::abs(clipY) <= clipW;
+	}
 }

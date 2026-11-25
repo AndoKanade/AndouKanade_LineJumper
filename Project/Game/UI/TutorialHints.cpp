@@ -15,6 +15,7 @@ namespace{
 		"resource/UI/hintGate.png",
 		"resource/UI/hintRailShoot.png",
 		"resource/UI/hintKeyTarget.png",
+		"resource/UI/hintHomingShot.png",
 	};
 	// 白(画像の色をそのまま出す)。α値だけ変えて使う
 	constexpr Vector4 kWhite = {1.0f, 1.0f, 1.0f, 1.0f};
@@ -44,6 +45,7 @@ void TutorialHints::Reset(){
 	shownTimer_ = 0.0f;
 	hasMoveStarted_ = false;
 	shotCount_ = 0;
+	hasUsedHomingShot_ = false;
 	alpha_ = 0.0f;
 	fadingHintIndex_ = kNoHint;
 	fadingAlpha_ = 0.0f;
@@ -63,6 +65,9 @@ bool TutorialHints::IsShowingScene(const Situation& situation) const{
 	case Step::KeyTarget:
 		// 鍵の的が近くにある間だけ出し、何のための的か分かるようにする
 		return situation.isRiding && situation.isKeyTargetNear;
+	case Step::HomingShot:
+		// 鍵の的を壊した直後は、飛び移り方の案内(画面の端の A / D + SPACE)と重なって読みにくいため、それが消えてから出す
+		return situation.isRiding && !situation.isRailSwitchPromptShown;
 	case Step::Done:
 	default:
 		return false;
@@ -87,6 +92,9 @@ bool TutorialHints::IsStepCompleted(const Situation& situation) const{
 		return situation.hasDestroyedTarget || shownTimer_ >= kRailShootMaxDuration;
 	case Step::KeyTarget:
 		return situation.hasDestroyedKeyTarget;
+	case Step::HomingShot:
+		// 撃ったときは Update() で飛ばすため、ここではしばらく出したら消す(撃たない人にも出しっぱなしにしない)
+		return shownTimer_ >= kHomingShotMaxDuration;
 	case Step::Done:
 	default:
 		return false;
@@ -119,6 +127,13 @@ void TutorialHints::Update(const Situation& situation,float deltaTime){
 	// 先の操作を先にしてしまったときは、そこまでの案内を飛ばす(案内を見る前にゲートを開けた・レールに乗ったなど)
 	if(step_ < Step::RailShoot && (situation.hasOpenedGate || situation.isRiding)){
 		AdvanceTo(Step::RailShoot);
+	}
+	// サブウェポンは、案内を出す前でも出している最中でも、撃ったら(撃ったことがあれば)その案内を終える
+	if(situation.hasFiredHomingShot){
+		hasUsedHomingShot_ = true;
+	}
+	if(step_ == Step::HomingShot && hasUsedHomingShot_){
+		AdvanceTo(Step::Done);
 	}
 	if(step_ == Step::Done){
 		return;

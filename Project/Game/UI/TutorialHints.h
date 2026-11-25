@@ -9,7 +9,7 @@ class SpriteCommon;
 
 /// <summary>
 /// 場面ごとに画面の上に1つずつ出す操作の案内(チュートリアル)
-/// 「移動・見回す → 試し撃ち → ゲートで出発 → レールで的を撃つ → 鍵の的の意味」の順に出し、その操作をしたら消して次の案内を出す。
+/// 「移動・見回す → 試し撃ち → ゲートで出発 → レールで的を撃つ → 鍵の的の意味 → サブウェポン(Q)」の順に出し、その操作をしたら消して次の案内を出す。
 /// 一度消した案内は、落ちてやり直しても出し直さない(タイトルから始め直すと Reset() で最初から)。
 /// 先の操作を先にしてしまったとき(案内の前にゲートを開けたなど)は、そこまでの案内を飛ばす。
 /// ImGui を使わずスプライトで描くため、Release 構成でも表示される。
@@ -26,6 +26,8 @@ public:
 		bool hasDestroyedTarget = false; // このフレームで的を壊したか
 		bool isKeyTargetNear = false;    // 生きている鍵の的が近くにあるか
 		bool hasDestroyedKeyTarget = false; // このフレームで鍵の的を壊したか
+		bool hasFiredHomingShot = false; // このフレームでサブウェポン(Q)を撃ったか
+		bool isRailSwitchPromptShown = false; // 飛び移り方の案内(A / D + SPACE)を出しているか
 	};
 
 	TutorialHints();
@@ -54,6 +56,7 @@ private:
 		Gate,
 		RailShoot,
 		KeyTarget,
+		HomingShot,
 		Done,
 	};
 	static constexpr int kHintCount = static_cast<int>(Step::Done);
@@ -79,6 +82,8 @@ private:
 	bool hasMoveStarted_ = false;
 	// 試し撃ちの案内を出している間に撃った回数(試し撃ちの案内を消すのに使う)
 	int shotCount_ = 0;
+	// サブウェポンを一度でも撃ったか(案内より先に使っていたら、サブウェポンの案内は飛ばす)
+	bool hasUsedHomingShot_ = false;
 	// 今の案内の濃さ(0〜1)
 	float alpha_ = 0.0f;
 	// 消えていく案内(前の段階の案内。薄くしている間だけ描く)と、その濃さ
@@ -95,6 +100,8 @@ private:
 	static constexpr int kShootDoneCount = 5;
 	// レールで撃つ案内を、的を壊さなくても消すまでの時間(秒)
 	static constexpr float kRailShootMaxDuration = 6.0f;
+	// サブウェポンの案内を、撃たなくても消すまでの時間(秒)
+	static constexpr float kHomingShotMaxDuration = 6.0f;
 	// 前の案内が消えてから次の案内を出すまでの時間(秒)
 	static constexpr float kNextHintDelay = 0.4f;
 	// 濃くなる時間・薄くなって消える時間(秒)
